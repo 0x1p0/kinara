@@ -3,15 +3,15 @@ import assert from "node:assert/strict";
 import { getReleaseDownload } from "../release.mjs";
 
 const url =
-  "https://github.com/0x1p0/sway-application/releases/download/v1.1.0/Sway-1.1.0-macos-universal.dmg";
+  "https://github.com/0x1p0/sway-application/releases/download/v1.0.0/Sway-1.0.0-macos-universal.dmg";
 const release = {
-  tag_name: "v1.1.0",
+  tag_name: "v1.0.0",
   assets: [
-    { name: "Sway-1.1.0-macos-universal.dmg", browser_download_url: url },
+    { name: "Sway-1.0.0-macos-universal.dmg", browser_download_url: url },
   ],
 };
 test("accepts the exact stable universal DMG", () =>
-  assert.deepEqual(getReleaseDownload(release), { version: "v1.1.0", url }));
+  assert.deepEqual(getReleaseDownload(release), { version: "v1.0.0", url }));
 test("ignores missing, draft, prerelease, and malformed releases", () => {
   for (const value of [
     null,
@@ -30,7 +30,7 @@ test("rejects foreign repositories and mismatched filenames", () => {
     "https://example.com/app.dmg",
     url.replace("0x1p0", "someone"),
     `${url}?redirect=1`,
-    url.replace("v1.1.0/", "v1.0.14/"),
+    url.replace("v1.0.0/", "v0.9.0/"),
   ]) {
     assert.equal(
       getReleaseDownload({

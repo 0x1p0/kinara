@@ -1454,7 +1454,7 @@ struct UpdateWindowView: View {
 private struct AccessibilityRecoveryHelp: View {
     var body: some View {
         DisclosureGroup("Already enabled, but gestures don’t work?") {
-            Text("Upgrading from 1.0.10 or earlier may need one final permission grant. In Accessibility, remove the old Sway entry with −, then use + to add Sway from Applications and enable it. Return here and choose Check again. If macOS still reports the old state, quit and reopen Sway once. Your other apps’ permissions stay untouched.")
+            Text("If Sway is switched on in the list but gestures still don’t work, that entry belongs to an older copy. In Accessibility, remove the Sway entry with −, then use + to add Sway from Applications and switch it on. If macOS still reports the old state, quit and reopen Sway once. Your other apps’ permissions stay untouched.")
                 .fixedSize(horizontal: false, vertical: true).padding(.top, 4)
         }
         .font(.system(size: 11)).foregroundStyle(.secondary)

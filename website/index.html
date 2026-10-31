@@ -9,12 +9,12 @@
     <meta property="og:url" content="https://sway-application.vercel.app/">
     <meta
       name="description"
-      content="26 ways to control your Mac from your trackpad’s edges. Volume, brightness, microphone, media, windows, and custom shortcuts. Free for macOS, by 0x1p0."
+      content="49 ways to control your Mac from your trackpad’s edges. Volume, brightness, microphone, media, windows, and custom shortcuts. Free for macOS, by 0x1p0."
     />
     <meta property="og:title" content="Sway — A lighter touch for your Mac." />
     <meta
       property="og:description"
-      content="A lighter touch. More possibilities. Explore 26 edge actions in Sway 1.1.0, the free macOS menu bar app by 0x1p0."
+      content="A lighter touch. More possibilities. Explore 49 edge actions in Sway, the macOS menu bar app by 0x1p0."
     />
     <meta property="og:type" content="website" />
     <link rel="icon" type="image/png" href="/assets/sway-icon.png" />
@@ -52,12 +52,12 @@
           Your sound. Your windows. Your next move.<br
             class="desktop-break"
           />
-          26 ways to make the edges of your trackpad yours.
+          49 ways to make the edges of your trackpad yours.
         </p>
         <div class="hero-actions">
           <a
             class="button button-dark download-link"
-            href="https://github.com/0x1p0/sway-application/releases/download/v1.1.0/Sway-1.1.0-macos-universal.dmg"
+            href="https://github.com/0x1p0/sway-application/releases/download/v1.0.0/Sway-1.0.0-macos-universal.dmg"
             ><svg
               class="icon"
               viewBox="0 0 24 24"
@@ -76,9 +76,9 @@
         </div>
         <p class="compatibility">
           Free · macOS 13+ · Apple silicon & Intel ·
-          <span class="release-version">v1.1.0</span>
+          <span class="release-version">v1.0.0</span>
         </p>
-        <a class="release-highlight" href="#actions">New in 1.1.0 <span>Meet your expanded action library</span><span aria-hidden="true">↗</span></a>
+        <a class="release-highlight" href="#actions">Introducing Sway 1.0 <span>Meet all 49 actions</span><span aria-hidden="true">↗</span></a>
         <div class="hero-demo" id="experience">
           <div class="demo-toolbar">
             <span class="demo-label"
@@ -190,8 +190,8 @@
         </div>
       </section>
       <section class="intro wrap section-space" id="actions" aria-labelledby="actions-title">
-        <p class="eyebrow">THE ACTION LIBRARY · NEW IN 1.1.0</p>
-        <h2 id="actions-title">One small gesture.<br /><span>26 possibilities.</span></h2>
+        <p class="eyebrow">THE ACTION LIBRARY</p>
+        <h2 id="actions-title">One small gesture.<br /><span>49 possibilities.</span></h2>
         <p>
           Keep brightness on the left. Put your next track on the right.<br class="desktop-break" />
           Or start with something entirely your own.
@@ -210,25 +210,25 @@
             <button type="button" data-category="windows" aria-pressed="false">Windows</button>
             <button type="button" data-category="tools" aria-pressed="false">Tools</button>
           </div>
-          <p class="action-count" id="action-count" role="status" aria-live="polite" aria-atomic="true">49 actions · 23 arrive in 1.2 · plus Off for any edge</p>
+          <p class="action-count" id="action-count" role="status" aria-live="polite" aria-atomic="true">49 actions · plus Off for any edge</p>
         </div>
         <div class="action-groups" id="action-groups">
           <details class="action-group" data-category="display" open>
             <summary><span class="category-mark" aria-hidden="true">☀</span><span class="category-title">Display & keyboard<small>Find your comfortable light.</small></span><span class="category-count">05</span><span class="detail-plus" aria-hidden="true"></span></summary>
             <dl class="action-list">
-              <div data-action-id="brightness"><dt>Display brightness</dt><dd>Up brightens; down dims the built-in display. From 1.2 it can follow the pointer to Apple displays and to other monitors over DDC/CI where they support it.</dd></div>
+              <div data-action-id="brightness"><dt>Display brightness</dt><dd>Up brightens; down dims the built-in display. It can follow the pointer to Apple displays and to other monitors over DDC/CI where they support it.</dd></div>
               <div data-action-id="keyboardBrightness" data-keywords="keyboard lighting illumination"><dt>Keyboard backlight</dt><dd>Up brightens; down dims a supported backlit keyboard. macOS and ambient-light conditions can limit changes.</dd></div>
-              <div data-action-id="nightShift" data-keywords="new warm color temperature"><dt>Night Shift warmth <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Up warms the display; down cools it, and zero turns Night Shift off. Uses a private macOS interface that can change.</dd></div>
-              <div data-action-id="trueTone" data-keywords="new color ambient"><dt>True Tone <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Up turns True Tone on; down turns it off. Only on displays that support it.</dd></div>
-              <div data-action-id="extraDim" data-keywords="new darker night"><dt>Extra dim <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Dim below the lowest backlight level for late nights. Quitting Sway always restores normal brightness.</dd></div>
+              <div data-action-id="nightShift" data-keywords="warm color temperature"><dt>Night Shift warmth</dt><dd>Up warms the display; down cools it, and zero turns Night Shift off. Uses a private macOS interface that can change.</dd></div>
+              <div data-action-id="trueTone" data-keywords="color ambient"><dt>True Tone</dt><dd>Up turns True Tone on; down turns it off. Only on displays that support it.</dd></div>
+              <div data-action-id="extraDim" data-keywords="darker night"><dt>Extra dim</dt><dd>Dim below the lowest backlight level for late nights. Quitting Sway always restores normal brightness.</dd></div>
             </dl>
           </details>
           <details class="action-group" data-category="audio">
             <summary><span class="category-mark" aria-hidden="true">♪</span><span class="category-title">Audio & microphone<small>A little more control over your sound.</small></span><span class="category-count">06</span><span class="detail-plus" aria-hidden="true"></span></summary>
             <dl class="action-list">
               <div data-action-id="volume"><dt>Output volume</dt><dd>Up raises; down lowers the default audio output. Requires a device with software volume control.</dd></div>
-              <div data-action-id="appVolume" data-keywords="new mixer per-app"><dt>App volume <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Change only the sound of the app in front. macOS asks once for System Audio Recording; Sway never records or saves audio. macOS 14.2+.</dd></div>
-              <div data-action-id="audioOutput" data-keywords="new airpods speakers device switch"><dt>Switch audio output <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Up picks the next output, down the previous one. The indicator names the new device.</dd></div>
+              <div data-action-id="appVolume" data-keywords="mixer per-app"><dt>App volume</dt><dd>Change only the sound of the app in front. macOS asks once for System Audio Recording; Sway never records or saves audio. macOS 14.2+.</dd></div>
+              <div data-action-id="audioOutput" data-keywords="airpods speakers device switch"><dt>Switch audio output</dt><dd>Up picks the next output, down the previous one. The indicator names the new device.</dd></div>
               <div data-action-id="microphoneLevel" data-keywords="mic input gain"><dt>Microphone level</dt><dd>Adjust the default input’s gain without recording audio. Changing gain never unmutes the device.</dd></div>
               <div data-action-id="outputMute"><dt>Speaker mute</dt><dd>Down mutes; up unmutes the default output. Available when the device provides a hardware mute control.</dd></div>
               <div data-action-id="microphoneMute" data-keywords="mic input"><dt>Microphone mute</dt><dd>Down mutes; up unmutes the default input, when readable, writable hardware mute is available. Other inputs and app mute buttons stay separate.</dd></div>
@@ -239,22 +239,22 @@
             <dl class="action-list">
               <div data-action-id="mediaTracks" data-keywords="music song skip"><dt>Previous / next track</dt><dd>Up requests the next track; down requests the previous track in the active media app. One request per swipe.</dd></div>
               <div data-action-id="playPause" data-keywords="music song"><dt>Play / pause</dt><dd>Swipe either way to send play/pause to the active media app. Lift your fingers before toggling again.</dd></div>
-              <div data-action-id="seek" data-keywords="new scrub position music spotify"><dt>Seek in track <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Up moves forward, down moves back, with a Now Playing display. Works with Music and Spotify.</dd></div>
-              <div data-action-id="nowPlaying" data-keywords="new artwork music song"><dt>Show now playing <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Shows the current track with artwork and progress. Changes nothing.</dd></div>
+              <div data-action-id="seek" data-keywords="scrub position music spotify"><dt>Seek in track</dt><dd>Up moves forward, down moves back, with a Now Playing display. Works with Music and Spotify.</dd></div>
+              <div data-action-id="nowPlaying" data-keywords="artwork music song"><dt>Show now playing</dt><dd>Shows the current track with artwork and progress. Changes nothing.</dd></div>
             </dl>
           </details>
           <details class="action-group" data-category="editing">
             <summary><span class="category-mark" aria-hidden="true">✎</span><span class="category-title">Editing<small>Copy, paste, and take it back.</small></span><span class="category-count">09</span><span class="detail-plus" aria-hidden="true"></span></summary>
             <dl class="action-list">
-              <div data-action-id="copy" data-keywords="new clipboard"><dt>Copy <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Either direction copies the selection with Command-C.</dd></div>
-              <div data-action-id="cut" data-keywords="new clipboard"><dt>Cut <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Either direction cuts the selection with Command-X.</dd></div>
-              <div data-action-id="paste" data-keywords="new clipboard"><dt>Paste <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Either direction pastes with Command-V. Perfect for a corner double-tap.</dd></div>
-              <div data-action-id="pastePlain" data-keywords="new clipboard formatting"><dt>Paste as plain text <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Paste without formatting, in apps that support Option-Shift-Command-V.</dd></div>
-              <div data-action-id="pastePrevious" data-keywords="new clipboard history"><dt>Paste previous item <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Paste what you copied before the current item, from Sway’s in-memory history.</dd></div>
-              <div data-action-id="clipboardHistory" data-keywords="new clipboard recent"><dt>Clipboard history <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Swipe through recent copies and lift to paste. Kept in memory only, never saved; password managers’ items are skipped.</dd></div>
-              <div data-action-id="undoRedo" data-keywords="new undo redo"><dt>Undo / redo <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Down undoes and up redoes, repeating as you keep swiping.</dd></div>
-              <div data-action-id="selectAll" data-keywords="new selection"><dt>Select all <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Either direction selects everything with Command-A.</dd></div>
-              <div data-action-id="find" data-keywords="new search"><dt>Find <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Either direction opens Find in the app in front.</dd></div>
+              <div data-action-id="copy" data-keywords="clipboard"><dt>Copy</dt><dd>Either direction copies the selection with Command-C.</dd></div>
+              <div data-action-id="cut" data-keywords="clipboard"><dt>Cut</dt><dd>Either direction cuts the selection with Command-X.</dd></div>
+              <div data-action-id="paste" data-keywords="clipboard"><dt>Paste</dt><dd>Either direction pastes with Command-V. Perfect for a corner double-tap.</dd></div>
+              <div data-action-id="pastePlain" data-keywords="clipboard formatting"><dt>Paste as plain text</dt><dd>Paste without formatting, in apps that support Option-Shift-Command-V.</dd></div>
+              <div data-action-id="pastePrevious" data-keywords="clipboard history"><dt>Paste previous item</dt><dd>Paste what you copied before the current item, from Sway’s in-memory history.</dd></div>
+              <div data-action-id="clipboardHistory" data-keywords="clipboard recent"><dt>Clipboard history</dt><dd>Swipe through recent copies and lift to paste. Kept in memory only, never saved; password managers’ items are skipped.</dd></div>
+              <div data-action-id="undoRedo" data-keywords="undo redo"><dt>Undo / redo</dt><dd>Down undoes and up redoes, repeating as you keep swiping.</dd></div>
+              <div data-action-id="selectAll" data-keywords="selection"><dt>Select all</dt><dd>Either direction selects everything with Command-A.</dd></div>
+              <div data-action-id="find" data-keywords="search"><dt>Find</dt><dd>Either direction opens Find in the app in front.</dd></div>
             </dl>
           </details>
           <details class="action-group" data-category="navigation">
@@ -265,8 +265,8 @@
               <div data-action-id="zoom"><dt>App zoom</dt><dd>Up zooms in; down zooms out with standard app shortcuts. This isn’t macOS Accessibility Zoom.</dd></div>
               <div data-action-id="pages" data-keywords="scroll reading"><dt>Page up / down</dt><dd>Send Page Up or Page Down to the current app as you swipe.</dd></div>
               <div data-action-id="documentEnds" data-keywords="reading"><dt>Document start / end</dt><dd>Up goes to the start; down goes to the end, using Command-Up and Command-Down.</dd></div>
-              <div data-action-id="newCloseTab" data-keywords="new browser"><dt>New / close tab <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Up opens a new tab; down closes the current one.</dd></div>
-              <div data-action-id="reopenTab" data-keywords="new browser restore"><dt>Reopen closed tab <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Bring back the last closed tab in apps that support Shift-Command-T.</dd></div>
+              <div data-action-id="newCloseTab" data-keywords="browser"><dt>New / close tab</dt><dd>Up opens a new tab; down closes the current one.</dd></div>
+              <div data-action-id="reopenTab" data-keywords="browser restore"><dt>Reopen closed tab</dt><dd>Bring back the last closed tab in apps that support Shift-Command-T.</dd></div>
             </dl>
           </details>
           <details class="action-group" data-category="windows">
@@ -281,20 +281,20 @@
               <div data-action-id="fullScreen"><dt>Toggle full screen</dt><dd>Swipe either way to send Control-Command-F to a supporting app.</dd></div>
               <div data-action-id="minimizeWindow"><dt>Minimize window</dt><dd>Swipe either way to minimize the current window with Command-M.</dd></div>
               <div data-action-id="hideApp"><dt>Hide current app</dt><dd>Swipe either way to hide the current app with Command-H.</dd></div>
-              <div data-action-id="tileWindow" data-keywords="new snap half split"><dt>Tile window <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Up fills the screen with the front window; down moves it to that edge’s half.</dd></div>
+              <div data-action-id="tileWindow" data-keywords="snap half split"><dt>Tile window</dt><dd>Up fills the screen with the front window; down moves it to that edge’s half.</dd></div>
             </dl>
           </details>
           <details class="action-group" data-category="tools">
             <summary><span class="category-mark" aria-hidden="true">⌘</span><span class="category-title">Tools & shortcuts<small>Your everyday, a swipe away.</small></span><span class="category-count">08</span><span class="detail-plus" aria-hidden="true"></span></summary>
             <dl class="action-list">
               <div data-action-id="spotlight" data-keywords="search"><dt>Spotlight</dt><dd>Swipe either way to send Command-Space. Requires the standard Spotlight shortcut.</dd></div>
-              <div data-action-id="lockScreen" data-keywords="new security away"><dt>Lock screen <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Lock your Mac with Control-Command-Q.</dd></div>
-              <div data-action-id="sleepDisplay" data-keywords="new display off"><dt>Sleep displays <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Turn your displays off right away while your Mac stays awake.</dd></div>
+              <div data-action-id="lockScreen" data-keywords="security away"><dt>Lock screen</dt><dd>Lock your Mac with Control-Command-Q.</dd></div>
+              <div data-action-id="sleepDisplay" data-keywords="display off"><dt>Sleep displays</dt><dd>Turn your displays off right away while your Mac stays awake.</dd></div>
               <div data-action-id="screenshotTools" data-keywords="capture"><dt>Screenshot tools</dt><dd>Open the macOS screenshot toolbar with Command-Shift-5. You choose what to capture; Sway records nothing.</dd></div>
               <div data-action-id="emojiPicker" data-keywords="characters"><dt>Emoji & symbols</dt><dd>Open the character picker with Control-Command-Space. Either swipe direction works.</dd></div>
-              <div data-action-id="runShortcut" data-keywords="new shortcuts automation smart home"><dt>Run a Shortcut <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Run the Shortcut you choose for each direction, from smart lights to whole routines.</dd></div>
-              <div data-action-id="cheatSheet" data-keywords="new map help edges"><dt>Show edge map <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>See what every edge does in the app you’re using. Changes nothing.</dd></div>
-              <div data-action-id="customShortcut" data-keywords="keyboard hotkey"><dt>Custom shortcuts</dt><dd>Record an up/right and down/left shortcut in Sway. Each runs once per swipe in the starting app. In 1.1 the pair is shared by edges; 1.2 lets every edge record its own.</dd></div>
+              <div data-action-id="runShortcut" data-keywords="shortcuts automation smart home"><dt>Run a Shortcut</dt><dd>Run the Shortcut you choose for each direction, from smart lights to whole routines.</dd></div>
+              <div data-action-id="cheatSheet" data-keywords="map help edges"><dt>Show edge map</dt><dd>See what every edge does in the app you’re using. Changes nothing.</dd></div>
+              <div data-action-id="customShortcut" data-keywords="keyboard hotkey"><dt>Custom shortcuts</dt><dd>Record an up/right and down/left shortcut for each edge in Sway. Each runs once per swipe in the starting app.</dd></div>
             </dl>
           </details>
         </div>
@@ -770,14 +770,14 @@
         <p>Free to download. Easy to make your own.</p>
         <a
           class="button button-dark download-link"
-          href="https://github.com/0x1p0/sway-application/releases/download/v1.1.0/Sway-1.1.0-macos-universal.dmg"
+          href="https://github.com/0x1p0/sway-application/releases/download/v1.0.0/Sway-1.0.0-macos-universal.dmg"
           >Download Sway for Mac</a
         >
         <p class="compatibility">
           macOS 13+ · Apple silicon & Intel ·
-          <span class="release-version">v1.1.0</span>
+          <span class="release-version">v1.0.0</span>
         </p>
-        <p class="release-notes-link"><a href="https://github.com/0x1p0/sway-application/releases/tag/v1.1.0">Read what’s new in 1.1.0 <span aria-hidden="true">↗</span></a></p>
+        <p class="release-notes-link"><a href="https://github.com/0x1p0/sway-application/releases/tag/v1.0.0">Read the 1.0.0 release notes <span aria-hidden="true">↗</span></a></p>
         <p class="download-caveat">
           Sway is self-signed, not notarized by Apple.<br />Read the
           <a href="https://github.com/0x1p0/sway-application#install"

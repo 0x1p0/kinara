@@ -17,9 +17,9 @@
     <key>CFBundlePackageType</key>
     <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.1.0</string>
+    <string>1.0.0</string>
     <key>CFBundleVersion</key>
-    <string>16</string>
+    <string>1</string>
     <key>SUFeedURL</key>
     <string>https://github.com/0x1p0/sway-application/releases/latest/download/appcast.xml</string>
     <key>SUPublicEDKey</key>

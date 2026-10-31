@@ -1,52 +1,45 @@
 Welcome to Sway
 
-1. Quit any older copy of Sway.
-2. Drag Sway.app onto the Applications shortcut.
-3. Eject this disk image and open Sway from Applications.
-4. Follow the first-launch guide. Allow Accessibility in System Settings for
-   trackpad gestures, or continue with sliders without granting access.
+1. Drag Sway.app onto the Applications shortcut.
+2. Eject this disk image and open Sway from Applications.
+3. Follow the welcome guide. Choose Allow Accessibility when it asks: macOS
+   shows its own prompt, and the guide continues by itself once you switch
+   Sway on. You can skip this and use the sliders until you're ready.
 
 Sway lives in the menu bar. If its icon is hidden or your menu bar is crowded,
 reopen Sway from Spotlight or Applications to bring up controls. You can also
-enable "Show in Dock while windows are open" in setup or Settings > General.
-Closing the last window hides its running Dock icon; the menu bar stays available.
+turn on "Show in the Dock while windows are open" in the guide or in
+Settings > General. Closing the last window hides the Dock icon; the menu bar
+stays available. Revisit the guide anytime from Settings > Getting started.
 
-Closing the setup guide does not complete setup. It returns on the next launch
-or reopen while trackpad permission is missing. After granting access, choose
-"Get started". Revisit it anytime in Settings > About & help > Open guide.
+Sway checks for updates daily; turn this off in Settings > Software updates if
+you prefer. When a newer signed release is available, choose Install update to
+download, verify, install, and restart. Nothing downloads or installs silently.
 
-Sway checks GitHub daily for updates; turn this off in Settings > Software
-updates if you prefer. Checks need no sign-in. When a newer signed release is
-available, choose Install update to download, verify, install, and restart.
-Nothing downloads or installs silently. Copies from the previous private
-repository need a manual installation once to reach the current update feed.
-Update signing does not remove the first-launch warning below.
+ACCESSIBILITY
 
-ACCESSIBILITY AFTER UPDATING
+Sway's releases share one persistent app-signing identity, so macOS keeps your
+Accessibility permission across updates. Keep Sway in Applications. If Sway
+looks switched on but gestures don't work, remove its Accessibility entry with
+-, then use + to add Sway from Applications and switch it on. Never install or
+trust a certificate for Sway, reset other apps' permissions, or disable system
+security to use it.
 
-From 1.0.13 onward, releases share a persistent app-signing identity rather
-than an ad-hoc signature that changes with each build. Keep Sway in Applications.
-Upgrading from 1.0.10 or earlier may need one final permission grant: if Sway
-looks enabled but gestures do not work, remove its old Accessibility entry,
-then use + to add Sway from Applications and enable it. Return to Sway and
-choose Check again. Quit and reopen once if macOS still reports the old state.
-Later releases keep the same identity, but cannot override revoked permissions
-or administrator/OS policies. Never install or trust a certificate for Sway,
-reset other apps' permissions, or disable system security to use this feature.
-
-Requires macOS 13 or later. The app supports Apple Silicon and Intel Macs.
-Try Settings > Palm protection > Test gestures safely before using edge gestures.
+Requires macOS 13 or later. Supports Apple silicon and Intel Macs. Try
+Settings > Palm protection > Test gestures safely to practise without changing
+anything.
 
 FIRST LAUNCH
 
 This build is self-signed, not Developer ID signed or notarized. macOS may
-still show a warning even though Hardened Runtime is enabled. One library-
-validation exception is necessary for Sparkle in this self-signed build. macOS may
-say Apple could not verify Sway. The preferred option, only for a download
-you trust: try opening the installed app, then go to System Settings >
-Privacy & Security > Open Anyway and confirm. Managed Macs may prevent this.
+show a warning even though Hardened Runtime is enabled. Sway uses three
+documented entitlements: one so its updater (Sparkle) can load, Apple Events
+for the Now Playing display, and audio input for per-app volume. macOS may say
+Apple could not verify Sway. The preferred option, only for a download you
+trust: try opening the installed app, then go to System Settings > Privacy &
+Security > Open Anyway and confirm. Managed Macs may prevent this.
 
-TERMINAL ALTERNATIVE — TRUSTED COPIES ONLY
+TERMINAL ALTERNATIVE - TRUSTED COPIES ONLY
 
 After dragging Sway to Applications, quit Sway, open Terminal, and run:
 
@@ -61,5 +54,5 @@ Do not disable Gatekeeper globally. If access is denied, use Open Anyway or
 contact your Mac's administrator; do not work around a managed-Mac policy.
 "No such xattr" means the specified item had no quarantine marker to remove.
 
-Downloads and checksum instructions:
-https://github.com/0x1p0/sway-application/releases
+Help and downloads:
+https://sway-application.vercel.app/

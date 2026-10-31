@@ -41,7 +41,7 @@ To check the DMG, download its release's `SHA256SUMS.txt` into the same folder,
 open Terminal in that folder, and run (adjust the version for older releases):
 
 ```bash
-grep -F '  Sway-1.1.0-macos-universal.dmg' SHA256SUMS.txt | shasum -a 256 -c -
+grep -F '  Sway-1.0.0-macos-universal.dmg' SHA256SUMS.txt | shasum -a 256 -c -
 ```
 
 Expect `OK`. A checksum confirms a match to the release files, not independent
@@ -90,9 +90,7 @@ touch frames before choosing ownership at the actual scroll start, using
 
 ## A small menu, a separate settings window
 
-### What’s new in the next release (1.2)
-
-Not yet in a published download; this describes the current source.
+### Features
 
 **Feel.** Slide inward from the edge while swiping for **fine control**, like
 scrubbing a video (a soft tap confirms it). **Speed-sensitive levels** make slow
@@ -112,7 +110,7 @@ front; a **docked profile** applies while an external display is connected.
 Order: app, then docked, then everyday. **Per-device volume limits** are
 remembered by Core Audio device UID, so headphones can stay quieter.
 
-**New actions (49 in total).** App volume (the front app only, macOS 14.2+),
+**Actions (49 in total).** Beyond volume and brightness: app volume (the front app only, macOS 14.2+),
 switch audio output, seek in track, show now playing, tile window, Night Shift
 warmth, True Tone, extra dim, Run a Shortcut, and show edge map. **Editing:**
 copy, cut, paste, paste as plain text, paste previous item, clipboard history,
@@ -146,7 +144,7 @@ login and setup state never travel. **`sway://` links** let Shortcuts and script
 pause, resume or toggle gestures, set volume or brightness within your limits,
 or show the edge map; links can’t change assignments.
 
-**A complete redesign.** Settings opens on an **Overview** with Sway's status,
+**Designed throughout.** Settings opens on an **Overview** with Sway's status,
 a live map of every zone (click one to edit it), quick toggles, and suggestions
 for what to set up next. A grouped sidebar, a master switch with live status,
 and refined cards run throughout. The menu bar panel gains a status line, device
@@ -168,22 +166,22 @@ once per player and Sway never launches a player); other players appear only
 where macOS still exposes them. Night Shift and True Tone use private
 CoreBrightness clients, checked by method signature before every use.
 
-### Expanded edge actions in 1.1.0
+### Edge actions
 
-Version 1.1.0 adds **26 assignable actions, plus Off**.
-Open **Settings → Gestures**, then click
-either edge’s action button to browse or search the categorized action library.
-Both side edges and the optional top edges use the same library. Existing
-brightness/volume assignments stay unchanged when upgrading.
+Sway has **49 assignable actions, plus Off**. Open **Settings → Gestures** (or
+**Taps & corners**), then click any action button to browse or search the
+categorized library. Side, top and bottom edges, layers, taps and corners all
+use the same library; taps offer only actions that fire once.
 
 | Category | Actions |
 | --- | --- |
-| Display & keyboard | Built-in display brightness; keyboard backlight |
-| Audio & microphone | Output volume; input gain; speaker mute; microphone hardware mute |
-| Media | Previous/next track; play/pause |
-| Navigation | Tabs; back/forward; app zoom; page up/down; document start/end |
-| Windows & desktops | Switch desktops; Mission Control; App Exposé; show desktop; switch apps; cycle app windows; full screen; minimize window; hide app |
-| Tools & shortcuts | Spotlight; screenshot toolbar; Emoji & Symbols; custom up/down shortcuts |
+| Display & keyboard | Display brightness; keyboard backlight; Night Shift warmth; True Tone; extra dim |
+| Audio & microphone | Output volume; app volume; switch audio output; input gain; speaker mute; microphone hardware mute |
+| Media | Previous/next track; play/pause; seek in track; show now playing |
+| Editing | Copy; cut; paste; paste as plain text; paste previous item; clipboard history; undo/redo; select all; find |
+| Navigation | Tabs; back/forward; app zoom; page up/down; document start/end; new/close tab; reopen closed tab |
+| Windows & desktops | Switch desktops; Mission Control; App Exposé; show desktop; switch apps; cycle app windows; full screen; minimize window; hide app; tile window |
+| Tools & shortcuts | Spotlight; screenshot toolbar; Emoji & Symbols; run a Shortcut; show edge map; lock screen; sleep displays; custom up/down shortcuts |
 
 Each option explains its directions and requirements. For horizontal top-edge
 swipes, right corresponds to up and left corresponds to down. Reverse direction
@@ -344,26 +342,24 @@ in Sway; signature failures never fall back to unsigned updates. The installer
 starts only when requested, with automatic downloads and system profiling off.
 No second periodic updater runs alongside the daily metadata check.
 
-**Install the current release manually once from this repository.** Copies from the previous
-repository still point to its now-private update feed and cannot discover this
-release. Future signed releases from this repository can be installed directly. Keep Sway
-in Applications, not on its mounted DMG. Installation in a protected location
+Keep Sway in Applications, not on its mounted DMG. Installation in a protected location
 may require macOS authorization. Update signing is separate from Developer ID
 signing/notarization: the first-install warning remains.
 
 ### Keeping Accessibility permission across updates
 
-Starting with **1.0.13**, releases use the same certificate-bound app identity
-and bundle identifier. Earlier ad-hoc signatures identified each build by its
-code hash, so macOS could not reliably carry permission across updates. The
-new identity removes that cause; it does not override permission revocation,
-administrator policy, or OS changes. See [Apple's code-identity explanation](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements).
+Every release uses the same certificate-bound app identity and bundle
+identifier, so macOS carries Accessibility permission across updates. (An
+ad-hoc signature identifies each build by its code hash, which is why local
+development builds need permission granted again after every rebuild.) The
+identity does not override permission revocation, administrator policy, or OS
+changes. See [Apple's code-identity explanation](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements).
 
-**Upgrading from 1.0.10 or earlier may require one final grant.** If Sway is
-enabled in Accessibility but gestures do not work, remove only its old entry,
-then use **+** to add `/Applications/Sway.app` and enable it. Return to Sway and
-choose **Check again**. Quit and reopen once if macOS still reports the old
-state. This help is also available in the setup guide and permission card.
+If Sway is switched on in Accessibility but gestures do not work, that entry
+belongs to a different build: remove it, then use **+** to add
+`/Applications/Sway.app` and switch it on. The welcome guide notices the grant
+by itself and explains this case. Quit and reopen once if macOS still reports
+the old state.
 Sway never resets TCC or changes another app's permissions automatically.
 Users do not need to install or trust a certificate.
 
@@ -384,41 +380,28 @@ The fallback packages the executable, metadata, and app icon and verifies the lo
 
 ## Publish a release
 
-The repository began with the 1.0.7 source as one initial commit; old
-Git history and release notes are not included. **Only the maintainer's account
+**Only the maintainer's account
 can update main**, including direct pushes. A PR is optional; Checks runs after
 every push to main and on PRs. Main still cannot be deleted or force-pushed.
 Release tests and manual signing approval remain mandatory.
 
 Pushing main runs **Checks**; pushing a new version tag runs **Release**.
 For a prepared release, use this pattern from the project directory with its
-new, unused version tag (1.1.0 is the version shown here). It
+new, unused version tag (1.0.0 is the version shown here). It
 stops at the first failure, commits before tagging, and pushes main and the tag
 together so the release cannot accidentally target the previous commit:
 
 ```bash
 git switch main &&
 git pull --ff-only origin main &&
-git add README.md Sway/Info.plist Sway.xcodeproj/project.pbxproj releases/v1.1.0.md &&
-git commit -m "Prepare Sway 1.1.0 release" &&
-git tag -a v1.1.0 -m "Sway 1.1.0" &&
-git push --atomic origin main v1.1.0
+git add README.md Sway/Info.plist Sway.xcodeproj/project.pbxproj releases/v1.0.0.md &&
+git commit -m "Prepare Sway 1.0.0 release" &&
+git tag -a v1.0.0 -m "Sway 1.0.0" &&
+git push --atomic origin main v1.0.0
 ```
 
-The v1.0.7 build failed because a verification tool was missing. The v1.0.8
-tag was pushed before the fix merged and still points to 1.0.7 source, so its
-version check correctly stopped publication. Both tags stay unchanged; use
-the new version tag on the corrected source, not a rerun of either old tag.
-The v1.0.11 run stopped in its disposable app-signing test and did not publish.
-Its tag also stays unchanged. Version 1.0.12 explicitly registers the temporary
-signing Keychain, restores the original search list, and reports safe diagnostic
-categories if a signing tool fails. The pinned certificate and both private
-signing identities are unchanged.
-Version 1.0.12 passed Checks, built the universal app, and signed it successfully,
-but packaging stopped because its fresh runner had no `build` directory.
-Version 1.0.13 makes packaging create its own staging parent and adds
-clean-checkout regression tests to both workflows. The failed tags stay unchanged;
-use the new tag rather than rerunning a workflow with the old packaging script.
+If a release run fails, leave its tag unchanged and publish the corrected
+source under a new version tag rather than rerunning or moving the old one.
 For later releases, update the app/project version and build number, add
 matching release notes, and use that new version consistently in this chain.
 
@@ -464,19 +447,23 @@ it derives the app's public key before writing any signatures.
 Repository controls include secret scanning and push protection, dependency
 alerts/security updates, owner-only main updates with history protection, maintainer-only creation of
 release tags, and blocked tag changes/deletions. Immutability applies to
-**published releases in this repository**. No old releases or Git history are
-copied here. The repository intentionally stays public so its download and
-update URLs work. GitHub-hosted runners remain subject to account allowances
-and billing settings.
+**published releases in this repository**. GitHub-hosted runners remain subject
+to account allowances and billing settings.
+
+**Before a public launch:** the repository is private, so GitHub release assets
+and the releases API are not publicly reachable. The update feed (`SUFeedURL`),
+the daily update check (`UpdateChecker`), and the website's download links all
+point at GitHub releases today. Move downloads and the signed appcast to a
+public host (or your store's delivery) and update those three places together.
 
 To build and verify the downloads locally without publishing:
 
 ```bash
-bash scripts/package-release.sh v1.1.0
+bash scripts/package-release.sh v1.0.0
 ```
 
 Packaging requires Python 3.10+, Xcode 26+, and access to both Keychain signing
-identities. Artifacts appear under **build/releases/v1.1.0/**; existing outputs
+identities. Artifacts appear under **build/releases/v1.0.0/**; existing outputs
 are never overwritten. **SWAY_DEFER_UPDATE_SIGNING=1** skips the update-feed
 signature only; it still requires the persistent app identity. For key-free
 development builds use `bash scripts/build.sh`, not release packaging.
@@ -617,4 +604,6 @@ When checking the running app, verify the following with the physical hardware:
 
 ## License
 
-MIT
+Copyright © 2026 0x1p0. All rights reserved. Sway is proprietary software; see
+[LICENSE](LICENSE). Bundled third-party software keeps its own license
+(Sparkle: MIT, shipped as `Sparkle-LICENSE.txt` inside the app).
