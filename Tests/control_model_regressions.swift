@@ -191,14 +191,35 @@ private final class ModelFixture {
         expect(!ClipboardHistory.shouldRecord(types: ["org.nspasteboard.TransientType"], text: "otp"), "transient items are never recorded")
         expect(!ClipboardHistory.shouldRecord(types: [], text: "   \n") && !ClipboardHistory.shouldRecord(types: [], text: nil), "blank or missing text is skipped")
         expect(!ClipboardHistory.shouldRecord(types: [], text: String(repeating: "x", count: ClipboardHistory.maximumLength + 1)), "huge items are skipped")
-        var history = ClipboardHistory.inserting("b", into: ["a"])
-        history = ClipboardHistory.inserting("a", into: history)
-        expect(history == ["a", "b"], "re-copying moves an item to the front without duplicates")
-        history = (0..<30).reduce(history) { ClipboardHistory.inserting("item \($1)", into: $0) }
-        expect(history.count == ClipboardHistory.capacity && history.first == "item 29", "history keeps only the newest items")
+        func item(_ text: String) -> ClipboardItem { ClipboardItem(text: text, appName: "Notes", bundleID: "com.apple.Notes", date: Date()) }
+        var history = ClipboardHistory.inserting(item("b"), into: [item("a")])
+        history = ClipboardHistory.inserting(item("a"), into: history)
+        expect(history.map(\.text) == ["a", "b"], "re-copying moves an item to the front without duplicates")
+        history = (0..<40).reduce(history) { ClipboardHistory.inserting(item("item \($1)"), into: $0) }
+        expect(history.count == ClipboardHistory.capacity && history.first?.text == "item 39", "history keeps only the newest items")
+        let now = Date()
+        expect(ClipboardHistory.age(of: now, now: now) == "now" && ClipboardHistory.age(of: now.addingTimeInterval(-42), now: now) == "42s"
+               && ClipboardHistory.age(of: now.addingTimeInterval(-600), now: now) == "10m" && ClipboardHistory.age(of: now.addingTimeInterval(-7200), now: now) == "2h"
+               && ClipboardHistory.age(of: now.addingTimeInterval(-200_000), now: now) == "2d", "ages read at a glance")
+        expect(ClipboardHistory.age(of: now.addingTimeInterval(60), now: now) == "now", "a clock change never shows a negative age")
         expect(ClipboardHistory.preview("one\n\n  two  \nthree") == "one ⏎ two ⏎ three", "multi-line previews fit one row")
         expect(ClipboardHistory.preview(String(repeating: "y", count: 200)).count == 90, "long previews are shortened")
         expect(!ClipboardHistory.shared.isEnabled, "history is off unless a clipboard action is assigned")
+        expect(ClipboardPicker.initialSelection(count: 5) == 1 && ClipboardPicker.initialSelection(count: 1) == 0
+               && ClipboardPicker.initialSelection(count: 0) == -1, "the picker opens on the previous item, or Cancel when empty")
+        let step = ClipboardPicker.travelPerItem
+        var position = 1.0
+        position = ClipboardPicker.advance(position, by: -step * 2, count: 5)
+        expect(ClipboardPicker.selection(at: position) == 3, "sliding down two items chooses older copies")
+        position = ClipboardPicker.advance(position, by: -step * 50, count: 5)
+        expect(ClipboardPicker.selection(at: position) == 4, "the oldest item is the floor")
+        position = ClipboardPicker.advance(position, by: step * 50, count: 5)
+        expect(ClipboardPicker.selection(at: position) == -1, "sliding up past the newest reaches Cancel")
+        position = ClipboardPicker.advance(position, by: -step * 1, count: 5)
+        expect(ClipboardPicker.selection(at: position) == 0, "one row back down from Cancel is the newest copy")
+        expect(ClipboardPicker.advance(2, by: .nan, count: 5) == 2 && ClipboardPicker.advance(2, by: step, count: 0) == 2, "invalid travel changes nothing")
+        let picker = ClipboardPicker.shared
+        expect(!picker.isOpen && !picker.handleKey(code: 53, characters: nil), "a closed picker never swallows keys")
         ClipboardHistory.shared.noteCopy()
         expect(ClipboardHistory.shared.items.isEmpty, "a disabled history never reads the pasteboard")
     }

@@ -1,14 +1,26 @@
 import AppKit
 import SwiftUI
 
+/// One copied text and where it came from.
+struct ClipboardItem: Equatable, Identifiable {
+    let id = UUID()
+    let text: String
+    let appName: String?
+    let bundleID: String?
+    let date: Date
+
+    static func == (lhs: ClipboardItem, rhs: ClipboardItem) -> Bool { lhs.id == rhs.id }
+}
+
 /// A small, private clipboard history. Event-driven: the pasteboard is read
-/// only right after a copy Sway can see (⌘C/⌘X through its own event tap, its
-/// own Copy and Cut actions, an app switch, or opening the history) and never
-/// on a timer. It runs only while a clipboard-history action is assigned,
-/// keeps text in memory only, and skips anything a password manager marks.
+/// only right after something that can copy (⌘C/⌘X through Sway's event tap,
+/// a click that may have chosen Copy from a menu, Sway's own Copy and Cut, an
+/// app switch, or opening the picker), never on a timer. It runs only while a
+/// clipboard action is assigned, keeps text in memory only, and skips
+/// anything a password manager marks.
 final class ClipboardHistory {
     static let shared = ClipboardHistory()
-    static let capacity = 12
+    static let capacity = 20
     static let maximumLength = 100_000
     /// The nspasteboard.org markers that password managers and clipboard
     /// tools set on secrets and one-off data.
@@ -18,7 +30,7 @@ final class ClipboardHistory {
     ]
 
     /// Newest first.
-    private(set) var items: [String] = []
+    private(set) var items: [ClipboardItem] = []
     private var lastChangeCount = NSPasteboard.general.changeCount
     private var pendingCheck: DispatchWorkItem?
     private var activationObserver: NSObjectProtocol?
@@ -51,9 +63,9 @@ final class ClipboardHistory {
         return privateTypes.isDisjoint(with: types)
     }
 
-    /// Most recent first, without duplicates, at most `capacity` items.
-    static func inserting(_ text: String, into items: [String], capacity: Int = capacity) -> [String] {
-        Array(([text] + items.filter { $0 != text }).prefix(max(1, capacity)))
+    /// Most recent first, without duplicate text, at most `capacity` items.
+    static func inserting(_ item: ClipboardItem, into items: [ClipboardItem], capacity: Int = capacity) -> [ClipboardItem] {
+        Array(([item] + items.filter { $0.text != item.text }).prefix(max(1, capacity)))
     }
 
     /// One-line preview for the picker.
@@ -63,9 +75,22 @@ final class ClipboardHistory {
         return flattened.count > limit ? String(flattened.prefix(limit - 1)) + "…" : flattened
     }
 
+    /// "now", "12s", "4m", "2h", "3d": short enough for a row.
+    static func age(of date: Date, now: Date = Date()) -> String {
+        let seconds = max(0, now.timeIntervalSince(date))
+        switch seconds {
+        case ..<5: return "now"
+        case ..<60: return "\(Int(seconds))s"
+        case ..<3600: return "\(Int(seconds / 60))m"
+        case ..<86400: return "\(Int(seconds / 3600))h"
+        default: return "\(Int(seconds / 86400))d"
+        }
+    }
+
     // MARK: Capture
 
-    /// Apps update the pasteboard just after the shortcut; read once, shortly after.
+    /// Apps update the pasteboard just after the shortcut or menu choice;
+    /// read once, shortly after. A newer request replaces a pending one.
     func noteCopy(after delay: Double = 0.15) {
         guard isEnabled else { return }
         pendingCheck?.cancel()
@@ -82,25 +107,30 @@ final class ClipboardHistory {
         let types = pasteboard.types?.map(\.rawValue) ?? []
         let text = pasteboard.string(forType: .string)
         guard Self.shouldRecord(types: types, text: text), let text else { return }
-        items = Self.inserting(text, into: items)
+        let source = ExcludedAppsManager.shared
+        items = Self.inserting(ClipboardItem(text: text, appName: source.currentAppName,
+                                             bundleID: source.currentAppBundleID, date: Date()), into: items)
     }
+
+    func remove(_ item: ClipboardItem) { items.removeAll { $0.id == item.id } }
+    func clear() { items.removeAll() }
 
     // MARK: Paste
 
     /// Puts the item on the clipboard and sends ⌘V to the app that was in
-    /// front when the gesture began.
+    /// front when the picker or gesture began.
     @discardableResult
-    func paste(_ text: String, into application: pid_t) -> Bool {
+    func paste(_ item: ClipboardItem, into application: pid_t) -> Bool {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        guard pasteboard.setString(text, forType: .string) else { return false }
+        guard pasteboard.setString(item.text, forType: .string) else { return false }
         lastChangeCount = pasteboard.changeCount
-        items = Self.inserting(text, into: items)
+        items = Self.inserting(ClipboardItem(text: item.text, appName: item.appName, bundleID: item.bundleID, date: item.date), into: items)
         guard let command = EdgeCommand.resolve(.paste, increasing: true) else { return false }
         return EdgeActionController.send(command, expectedApplication: application)
     }
 
-    /// The item copied before the current one.
+    /// The item copied before the current one, with a short confirmation.
     @discardableResult
     func pastePrevious(into application: pid_t) -> Bool {
         check()
@@ -108,119 +138,351 @@ final class ClipboardHistory {
             OSDOverlay.shared.show(type: .message("Nothing earlier to paste yet", icon: "list.clipboard"), value: 1)
             return true
         }
-        return paste(items[1], into: application)
+        let item = items[1]
+        let pasted = paste(item, into: application)
+        if pasted { OSDOverlay.shared.show(type: .message("Pasted “\(Self.preview(item.text, limit: 28))”", icon: "doc.on.clipboard"), value: 1) }
+        return pasted
     }
 }
 
-/// The picker shown while swiping through history. Lifting pastes the
-/// highlighted item; a rejected or cancelled gesture pastes nothing.
-final class ClipboardHUD {
-    static let shared = ClipboardHUD()
-    private var panel: NSPanel?
-    private let model = ClipboardPickerModel()
-    private(set) var isActive = false
+// MARK: - Picker
 
-    var selectedText: String? {
+/// The clipboard picker. Opened by a swipe (the same swipe keeps choosing) or
+/// by a tap (the next one-finger slide chooses). Either way: slide to move the
+/// highlight, lift to paste it, slide up past the newest item to cancel.
+final class ClipboardPicker {
+    static let shared = ClipboardPicker()
+    enum Mode { case swipe, touch }
+    /// Trackpad travel per item: about five millimetres on a typical trackpad.
+    static let travelPerItem = 0.045
+
+    let model = ClipboardPickerModel()
+    private(set) var isOpen = false
+    private(set) var mode: Mode = .touch
+    /// Tap-to-click that follows a touch-mode lift belongs to the picker.
+    private(set) var claimsClicksUntil = -Double.infinity
+    private var panel: ClipboardPanel?
+    private var application: pid_t = 0
+    private var position = 0.0
+    private var idleTimer: Timer?
+    private var touchY: Double?
+    private var touched = false
+    private var closing: DispatchWorkItem?
+
+    // MARK: Pure selection rules
+
+    /// Like ⌘-Tab: start on the previous item; the current one is just ⌘V.
+    static func initialSelection(count: Int) -> Int { min(1, count - 1) }
+
+    /// Down travel (negative delta) moves to older items, up to newer ones
+    /// and then Cancel (-1). Half a row of slack at each end, no further.
+    static func advance(_ position: Double, by delta: Double, count: Int) -> Double {
+        guard delta.isFinite, count > 0 else { return position }
+        return min(Double(count - 1) + 0.49, max(-1.49, position - delta / travelPerItem))
+    }
+
+    static func selection(at position: Double) -> Int { Int(position.rounded()) }
+
+    var selectedItem: ClipboardItem? {
         model.items.indices.contains(model.selection) ? model.items[model.selection] : nil
     }
 
-    /// Opens at the previous item (the current one is a normal paste).
-    func begin() {
+    /// Render checks only: an off-screen position, and the opaque surface,
+    /// since off-screen captures cannot see glass composited by the system.
+    static var renderOrigin: NSPoint?
+    static var renderOpaque = false
+
+    func open(mode: Mode, application: pid_t, items sample: [ClipboardItem]? = nil) {
         ClipboardHistory.shared.check()
-        model.items = ClipboardHistory.shared.items
-        model.selection = min(1, max(0, model.items.count - 1))
-        isActive = true
-        show()
+        closing?.cancel()
+        closing = nil
+        self.mode = mode
+        self.application = application
+        model.items = sample ?? ClipboardHistory.shared.items
+        model.mode = mode
+        model.selection = Self.initialSelection(count: model.items.count)
+        position = Double(model.selection)
+        touchY = nil
+        touched = false
+        if !isOpen { present() }
+        isOpen = true
+        if mode == .touch {
+            TrackpadMonitor.shared.holdPointer(true)
+            resetIdleTimer()
+        }
     }
 
-    /// Up is newer, down is older.
-    func move(newer: Bool) {
-        guard isActive, !model.items.isEmpty else { return }
-        model.selection = min(model.items.count - 1, max(0, model.selection + (newer ? -1 : 1)))
+    /// Continuous travel along the trackpad: down chooses older items, up
+    /// newer ones and finally Cancel. The highlight springs between rows.
+    func scroll(by delta: Double) {
+        guard isOpen, delta.isFinite, !model.items.isEmpty else { return }
+        position = Self.advance(position, by: delta, count: model.items.count)
+        let selection = Self.selection(at: position)
+        guard selection != model.selection else { return }
+        model.selection = selection
+        if TrackpadSettings.shared.hapticFeedback { HapticOutput.shared.play(.soft) }
     }
 
-    func end() {
-        isActive = false
-        panel?.orderOut(nil)
-        panel?.contentView = nil
+    /// Touch mode: the trackpad drives the picker until a finger lifts.
+    func handle(contacts: [GestureContact], at timestamp: Double) {
+        guard isOpen, mode == .touch else { return }
+        guard !contacts.isEmpty else {
+            guard touched else { return }
+            claimsClicksUntil = timestamp + 0.45
+            commit()
+            return
+        }
+        let y = contacts.reduce(0) { $0 + $1.y } / Double(contacts.count)
+        guard y.isFinite else { return }
+        if let previous = touchY { scroll(by: y - previous) }
+        touchY = y
+        touched = true
+        idleTimer?.invalidate()
+        idleTimer = nil
     }
 
-    private func show() {
+    func commit() {
+        guard isOpen else { return }
+        let item = model.selection >= 0 ? selectedItem : nil
+        let target = application
+        close(pasting: item != nil)
+        // Paste after the panel lets go, into the app that was in front.
+        if let item { DispatchQueue.main.async { ClipboardHistory.shared.paste(item, into: target) } }
+    }
+
+    func cancel() { if isOpen { close(pasting: false) } }
+
+    private func close(pasting: Bool) {
+        isOpen = false
+        idleTimer?.invalidate()
+        idleTimer = nil
+        if mode == .touch { TrackpadMonitor.shared.holdPointer(false) }
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        withAnimation(reduceMotion ? .easeOut(duration: 0.12) : .easeIn(duration: 0.16)) {
+            model.visible = false
+            model.pasted = pasting
+        }
+        let work = DispatchWorkItem { [weak self] in
+            self?.panel?.orderOut(nil)
+            self?.panel?.contentView = nil
+        }
+        closing = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
+    }
+
+    private func resetIdleTimer() {
+        idleTimer?.invalidate()
+        // One timer, only while the picker waits for a first touch.
+        let timer = Timer(timeInterval: 8, repeats: false) { [weak self] _ in self?.cancel() }
+        RunLoop.main.add(timer, forMode: .common)
+        idleTimer = timer
+    }
+
+    /// Keys arrive through Sway's input tap, so the panel never takes focus
+    /// from the app that will receive the paste. Returns true when handled.
+    func handleKey(code: Int64, characters: String?) -> Bool {
+        guard isOpen else { return false }
+        switch code {
+        case 53: cancel()                                   // Escape
+        case 36, 76: commit()                               // Return, Enter
+        case 125: scroll(by: -Self.travelPerItem)           // Down arrow
+        case 126: scroll(by: Self.travelPerItem)            // Up arrow
+        default:
+            guard let digit = Int(characters ?? ""), (1...9).contains(digit), digit <= model.items.count else { return false }
+            model.selection = digit - 1
+            commit()
+        }
+        return true
+    }
+
+    private func present() {
         let host = NSHostingView(rootView: ClipboardPickerView(model: model)
             .preferredColorScheme(TrackpadSettings.shared.resolvedColorScheme))
-        let panel = self.panel ?? {
-            let panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
-            panel.isOpaque = false
-            panel.backgroundColor = .clear
-            panel.hasShadow = true
-            panel.level = .statusBar
-            panel.ignoresMouseEvents = true
-            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
-            panel.isReleasedWhenClosed = false
-            return panel
-        }()
+        let panel = self.panel ?? ClipboardPanel()
         panel.appearance = TrackpadSettings.shared.themeAppearance
         panel.contentView = host
-        let size = NSSize(width: 420, height: host.fittingSize.height)
+        let size = NSSize(width: 460, height: host.fittingSize.height)
         panel.setContentSize(size)
         let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
-        if let frame = screen?.visibleFrame {
-            panel.setFrameOrigin(NSPoint(x: frame.midX - size.width / 2, y: frame.midY - size.height / 2))
+        if let origin = Self.renderOrigin {
+            panel.setFrameOrigin(origin)
+        } else if let frame = screen?.visibleFrame {
+            panel.setFrameOrigin(NSPoint(x: frame.midX - size.width / 2, y: frame.midY - size.height / 2 + frame.height * 0.08))
         }
+        model.visible = false
+        model.pasted = false
         panel.orderFrontRegardless()
         self.panel = panel
+        // Animate after the panel's first layout pass, never during it.
+        DispatchQueue.main.async { [model] in
+            let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.34, dampingFraction: 0.8)) { model.visible = true }
+        }
     }
 }
 
+private final class ClipboardPanel: NSPanel {
+    init() {
+        super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = false // The SwiftUI surface draws its own soft shadow.
+        level = .statusBar
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+        isReleasedWhenClosed = false
+        hidesOnDeactivate = false
+        ignoresMouseEvents = false
+    }
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
+
 final class ClipboardPickerModel: ObservableObject {
-    @Published var items: [String] = []
+    @Published var items: [ClipboardItem] = []
+    /// -1 is Cancel; 0 is the newest item.
     @Published var selection = 0
+    @Published var visible = false
+    @Published var pasted = false
+    @Published var mode: ClipboardPicker.Mode = .touch
 }
 
 private struct ClipboardPickerView: View {
     @ObservedObject var model: ClipboardPickerModel
+    @Namespace private var highlight
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private static let rowHeight: CGFloat = 54
+    private static let visibleRows = 6
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("Clipboard", systemImage: "list.clipboard").font(.system(size: 13, weight: .semibold))
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "list.clipboard").font(.system(size: 13, weight: .semibold))
+                Text("Clipboard").font(.system(size: 14, weight: .semibold))
                 Spacer()
                 if !model.items.isEmpty {
-                    Text("\(model.selection + 1) of \(model.items.count)").font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary)
+                    Text(model.selection >= 0 ? "\(model.selection + 1) of \(model.items.count)" : "Cancel")
+                        .font(.system(size: 11, weight: .medium)).monospacedDigit().foregroundStyle(.secondary)
+                        .contentTransition(.numericText())
                 }
             }
             if model.items.isEmpty {
-                Text("Copy something, and it appears here. Sway keeps up to \(ClipboardHistory.capacity) items in memory only.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Nothing copied yet").font(.system(size: 13, weight: .medium))
+                    Text("Copy some text, and it appears here. Sway keeps up to \(ClipboardHistory.capacity) items in memory only.")
+                        .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }.padding(.vertical, 6)
             } else {
-                // A window of five rows keeps the picker small and steady.
-                let start = max(0, min(model.selection - 2, model.items.count - 5))
-                ForEach(Array(model.items.enumerated()).dropFirst(start).prefix(5), id: \.offset) { index, item in
-                    HStack(spacing: 10) {
-                        Text(index == 0 ? "Now" : "\(index)").font(.system(size: 10, weight: .semibold)).monospacedDigit()
-                            .foregroundStyle(.secondary).frame(width: 28, alignment: .leading)
-                        Text(ClipboardHistory.preview(item)).font(.system(size: 13)).lineLimit(1)
-                        Spacer(minLength: 0)
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 2) {
+                            row(index: -1) { cancelRow }
+                            ForEach(Array(model.items.enumerated()), id: \.element.id) { index, item in
+                                row(index: index) { itemRow(item, index: index) }
+                            }
+                        }
                     }
-                    .padding(.horizontal, 10).padding(.vertical, 8)
-                    .background(index == model.selection ? Color.primary.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 9))
+                    .frame(height: Self.rowHeight * CGFloat(min(Self.visibleRows, model.items.count + 1)))
+                    .onChange(of: model.selection) { selection in
+                        withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.86)) {
+                            proxy.scrollTo(selection, anchor: .center)
+                        }
+                    }
+                    .onAppear { proxy.scrollTo(model.selection, anchor: .center) }
                 }
-                Text("Swipe to choose · lift to paste").font(.system(size: 11)).foregroundStyle(.secondary)
             }
+            Text(hint).font(.system(size: 11)).foregroundStyle(.secondary)
         }
         .padding(16)
-        .frame(width: 420)
+        .frame(width: 460)
         .background(surface)
-        .accessibilityElement(children: .combine)
+        .padding(24) // Room for the shadow inside the panel.
+        .scaleEffect(model.visible || reduceMotion ? 1 : (model.pasted ? 1.03 : 0.92))
+        .opacity(model.visible ? 1 : 0)
+        .blur(radius: model.visible || reduceMotion ? 0 : 6)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("Clipboard history")
     }
 
-    @ViewBuilder private var surface: some View {
-        if reduceTransparency {
-            RoundedRectangle(cornerRadius: 22).fill(Color(nsColor: .windowBackgroundColor))
-        } else {
-            RoundedRectangle(cornerRadius: 22).fill(.regularMaterial)
+    private var hint: String {
+        model.mode == .touch ? "Slide a finger to choose · lift to paste · esc to cancel"
+                             : "Keep sliding to choose · lift to paste · slide up to cancel"
+    }
+
+    private func row<Content: View>(index: Int, @ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(.horizontal, 12)
+            .frame(height: Self.rowHeight - 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                if model.selection == index {
+                    // One highlight that glides from row to row.
+                    RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.11))
+                        .matchedGeometryEffect(id: "selection", in: highlight)
+                }
+            }
+            .id(index)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                model.selection = index
+                index >= 0 ? ClipboardPicker.shared.commit() : ClipboardPicker.shared.cancel()
+            }
+    }
+
+    private var cancelRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "xmark.circle").font(.system(size: 15)).frame(width: 26)
+            Text("Cancel").font(.system(size: 13, weight: .medium))
+            Spacer()
+            Text("Paste nothing").font(.system(size: 11)).foregroundStyle(.secondary)
+        }.foregroundStyle(model.selection == -1 ? .primary : .secondary)
+    }
+
+    private func itemRow(_ item: ClipboardItem, index: Int) -> some View {
+        HStack(spacing: 10) {
+            AppIconView(bundleID: item.bundleID).frame(width: 26, height: 26)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(ClipboardHistory.preview(item.text, limit: 120)).font(.system(size: 13, weight: index == model.selection ? .medium : .regular))
+                    .lineLimit(1)
+                Text([item.appName, ClipboardHistory.age(of: item.date), "\(item.text.count) characters"].compactMap { $0 }.joined(separator: " · "))
+                    .font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 6)
+            if index < 9 {
+                Text("\(index + 1)").font(.system(size: 10.5, weight: .semibold, design: .rounded)).foregroundStyle(.secondary)
+                    .frame(width: 18, height: 18).background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 5))
+            }
         }
+    }
+
+    @ViewBuilder private var surface: some View {
+        let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+        if reduceTransparency || ClipboardPicker.renderOpaque {
+            shape.fill(Color(nsColor: .windowBackgroundColor)).shadow(color: .black.opacity(0.25), radius: 18, y: 8)
+        } else if #available(macOS 26.0, *) {
+            Color.clear.glassEffect(.regular, in: shape).shadow(color: .black.opacity(0.18), radius: 18, y: 8)
+        } else {
+            shape.fill(.regularMaterial).shadow(color: .black.opacity(0.22), radius: 18, y: 8)
+        }
+    }
+}
+
+/// The source app's icon, cached so scrolling never touches the disk twice.
+private struct AppIconView: View {
+    let bundleID: String?
+    private static var cache: [String: NSImage] = [:]
+    var body: some View {
+        if let bundleID, let icon = Self.icon(for: bundleID) {
+            Image(nsImage: icon).resizable().interpolation(.high)
+        } else {
+            Image(systemName: "doc.text").font(.system(size: 14)).foregroundStyle(.secondary)
+        }
+    }
+    private static func icon(for bundleID: String) -> NSImage? {
+        if let cached = cache[bundleID] { return cached }
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return nil }
+        let icon = NSWorkspace.shared.icon(forFile: url.path)
+        cache[bundleID] = icon
+        return icon
     }
 }

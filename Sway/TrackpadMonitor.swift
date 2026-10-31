@@ -18,6 +18,8 @@ final class TrackpadMonitor: ObservableObject {
     /// mouse movement never wakes Sway.
     private var freezeTap: CFMachPort?
     private var freezeSource: CFRunLoopSource?
+    /// The clipboard picker holds the pointer while one finger scrolls it.
+    private var pointerHeldForPicker = false
     private var generation: UInt64 = 0
     private var outputRevision: UInt64 = 0
     private var activeValue: RelativeGestureValue?
@@ -270,6 +272,13 @@ final class TrackpadMonitor: ObservableObject {
         lastFrameTime = timestamp
         lastContactCount = contacts.count
         if contacts.isEmpty { scrollCapture.touchesEnded() }
+        let picker = ClipboardPicker.shared
+        if picker.isOpen && picker.mode == .touch {
+            // While the picker waits, the trackpad only scrolls it.
+            picker.handle(contacts: contacts, at: timestamp)
+            if !contacts.isEmpty { taps.cancel() }
+            return
+        }
         // A stalled main thread must never replay queued gestures onto hardware.
         if ProcessInfo.processInfo.systemUptime - timestamp > 0.12 {
             taps.cancel()
@@ -443,12 +452,10 @@ final class TrackpadMonitor: ObservableObject {
     }
 
     private func finishAdjustment(cancelPending: Bool = true) {
-        if activeAction == .clipboardHistory, ClipboardHUD.shared.isActive {
+        let picker = ClipboardPicker.shared
+        if activeAction == .clipboardHistory, picker.isOpen, picker.mode == .swipe {
             // A completed swipe pastes what's highlighted; anything else pastes nothing.
-            if !cancelPending, let text = ClipboardHUD.shared.selectedText, let application = activeApplication {
-                ClipboardHistory.shared.paste(text, into: application)
-            }
-            ClipboardHUD.shared.end()
+            cancelPending ? picker.cancel() : picker.commit()
         }
         brightnessPreparationGeneration &+= 1
         brightnessPreparationStarted = false
@@ -479,8 +486,21 @@ final class TrackpadMonitor: ObservableObject {
         levelChanged = false
         if cursorFreezeActive {
             cursorFreezeActive = false
-            removeFreezeTap()
+            if !pointerHeldForPicker { removeFreezeTap() }
             NSCursor.unhide()
+        }
+    }
+
+    /// Keeps the pointer still (without hiding it) while the clipboard picker
+    /// is driven by one finger, so choosing an item never moves the pointer.
+    func holdPointer(_ hold: Bool) {
+        if hold, !pointerHeldForPicker, let event = CGEvent(source: nil) {
+            pointerHeldForPicker = true
+            if !cursorFreezeActive { frozenCursorPosition = event.location }
+            installFreezeTap()
+        } else if !hold, pointerHeldForPicker {
+            pointerHeldForPicker = false
+            if !cursorFreezeActive { removeFreezeTap() }
         }
     }
 
@@ -643,15 +663,16 @@ final class TrackpadMonitor: ObservableObject {
             cancelCurrentGesture(reason: "The active app changed. Lift your fingers before sending another action.")
             return
         }
+        if activeAction == .clipboardHistory {
+            let picker = ClipboardPicker.shared
+            if picker.isOpen { picker.scroll(by: delta * (settings.invertScrollDirection ? -1 : 1)) }
+            else { picker.open(mode: .swipe, application: application) }
+            return
+        }
         guard let increasing = commandStepper.consume(delta: delta, sensitivity: settings.sensitivity,
             inverted: settings.invertScrollDirection, repeats: activeAction.repeatsWhileSwiping,
             at: ProcessInfo.processInfo.systemUptime) else { return }
         let action = activeAction
-        if action == .clipboardHistory {
-            if ClipboardHUD.shared.isActive { ClipboardHUD.shared.move(newer: increasing) } else { ClipboardHUD.shared.begin() }
-            if settings.hapticFeedback { HapticOutput.shared.play(settings.hapticStyle) }
-            return
-        }
         if action == .outputMute || action == .microphoneMute {
             let controller = action == .outputMute ? VolumeController.shared : VolumeController.microphone
             let revision = outputRevision
@@ -719,9 +740,12 @@ final class TrackpadMonitor: ObservableObject {
         case .cheatSheet:
             EdgeMapHUD.shared.toggle()
             return true
-        case .pastePrevious, .clipboardHistory:
-            // A tap cannot browse, so history on a tap pastes the previous item.
+        case .pastePrevious:
             return ClipboardHistory.shared.pastePrevious(into: application)
+        case .clipboardHistory:
+            // A tap opens the picker; the next one-finger slide chooses.
+            ClipboardPicker.shared.open(mode: .touch, application: application)
+            return true
         case .sleepDisplay:
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
@@ -906,7 +930,7 @@ final class TrackpadMonitor: ObservableObject {
             if let freezeTap { CGEvent.tapEnable(tap: freezeTap, enable: true) }
             return Unmanaged.passUnretained(event)
         }
-        guard cursorFreezeActive else { return Unmanaged.passUnretained(event) }
+        guard cursorFreezeActive || pointerHeldForPicker else { return Unmanaged.passUnretained(event) }
         CGWarpMouseCursorPosition(frozenCursorPosition)
         return nil
     }
@@ -924,6 +948,13 @@ final class TrackpadMonitor: ObservableObject {
         let now = ProcessInfo.processInfo.systemUptime
         if type == .keyDown {
             if event.getIntegerValueField(.eventSourceUserData) == EdgeActionController.eventMarker { return pass }
+            // While the clipboard picker is up, its keys (esc, return, arrows,
+            // 1–9) choose; the app in front keeps focus and receives nothing.
+            if ClipboardPicker.shared.isOpen,
+               ClipboardPicker.shared.handleKey(code: event.getIntegerValueField(.keyboardEventKeycode),
+                                                characters: NSEvent(cgEvent: event)?.charactersIgnoringModifiers) {
+                return nil
+            }
             // ⌘C / ⌘X: let clipboard history read the result once, shortly after.
             if event.flags.contains(.maskCommand), [7, 8].contains(event.getIntegerValueField(.keyboardEventKeycode)) {
                 ClipboardHistory.shared.noteCopy()
@@ -936,7 +967,19 @@ final class TrackpadMonitor: ObservableObject {
         }
         let button = event.getIntegerValueField(.mouseEventButtonNumber)
         if type == .leftMouseUp || type == .rightMouseUp || type == .otherMouseUp {
-            return claimedButtons.remove(button) != nil ? nil : pass
+            if claimedButtons.remove(button) != nil { return nil }
+            // A click may have chosen Copy from a menu: read the clipboard once, shortly after.
+            ClipboardHistory.shared.noteCopy(after: 0.3)
+            return pass
+        }
+        let picker = ClipboardPicker.shared
+        if (type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown),
+           picker.isOpen || now <= picker.claimsClicksUntil {
+            // Clicks belong to the picker while it is up: a press chooses, and
+            // the tap-to-click after a choosing lift never reaches the app.
+            if picker.isOpen && picker.mode == .touch && lastContactCount > 0 { picker.commit() }
+            claimedButtons.insert(button)
+            return nil
         }
         if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown {
             // Tap-to-click arrives after the lift of a tap Sway recognized at an
@@ -953,6 +996,8 @@ final class TrackpadMonitor: ObservableObject {
         }
         guard type == .scrollWheel else { return pass }
         guard let scrolling = NSEvent(cgEvent: event), scrolling.hasPreciseScrollingDeltas else { return pass }
+        // The open picker owns the trackpad; pages behind it don't scroll.
+        if picker.isOpen && picker.mode == .touch { return nil }
         let phase = scrollPhase(scrolling.phase)
         let momentum = scrollPhase(scrolling.momentumPhase)
         scrollCapture.prepare(phase: phase, momentum: momentum)
