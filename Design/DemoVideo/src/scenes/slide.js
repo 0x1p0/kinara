@@ -1,6 +1,7 @@
-// 12.5–22.5 s. The 3D trackpad. A swipe up the right edge raises the volume
-// with a tick for every step; a swipe up the left edge brightens the whole
-// picture. Sway's own indicator answers each one.
+// The basics, perfected: the 3D trackpad. Every edge app does volume and
+// brightness, so this comes after what only Sway does. A swipe up the right
+// edge raises the volume with a tick for every step and a notch at 50%; a
+// swipe up the left edge brightens the whole picture.
 import { h, at, tf, words, reveal, fade, indicator } from "../ui.js";
 import { prog, ease, lerp, spring, ep, env, SCENES, SLIDE, levelAt, crossings } from "../timeline.js";
 import { edgePoint } from "../gl.js";
@@ -39,7 +40,8 @@ export default {
     this.briEyebrow = at(h("div", { class: "eyebrow" }, "Left edge"), 1400, 452);
     this.briTitle = at(words("Brightness.", "h1 grad"), 1400, 540);
     this.caption = at(words("Slide. It just responds.", "h2 grad center"), 960, 905);
-    root.append(this.vol, this.bri, this.volEyebrow, this.volTitle, this.briEyebrow, this.briTitle, this.caption);
+    this.basics = at(words("And the basics? Perfected.", "h2 grad center"), 960, 132);
+    root.append(this.basics, this.vol, this.bri, this.volEyebrow, this.volTitle, this.briEyebrow, this.briTitle, this.caption);
   },
   update(t, { gl }) {
     const pad = gl.pad;
@@ -85,6 +87,7 @@ export default {
     reveal(this.volTitle, t, vg.down + 0.15, vg.lift + 0.7);
     fade(this.briEyebrow, t, bg.down + 0.05, bg.lift + 0.75);
     reveal(this.briTitle, t, bg.down + 0.15, bg.lift + 0.7);
+    reveal(this.basics, t, S.start + 0.05, SLIDE.volume.down - 0.1, { rise: 0.3 });
     reveal(this.caption, t, S.end - 2.35, S.end - 0.35);
   },
 };

@@ -24,18 +24,19 @@ const grain = grainCanvas.getContext("2d");
 const gl = await createGL(document.getElementById("gl"));
 const ctx = { gl, stage, tint: document.getElementById("tint"), bg };
 
-const modules = [intro, logo, slide, feel, actions, taps, clipboard, aware, sound, details, light, end];
+const modules = [clipboard, intro, logo, taps, aware, sound, actions, slide, feel, details, light, end];
 const timing = Object.fromEntries(SCENES.map((s) => [s.id, s]));
 for (const m of modules) {
   m.root = document.createElement("div");
   m.root.className = "scene";
   m.root.dataset.scene = m.id;
   dom.append(m.root);
-  m.scene = timing[m.id];
+  // A module either plays one scene or declares its own window.
+  m.scene = timing[m.id] ?? { start: m.window[0], end: m.window[1] };
   // Each scene may draw a little before it starts and after it ends, so
   // transitions can overlap.
-  m.from = m.scene.start - (m.pre ?? 0.6);
-  m.to = m.scene.end + (m.post ?? 0.6);
+  m.from = m.scene.start - (m.window ? 0 : m.pre ?? 0.6);
+  m.to = m.scene.end + (m.window ? 0 : m.post ?? 0.6);
   m.mount(m.root, ctx);
 }
 

@@ -2,24 +2,26 @@
 // here, so the picture (src/main.js) and the soundtrack (soundtrack.mjs) are
 // driven by the same numbers and can never drift apart. Times are seconds.
 
-export const FILM = { fps: 60, width: 1920, height: 1080, bpm: 96, duration: 96 };
+export const FILM = { fps: 60, width: 1920, height: 1080, bpm: 96, duration: 86 };
 export const BEAT = 60 / FILM.bpm; // 0.625 s
 export const BAR = BEAT * 4; // 2.5 s
 const bar = (n) => n * BAR;
 
+// The film opens on what only Sway does (paste from clipboard history with
+// one finger), then the logo, then the other things no one else does, and
+// only later the basics every edge app has (volume and brightness).
 export const SCENES = [
-  { id: "intro", start: 0, end: bar(3) },
-  { id: "logo", start: bar(3), end: bar(5) },
-  { id: "slide", start: bar(5), end: bar(9) },
-  { id: "feel", start: bar(9), end: bar(13) },
-  { id: "actions", start: bar(13), end: bar(16) },
-  { id: "taps", start: bar(16), end: bar(19) },
-  { id: "clipboard", start: bar(19), end: bar(24) },
-  { id: "aware", start: bar(24), end: bar(27) },
-  { id: "sound", start: bar(27), end: bar(30) },
-  { id: "details", start: bar(30), end: bar(33) },
-  { id: "light", start: bar(33), end: bar(35) },
-  { id: "end", start: bar(35), end: FILM.duration },
+  { id: "hook", start: 0, end: bar(4) },
+  { id: "logo", start: bar(4), end: bar(6) },
+  { id: "taps", start: bar(6), end: bar(9) },
+  { id: "aware", start: bar(9), end: bar(12) },
+  { id: "sound", start: bar(12), end: bar(15) },
+  { id: "actions", start: bar(15), end: bar(18) },
+  { id: "slide", start: bar(18), end: bar(22) },
+  { id: "feel", start: bar(22), end: bar(26) },
+  { id: "details", start: bar(26), end: bar(29) },
+  { id: "light", start: bar(29), end: bar(31) },
+  { id: "end", start: bar(31), end: FILM.duration },
 ];
 
 // ---------------------------------------------------------------- easing
@@ -123,9 +125,10 @@ export function crossings(g, step, notch = 50) {
 
 const S = Object.fromEntries(SCENES.map((s) => [s.id, s]));
 
+const sl = S.slide.start;
 export const SLIDE = {
-  volume: swipe(14.0, 14.25, 16.0, 16.35, 18, 75),
-  brightness: swipe(17.45, 17.7, 19.4, 19.75, 32, 92),
+  volume: swipe(sl + 1.5, sl + 1.75, sl + 3.5, sl + 3.85, 18, 75),
+  brightness: swipe(sl + 4.95, sl + 5.2, sl + 6.9, sl + 7.25, 32, 92),
 };
 
 export const FEEL = {
@@ -151,16 +154,18 @@ export const TAPS = {
   palm: S.taps.start + 5.0,
 };
 
+// The cold open: copy, copy, copy, then paste any of them with one finger.
 export const CLIP = {
-  copies: [S.clipboard.start, S.clipboard.start + BEAT, S.clipboard.start + BEAT * 2],
-  title: S.clipboard.start + 1.9,
-  desk: S.clipboard.start + 3.1,
-  taps: [S.clipboard.start + 3.9, S.clipboard.start + 4.08],
-  bloom: S.clipboard.start + 4.22,
-  steps: [S.clipboard.start + 5.1, S.clipboard.start + 5.62, S.clipboard.start + 6.14],
-  lift: S.clipboard.start + 7.3,
-  lines: [S.clipboard.start + 8.1, S.clipboard.start + 10.1],
+  copies: [BEAT, BEAT * 2, BEAT * 3],
+  desk: 2.5,
+  taps: [3.25, 3.43],
+  bloom: 3.57,
+  steps: [4.3, 4.75, 5.2],
+  lift: 5.95,
+  handoff: 6.7,
 };
+// …and the little trackpad that did it becomes the icon.
+export const INTRO = { from: CLIP.handoff - 0.1, fly: [CLIP.handoff, CLIP.handoff + 0.9], comet: [CLIP.handoff + 0.45, CLIP.handoff + 1.75], rise: CLIP.handoff + 1.45, morph: [S.logo.start - 1.25, S.logo.start] };
 
 export const AWARE = {
   title: S.aware.start + 0.15,
@@ -200,16 +205,24 @@ export function cues() {
   const list = [];
   const add = (t, kind, gain = 1, extra = {}) => list.push({ t, kind, gain, ...extra });
 
-  // Intro: the edge lights up, the swipe rises, the logo lands.
-  add(0.8, "glint", 0.55);
-  add(3.75, "glint", 0.4);
+  // Cold open: three copies on the beat, the bloom, each row, the paste.
+  for (const t of CLIP.copies) add(t, "copy", 0.9);
+  for (const t of CLIP.taps) add(t, "tap", 0.9);
+  add(CLIP.bloom, "bloom", 0.9);
+  for (const t of CLIP.steps) add(t, "tick", 0.9);
+  add(CLIP.lift, "paste", 1);
+  // The trackpad flies in, its edge lights up, the swipe rises, the logo lands.
+  add(INTRO.fly[0], "swish", 0.5);
+  add(INTRO.comet[0], "glint", 0.5);
+  add(INTRO.rise, "glint", 0.35);
   add(S.logo.start - 2.1, "riser", 0.8, { length: 2.1 });
   add(S.logo.start, "impact", 1);
   add(S.logo.start, "bloom", 0.5);
   add(S.logo.start + 0.05, "motif", 0.85);
-  add(S.slide.start - 1.4, "whoosh", 0.7, { length: 1.4 });
+  add(S.taps.start - 1.4, "whoosh", 0.7, { length: 1.4 });
 
   // Slide: a tick for every volume/brightness step, a firmer one at the notch.
+  add(S.slide.start - 0.9, "whoosh", 0.6, { length: 0.9 });
   for (const g of [SLIDE.volume, SLIDE.brightness]) {
     add(g.down, "touch", 0.6);
     for (const c of crossings(g, 100 / 16)) add(c.t, c.notch ? "notch" : "tick", 0.8);
@@ -235,15 +248,6 @@ export function cues() {
   add(TAPS.hold[0], "touch", 0.7);
   add(TAPS.hold[1], "pop", 0.7);
   add(TAPS.palm, "thud", 0.5);
-  add(S.clipboard.start - 0.7, "whoosh", 0.7, { length: 0.7 });
-
-  // Clipboard: three copies on the beat, the bloom, each row, the paste.
-  for (const t of CLIP.copies) add(t, "copy", 0.9);
-  add(CLIP.title, "impact", 0.55);
-  for (const t of CLIP.taps) add(t, "tap", 0.9);
-  add(CLIP.bloom, "bloom", 0.9);
-  for (const t of CLIP.steps) add(t, "tick", 0.9);
-  add(CLIP.lift, "paste", 1);
   add(S.aware.start - 0.5, "whoosh", 0.6, { length: 0.6 });
 
   // Aware.
@@ -275,14 +279,13 @@ export function cues() {
 
 /** Musical sections: how much of each layer plays (0..1) per scene. */
 export const MIX = {
-  intro: { pad: 0.55, arp: 0, kick: 0, hats: 0, bass: 0.2, clap: 0 },
+  hook: { pad: 0.7, arp: 0.3, kick: 0, hats: 0, bass: 0.45, clap: 0 },
   logo: { pad: 0.9, arp: 0.2, kick: 0, hats: 0, bass: 0.6, clap: 0 },
-  slide: { pad: 0.85, arp: 0.7, kick: 0, hats: 0.25, bass: 0.7, clap: 0 },
-  feel: { pad: 0.85, arp: 0.85, kick: 0.45, hats: 0.5, bass: 0.8, clap: 0 },
-  actions: { pad: 0.9, arp: 0.9, kick: 1, hats: 0.8, bass: 1, clap: 0.6 },
-  taps: { pad: 0.85, arp: 0.8, kick: 0.8, hats: 0.7, bass: 0.9, clap: 0.5 },
-  clipboard: { pad: 0.9, arp: 0.6, kick: 0.6, hats: 0.5, bass: 0.8, clap: 0.3, breakUntil: S.clipboard.start + 3.1 },
-  aware: { pad: 0.9, arp: 0.9, kick: 1, hats: 0.8, bass: 1, clap: 0.6 },
+  taps: { pad: 0.85, arp: 0.75, kick: 0.6, hats: 0.5, bass: 0.85, clap: 0.3 },
+  aware: { pad: 0.9, arp: 0.9, kick: 0.9, hats: 0.75, bass: 1, clap: 0.5 },
+  actions: { pad: 0.9, arp: 0.9, kick: 1, hats: 0.9, bass: 1, clap: 0.6 },
+  slide: { pad: 0.9, arp: 0.8, kick: 0.7, hats: 0.6, bass: 0.9, clap: 0.4 },
+  feel: { pad: 0.85, arp: 0.85, kick: 0.55, hats: 0.55, bass: 0.85, clap: 0.3 },
   sound: { pad: 0.9, arp: 0.9, kick: 1, hats: 0.85, bass: 1, clap: 0.6 },
   details: { pad: 0.95, arp: 1, kick: 1, hats: 1, bass: 1, clap: 0.7 },
   light: { pad: 0.9, arp: 0.6, kick: 0.4, hats: 0.3, bass: 0.7, clap: 0 },

@@ -1,10 +1,11 @@
-// 47.5–60 s. The hero: clipboard history you play with the trackpad.
-// Three copies stack on the beat; then double-tap a corner, the glass picker
-// blooms, one finger glides through recent copies, and lifting pastes.
+// 0–10 s. The cold open, and the thing only Sway does: clipboard history you
+// play with the trackpad. Three copies stack on the beat; then double-tap a
+// corner, the glass picker blooms, one finger glides, and lifting pastes.
+// The little trackpad then hands off to the intro, which turns it into the icon.
 import { h, at, tf, words, reveal, fade, glyph } from "../ui.js";
 import { prog, ease, lerp, spring, ep, clamp, SCENES, CLIP, BEAT } from "../timeline.js";
 
-const S = SCENES.find((s) => s.id === "clipboard");
+const S = SCENES.find((s) => s.id === "hook");
 const ITEMS = [
   { text: "Meet at 7:30 by the north entrance.", app: "Messages", age: "Just now", icon: "bubble" },
   { text: "Flight 1024 · Seat 14C · Boarding 6:05", app: "Mail", age: "2 min ago", icon: "mail" },
@@ -24,13 +25,11 @@ const APP_ICONS = {
 const appIcon = (name) => h("div", { style: { width: "48px", height: "48px", borderRadius: "12px", flex: "none", background: "linear-gradient(180deg,#45464b,#2a2b2f)", color: "#f1f2f5", display: "grid", placeItems: "center", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.12)" } }, h("span", { html: `<svg viewBox="0 0 24 24" width="28" height="28">${APP_ICONS[name]}</svg>` }));
 
 export default {
-  id: "clipboard",
-  pre: 0.4,
-  post: 0.6,
+  id: "hook",
+  pre: 0,
+  post: 0.3,
   mount(root) {
     this.copies = [0, 1, 2].map(() => at(words("Copy.", "h1 grad center"), 960, 540));
-    this.title = at(words("Clipboard history", "h1 grad center"), 960, 470);
-    this.titleSub = at(words("you play like an instrument.", "sub center", { fontSize: "44px" }), 960, 580);
 
     // A plain document to paste into.
     this.caret = h("span", { style: { display: "inline-block", width: "3px", height: "40px", background: "#eef3ff", verticalAlign: "-7px", marginLeft: "2px", borderRadius: "2px" } });
@@ -72,16 +71,15 @@ export default {
     this.flash = at(h("div", { style: { width: "1300px", height: "1100px", borderRadius: "50%", background: "radial-gradient(closest-side, rgba(220,230,255,0.16), transparent)" } }), 1010, 520);
 
     this.toast = at(h("div", { class: "pill dark", style: { fontSize: "25px", padding: "16px 28px 16px 22px" } }, glyph("doc", 26), `Pasted “${PASTED.slice(0, 26)}…”`), 760, 965);
-    this.line1 = at(words("Slide to choose. Lift to paste.", "h2 grad center"), 960, 118);
-    this.line2 = at(words("Kept in memory. Never on disk.", "h2 grad center"), 960, 118);
-    this.line2sub = at(h("div", { class: "small center" }, "Items from password managers are always skipped."), 960, 196);
-    root.append(...this.copies, this.title, this.titleSub, this.doc, this.inset, this.flash, this.picker, this.toast, this.line1, this.line2, this.line2sub);
+    // One word per move, like a caption on the action itself.
+    this.caps = ["Double-tap a corner.", "Slide.", "Lift."].map((text) => at(words(text, "h2 grad center"), 960, 120));
+    root.append(...this.copies, this.doc, this.inset, this.flash, this.picker, this.toast, ...this.caps);
   },
   update(t, { bg }) {
     // Three copies, each pushing the last up the history.
     let count = 0;
     for (const c of CLIP.copies) count += spring(t - c, 0.36, 0.78);
-    const copiesOut = CLIP.title - 0.35;
+    const copiesOut = CLIP.desk - 0.4;
     this.copies.forEach((el, i) => {
       const age = t - CLIP.copies[i];
       const arrive = spring(age, 0.38, 0.62);
@@ -91,15 +89,14 @@ export default {
       el.__words.forEach((w) => { w.style.opacity = ""; w.style.transform = ""; w.style.filter = ""; });
       el.style.visibility = age >= 0 ? "visible" : "hidden";
     });
-    reveal(this.title, t, CLIP.title, CLIP.desk - 0.45, { rise: 0.3, blur: 20 });
-    reveal(this.titleSub, t, CLIP.title + 0.35, CLIP.desk - 0.45, { stagger: 0.035 });
 
     // The desk: document and trackpad.
     const deskIn = ease.settle(prog(t, CLIP.desk, CLIP.desk + 0.8));
-    const deskOut = ease.leave(prog(t, S.end - 0.55, S.end + 0.1));
+    const deskOut = ease.leave(prog(t, CLIP.handoff - 0.15, CLIP.handoff + 0.3));
     tf(this.doc, { y: (1 - deskIn) * 60, s: lerp(0.96, 1, deskIn), o: deskIn * (1 - deskOut), blur: (1 - deskIn) * 12 + deskOut * 10 });
     const insetIn = ease.settle(prog(t, CLIP.desk + 0.2, CLIP.desk + 0.9));
-    tf(this.inset, { y: (1 - insetIn) * 50, o: insetIn * (1 - deskOut), blur: (1 - insetIn) * 10 });
+    // The intro takes over this trackpad at the handoff.
+    tf(this.inset, { y: (1 - insetIn) * 50, o: insetIn * (1 - prog(t, CLIP.handoff + 0.02, CLIP.handoff + 0.14)), blur: (1 - insetIn) * 10 });
 
     // Finger on the small trackpad: double-tap the corner, then glide.
     const corner = { x: 328, y: 38 };
@@ -148,12 +145,13 @@ export default {
     this.caret.style.opacity = t > CLIP.desk + 0.6 && (Math.floor((t - CLIP.desk) * 1.8) % 2 === 0 || (t > CLIP.taps[0] && t < CLIP.lift + 0.6)) ? "1" : "0";
 
     const tin = ease.settle(prog(t, CLIP.lift + 0.1, CLIP.lift + 0.4));
-    const tout = ease.leave(prog(t, CLIP.lift + 1.9, CLIP.lift + 2.12));
+    const tout = ease.leave(prog(t, CLIP.handoff - 0.2, CLIP.handoff + 0.05));
     tf(this.toast, { y: (1 - tin) * 30, o: tin * (1 - tout), blur: (1 - tin) * 6 });
 
-    reveal(this.line1, t, CLIP.lines[0], CLIP.lines[1] - 0.35, { rise: 0.3 });
-    reveal(this.line2, t, CLIP.lines[1], S.end - 0.55, { rise: 0.3 });
-    fade(this.line2sub, t, CLIP.lines[1] + 0.4, S.end - 0.55);
+    const [c1, c2, c3] = this.caps;
+    reveal(c1, t, CLIP.desk + 0.45, CLIP.steps[0] - 0.4, { rise: 0.3, stagger: 0.04, dur: 0.7 });
+    reveal(c2, t, CLIP.steps[0] - 0.25, CLIP.lift - 0.35, { rise: 0.3, dur: 0.6 });
+    reveal(c3, t, CLIP.lift - 0.2, CLIP.handoff - 0.2, { rise: 0.3, dur: 0.6 });
     bg.style.setProperty("--by", "50%");
     bg.style.setProperty("--ba", String(0.5 + 0.2 * flash));
   },

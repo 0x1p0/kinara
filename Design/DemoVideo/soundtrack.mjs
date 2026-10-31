@@ -19,12 +19,15 @@ const CHORDS = {
   Aadd9: [33, [57, 61, 64, 71, 69]],
   Asus: [33, [57, 62, 64, 71, 69]],
 };
+// Tension under the cold open, resolving to Dmaj9 as the logo lands; then a
+// two-bar cycle, and Dmaj9 again for the end card.
 function chordTimeline() {
-  const list = [[0, "Bm9"], [5, "Asus"]];
+  const logo = SCENES.find((s) => s.id === "logo").start, last = SCENES.find((s) => s.id === "end").start;
+  const list = [[0, "Bm9"], [logo / 2, "Asus"]];
   const cycle = ["Dmaj9", "Bm9", "Gmaj9", "Aadd9"];
-  for (let t = 7.5, i = 0; t < FILM.duration; t += 5, i++) list.push([t, t >= 87.5 ? "Dmaj9" : cycle[i % 4]]);
-  // Hold the final chord to the end.
-  return list.filter(([t]) => t <= 87.5).map(([t, name], i, all) => ({ start: t, end: i + 1 < all.length ? all[i + 1][0] : FILM.duration, name }));
+  for (let t = logo, i = 0; t < last; t += BEAT * 8, i++) list.push([t, cycle[i % 4]]);
+  list.push([last, "Dmaj9"]);
+  return list.map(([t, name], i, all) => ({ start: t, end: i + 1 < all.length ? all[i + 1][0] : FILM.duration, name }));
 }
 
 function layerGain(name, t) {
@@ -34,8 +37,6 @@ function layerGain(name, t) {
   let value = MIX[scene.id][name] ?? 0;
   const next = SCENES[i + 1];
   if (next && t > scene.end - 0.35) value = value + ((MIX[next.id][name] ?? 0) - value) * clamp((t - (scene.end - 0.35)) / 0.35);
-  const brk = MIX.clipboard.breakUntil;
-  if (["arp", "kick", "hats", "clap"].includes(name) && t >= SCENES.find((s) => s.id === "clipboard").start - 0.05 && t < brk + 0.3) value *= clamp((t - brk) / 0.3);
   return value;
 }
 
