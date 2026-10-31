@@ -861,7 +861,7 @@ struct ContentView: View {
                 SettingRow("Finger count", detail: "Use the same number throughout a swipe.") {
                     Picker("Finger count", selection: $settings.minimumFingers) {
                         Text("1 finger").tag(1); Text("2 fingers").tag(2)
-                    }.pickerStyle(.segmented).frame(width: 170)
+                    }.pickerStyle(.segmented).fixedSize()
                 }
                 .onChange(of: settings.minimumFingers) { value in
                     if value != 1 { settings.topEdgeEnabled = false; settings.bottomEdgeEnabled = false }
@@ -928,7 +928,7 @@ struct ContentView: View {
                     SettingRow("Swipe direction") {
                         Picker("Top swipe direction", selection: $settings.topEdgeSwipeDirection) {
                             Text("Horizontal").tag("horizontal"); Text("Vertical").tag("vertical")
-                        }.pickerStyle(.segmented).frame(width: 210)
+                        }.pickerStyle(.segmented).fixedSize()
                     }
                     if settings.topEdgeSwipeDirection == "horizontal" {
                         SlotEditor(title: "Top left", binding: everydayBinding("topLeft"))
@@ -976,7 +976,7 @@ struct ContentView: View {
                     SettingRow("Fingers for corner taps", detail: settings.cornerTapFingers == 1 ? "One finger in a corner, two fingers on the edges. Tap-to-click in a corner with an action belongs to Sway." : "Same as your swipes: two fingers.") {
                         Picker("Fingers for corner taps", selection: $settings.cornerTapFingers) {
                             Text("Like swipes").tag(0); Text("1 finger").tag(1)
-                        }.pickerStyle(.segmented).frame(width: 190)
+                        }.pickerStyle(.segmented).fixedSize()
                     }
                 }
                 ForEach(["topLeftCorner", "topRightCorner", "bottomLeftCorner", "bottomRightCorner"], id: \.self) { corner in
@@ -1077,7 +1077,7 @@ struct ContentView: View {
                     SettingRow("Intent checks", detail: settings.palmRejectionMode == "strict" ? "More travel and consistency before activation." : "Balanced response with deliberate movement.") {
                         Picker("Palm protection", selection: $settings.palmRejectionMode) {
                             Text("Balanced").tag("balanced"); Text("Strict").tag("strict")
-                        }.pickerStyle(.segmented).frame(width: 170)
+                        }.pickerStyle(.segmented).fixedSize()
                     }
                     DisclosureGroup("Fine-tune protection") {
                         LabeledSlider("Pause after typing", detail: "Prevents a resting hand from starting a gesture after a keypress.", value: $settings.typingCooldown, range: 0.2...1, display: String(format: "%.2f s", settings.typingCooldown))
@@ -1154,7 +1154,7 @@ struct ContentView: View {
             SettingRow("Volume sound", detail: "The click macOS plays after you change the volume.") {
                 Picker("Volume feedback sound", selection: $settings.volumeFeedbackSound) {
                     Text("Like macOS").tag("system"); Text("On").tag("on"); Text("Off").tag("off")
-                }.pickerStyle(.segmented).frame(width: 210)
+                }.pickerStyle(.segmented).fixedSize()
             }
         }
         SettingsSection("Trackpad haptics") {
@@ -1164,13 +1164,13 @@ struct ContentView: View {
                 SettingRow("Tap style") {
                     Picker("Haptic tap style", selection: $settings.hapticStyle) {
                         ForEach(HapticStyle.allCases) { style in Text(style.label).tag(style) }
-                    }.pickerStyle(.segmented).frame(width: 310)
+                    }.pickerStyle(.segmented).fixedSize()
                 }
                 Divider()
                 SettingRow("Level steps", detail: "Smaller steps give more taps.") {
                     Picker("Haptic level spacing", selection: $settings.hapticSpacing) {
                         ForEach(HapticSpacing.allCases) { spacing in Text(spacing.label).tag(spacing) }
-                    }.pickerStyle(.segmented).frame(width: 165)
+                    }.pickerStyle(.segmented).fixedSize()
                 }
                 Divider()
                 ToggleRow("Tap at gesture start", detail: "Know when Sway accepts your swipe.", value: $settings.hapticOnStart)
@@ -1196,7 +1196,7 @@ struct ContentView: View {
             SettingRow("Indicator") {
                 Picker("Indicator style", selection: $settings.osdStyle) {
                     Text("Pill").tag("horizontal"); Text("Vertical").tag("vertical"); Text("Follow finger").tag("edge"); Text("Off").tag("off")
-                }.pickerStyle(.segmented).frame(width: 300)
+                }.pickerStyle(.segmented).fixedSize()
             }
             if settings.osdStyle == "edge" {
                 Text("Hugs the side of the screen that matches the edge you’re touching, and moves with your finger. Sliders and the menu bar show the pill.")
@@ -1221,7 +1221,7 @@ struct ContentView: View {
             SettingRow("Theme") {
                 Picker("Theme", selection: $settings.appearanceMode) {
                     Text("System").tag("system"); Text("Light").tag("light"); Text("Dark").tag("dark")
-                }.pickerStyle(.segmented).frame(width: 200)
+                }.pickerStyle(.segmented).fixedSize()
             }
             Divider()
             SettingRow("Menu bar") {
@@ -2064,10 +2064,18 @@ private struct SettingRow<Control: View>: View {
     init(_ title: String, detail: String? = nil, @ViewBuilder control: @escaping () -> Control) { self.title = title; self.detail = detail; self.control = control }
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 12) {
-                Text(title).font(.system(size: 13.5, weight: .medium))
-                Spacer(minLength: 8)
-                control().labelsHidden()
+            // Side by side when it fits; otherwise the control moves under
+            // its title instead of running past the card's edge.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    Text(title).font(.system(size: 13.5, weight: .medium)).fixedSize()
+                    Spacer(minLength: 12)
+                    control().labelsHidden()
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(title).font(.system(size: 13.5, weight: .medium))
+                    control().labelsHidden()
+                }
             }
             if let detail { Text(detail).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
         }.padding(.horizontal, 16).padding(.vertical, 13)

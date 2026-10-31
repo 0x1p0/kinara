@@ -219,6 +219,7 @@ struct RenderUI {
                 host.layoutSubtreeIfNeeded()
 
                 let stem = "sway-\(fixture.surface.name)-\(name)\(fixture.suffix)"
+                audit(host, fixture: stem)
                 try snapshot(canvas, to: output.appendingPathComponent("\(stem).png"))
                 print("  Content size: \(Int(size.width)) × \(Int(size.height)) pt")
 
@@ -236,6 +237,7 @@ struct RenderUI {
                         scroll.reflectScrolledClipView(scroll.contentView)
                         host.layoutSubtreeIfNeeded()
                         RunLoop.main.run(until: Date().addingTimeInterval(0.08))
+                        audit(host, fixture: "\(stem)-page\(page)")
                         try snapshot(canvas, to: output.appendingPathComponent("\(stem)-page\(page).png"))
                         page += 1
                     }
@@ -248,6 +250,58 @@ struct RenderUI {
             }
         }
         try renderIndicators(to: output)
+        guard overflows.isEmpty else {
+            for line in overflows { print("OVERFLOW \(line)") }
+            throw RenderError.controlsOverflow(overflows.count)
+        }
+        print("Layout audit: no control extends past its card or window in any fixture.")
+    }
+
+    @MainActor private static var overflows: [String] = []
+
+    /// Every native control must sit fully inside the visible content: inside
+    /// the page's card column in Settings, and inside the surface elsewhere.
+    /// SwiftUI cards clip with a mask, so an overflowing control would be cut
+    /// off silently; measuring frames catches it in every page and scroll offset.
+    @MainActor
+    private static func audit(_ host: NSView, fixture: String) {
+        host.layoutSubtreeIfNeeded()
+        // SwiftUI on macOS 26 hosts its own control classes (for example
+        // SwiftUISegmentedControl), so match by role as well as AppKit type.
+        let controls = descendants(of: host).filter { view in
+            let name = String(describing: type(of: view))
+            return view is NSControl || name.contains("SegmentedControl") || name.contains("PlatformSwitch")
+        }
+        let column = scrollViews(in: host).max { $0.bounds.width < $1.bounds.width }
+        var measured = Set<String>()
+        for control in controls where !control.isHiddenOrHasHiddenAncestor && control.frame.width > 1 && !(control is NSScroller) {
+            var frame = control.convert(control.bounds, to: host)
+            // One control can be several nested hosting views; report it once.
+            guard measured.insert("\(Int(frame.minX)),\(Int(frame.minY)),\(Int(frame.width))").inserted else { continue }
+            // A control narrower than its content draws past its own frame,
+            // centered, so measure what it actually draws.
+            let needed = control.intrinsicContentSize.width
+            if needed > frame.width + 1 {
+                overflows.append("\(fixture): \(type(of: control)) is \(Int(frame.width)) points wide but needs \(Int(needed))")
+                frame = frame.insetBy(dx: -(needed - frame.width) / 2, dy: 0)
+            }
+            var limit = host.bounds.insetBy(dx: 2, dy: 0)
+            if let column, control.isDescendant(of: column) {
+                // Cards sit 28 points inside the page column on each side.
+                let area = column.convert(column.bounds, to: host)
+                limit = NSRect(x: area.minX + 27, y: area.minY, width: area.width - 54, height: area.height)
+                // Only judge controls scrolled into view.
+                guard frame.intersects(area) else { continue }
+            }
+            if frame.minX < limit.minX - 0.5 || frame.maxX > limit.maxX + 0.5 {
+                overflows.append("\(fixture): \(type(of: control)) spans \(Int(frame.minX))–\(Int(frame.maxX)), visible \(Int(limit.minX))–\(Int(limit.maxX))")
+            }
+        }
+    }
+
+    @MainActor
+    private static func descendants(of view: NSView) -> [NSView] {
+        view.subviews + view.subviews.flatMap { descendants(of: $0) }
     }
 
     /// A bounded, graphical-session check of the actual native container, not
@@ -507,6 +561,7 @@ struct RenderUI {
     }
 
     enum RenderError: Error {
+        case controlsOverflow(Int)
         case preferencesUnavailable
         case bitmapUnavailable
         case pngUnavailable
