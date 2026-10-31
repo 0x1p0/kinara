@@ -476,9 +476,16 @@ struct TapConfiguration: Equatable {
     var bottomEnabled = false
     var bottomHeight = 0.15
     var cornerSize = 0.14
+    /// Corners can use their own finger count (one finger while swipes use
+    /// two): a corner is small enough to aim at, so one finger stays deliberate.
+    var cornerFingers: Int?
     var typingCooldown = 0.45
     /// "region.gesture" slots that have an action; nothing else is recognized.
     var slots: Set<String> = []
+
+    func requiredFingers(for region: TapRegion) -> Int {
+        region.isCorner ? (cornerFingers ?? requiredFingers) : requiredFingers
+    }
 
     static let maximumTapDuration = 0.25
     static let maximumTravel = 0.025
@@ -521,6 +528,9 @@ struct EdgeTapRecognizer {
     private var holdFired = false
     private var lastTap: (region: TapRegion, end: Double)?
     private var lastKeyTime = -Double.infinity
+    private var lastFrame = -Double.infinity
+    /// A touch reports continuously; a longer silence means its lift was missed.
+    static let maximumFrameGap = 0.15
     /// Tap-to-click clicks that follow a recognized edge tap until this time
     /// belong to Sway and are withheld from the app under the pointer.
     private(set) var claimsClicksUntil = -Double.infinity
@@ -538,9 +548,18 @@ struct EdgeTapRecognizer {
         lastTap = nil
     }
 
+    /// Late or missing input: forget everything rather than finish a stale
+    /// sequence later, which could turn a long-gone touch into a "hold".
+    mutating func cancel() { reset(keepingTap: false) }
+
     mutating func process(contacts: [GestureContact], timestamp: Double,
                           configuration: TapConfiguration) -> TapEvent? {
         guard timestamp.isFinite, !configuration.slots.isEmpty else { reset(keepingTap: false); return nil }
+        defer { lastFrame = timestamp }
+        if started != nil, timestamp - lastFrame > Self.maximumFrameGap {
+            // The lift never arrived: this is a new touch, never a continuation.
+            reset(keepingTap: false)
+        }
         guard !contacts.isEmpty else { return lift(at: timestamp, configuration: configuration) }
         if started == nil {
             started = timestamp
@@ -565,8 +584,9 @@ struct EdgeTapRecognizer {
             }
         }
         maxCount = max(maxCount, contacts.count)
-        if maxCount > configuration.requiredFingers || travel > TapConfiguration.maximumTravel { invalid = true; return nil }
-        if isSecond, !holdFired, let region, contacts.count == configuration.requiredFingers,
+        let required = region.map(configuration.requiredFingers(for:)) ?? configuration.requiredFingers
+        if maxCount > required || travel > TapConfiguration.maximumTravel { invalid = true; return nil }
+        if isSecond, !holdFired, let region, contacts.count == required,
            timestamp - start >= TapConfiguration.holdDuration,
            configuration.slots.contains("\(region.rawValue).\(TapGesture.tapHold.rawValue)") {
             holdFired = true
@@ -579,7 +599,7 @@ struct EdgeTapRecognizer {
     private mutating func lift(at timestamp: Double, configuration: TapConfiguration) -> TapEvent? {
         guard let start = started else { return nil }
         defer { reset(keepingTap: true) }
-        guard !invalid, !holdFired, let region, maxCount == configuration.requiredFingers,
+        guard !invalid, !holdFired, let region, maxCount == configuration.requiredFingers(for: region),
               timestamp - start <= TapConfiguration.maximumTapDuration else {
             lastTap = nil
             return nil

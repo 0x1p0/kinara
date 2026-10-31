@@ -205,11 +205,12 @@
             <button type="button" data-category="display" aria-pressed="false">Display</button>
             <button type="button" data-category="audio" aria-pressed="false">Audio</button>
             <button type="button" data-category="media" aria-pressed="false">Media</button>
+            <button type="button" data-category="editing" aria-pressed="false">Editing</button>
             <button type="button" data-category="navigation" aria-pressed="false">Navigation</button>
             <button type="button" data-category="windows" aria-pressed="false">Windows</button>
             <button type="button" data-category="tools" aria-pressed="false">Tools</button>
           </div>
-          <p class="action-count" id="action-count" role="status" aria-live="polite" aria-atomic="true">36 actions · 10 arrive in 1.2 · plus Off for any edge</p>
+          <p class="action-count" id="action-count" role="status" aria-live="polite" aria-atomic="true">49 actions · 23 arrive in 1.2 · plus Off for any edge</p>
         </div>
         <div class="action-groups" id="action-groups">
           <details class="action-group" data-category="display" open>
@@ -242,14 +243,30 @@
               <div data-action-id="nowPlaying" data-keywords="new artwork music song"><dt>Show now playing <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Shows the current track with artwork and progress. Changes nothing.</dd></div>
             </dl>
           </details>
+          <details class="action-group" data-category="editing">
+            <summary><span class="category-mark" aria-hidden="true">✎</span><span class="category-title">Editing<small>Copy, paste, and take it back.</small></span><span class="category-count">09</span><span class="detail-plus" aria-hidden="true"></span></summary>
+            <dl class="action-list">
+              <div data-action-id="copy" data-keywords="new clipboard"><dt>Copy <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Either direction copies the selection with Command-C.</dd></div>
+              <div data-action-id="cut" data-keywords="new clipboard"><dt>Cut <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Either direction cuts the selection with Command-X.</dd></div>
+              <div data-action-id="paste" data-keywords="new clipboard"><dt>Paste <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Either direction pastes with Command-V. Perfect for a corner double-tap.</dd></div>
+              <div data-action-id="pastePlain" data-keywords="new clipboard formatting"><dt>Paste as plain text <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Paste without formatting, in apps that support Option-Shift-Command-V.</dd></div>
+              <div data-action-id="pastePrevious" data-keywords="new clipboard history"><dt>Paste previous item <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Paste what you copied before the current item, from Sway’s in-memory history.</dd></div>
+              <div data-action-id="clipboardHistory" data-keywords="new clipboard recent"><dt>Clipboard history <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Swipe through recent copies and lift to paste. Kept in memory only, never saved; password managers’ items are skipped.</dd></div>
+              <div data-action-id="undoRedo" data-keywords="new undo redo"><dt>Undo / redo <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Down undoes and up redoes, repeating as you keep swiping.</dd></div>
+              <div data-action-id="selectAll" data-keywords="new selection"><dt>Select all <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Either direction selects everything with Command-A.</dd></div>
+              <div data-action-id="find" data-keywords="new search"><dt>Find <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Either direction opens Find in the app in front.</dd></div>
+            </dl>
+          </details>
           <details class="action-group" data-category="navigation">
-            <summary><span class="category-mark" aria-hidden="true">↔</span><span class="category-title">Navigation<small>Less reaching. More getting there.</small></span><span class="category-count">05</span><span class="detail-plus" aria-hidden="true"></span></summary>
+            <summary><span class="category-mark" aria-hidden="true">↔</span><span class="category-title">Navigation<small>Less reaching. More getting there.</small></span><span class="category-count">07</span><span class="detail-plus" aria-hidden="true"></span></summary>
             <dl class="action-list">
               <div data-action-id="tabs" data-keywords="browser"><dt>Switch tabs</dt><dd>Up selects the next tab; down selects the previous. Uses Control-Tab in supporting apps.</dd></div>
               <div data-action-id="history" data-keywords="browser history"><dt>Back / forward</dt><dd>Up goes forward; down goes back. Uses Command-] and Command-[ in supporting apps.</dd></div>
               <div data-action-id="zoom"><dt>App zoom</dt><dd>Up zooms in; down zooms out with standard app shortcuts. This isn’t macOS Accessibility Zoom.</dd></div>
               <div data-action-id="pages" data-keywords="scroll reading"><dt>Page up / down</dt><dd>Send Page Up or Page Down to the current app as you swipe.</dd></div>
               <div data-action-id="documentEnds" data-keywords="reading"><dt>Document start / end</dt><dd>Up goes to the start; down goes to the end, using Command-Up and Command-Down.</dd></div>
+              <div data-action-id="newCloseTab" data-keywords="new browser"><dt>New / close tab <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Up opens a new tab; down closes the current one.</dd></div>
+              <div data-action-id="reopenTab" data-keywords="new browser restore"><dt>Reopen closed tab <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Bring back the last closed tab in apps that support Shift-Command-T.</dd></div>
             </dl>
           </details>
           <details class="action-group" data-category="windows">
@@ -268,9 +285,11 @@
             </dl>
           </details>
           <details class="action-group" data-category="tools">
-            <summary><span class="category-mark" aria-hidden="true">⌘</span><span class="category-title">Tools & shortcuts<small>Your everyday, a swipe away.</small></span><span class="category-count">06</span><span class="detail-plus" aria-hidden="true"></span></summary>
+            <summary><span class="category-mark" aria-hidden="true">⌘</span><span class="category-title">Tools & shortcuts<small>Your everyday, a swipe away.</small></span><span class="category-count">08</span><span class="detail-plus" aria-hidden="true"></span></summary>
             <dl class="action-list">
               <div data-action-id="spotlight" data-keywords="search"><dt>Spotlight</dt><dd>Swipe either way to send Command-Space. Requires the standard Spotlight shortcut.</dd></div>
+              <div data-action-id="lockScreen" data-keywords="new security away"><dt>Lock screen <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Lock your Mac with Control-Command-Q.</dd></div>
+              <div data-action-id="sleepDisplay" data-keywords="new display off"><dt>Sleep displays <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Turn your displays off right away while your Mac stays awake.</dd></div>
               <div data-action-id="screenshotTools" data-keywords="capture"><dt>Screenshot tools</dt><dd>Open the macOS screenshot toolbar with Command-Shift-5. You choose what to capture; Sway records nothing.</dd></div>
               <div data-action-id="emojiPicker" data-keywords="characters"><dt>Emoji & symbols</dt><dd>Open the character picker with Control-Command-Space. Either swipe direction works.</dd></div>
               <div data-action-id="runShortcut" data-keywords="new shortcuts automation smart home"><dt>Run a Shortcut <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Run the Shortcut you choose for each direction, from smart lights to whole routines.</dd></div>

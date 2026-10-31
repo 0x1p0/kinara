@@ -172,6 +172,35 @@ private final class ModelFixture {
         expect(map[1].action == .tabs && map[1].source == .app && map[0].source == .everyday, "the edge map explains where each action comes from")
         for action in ZoneAction.allCases where action.worksAsTap { expect(!action.isContinuous, "\(action.rawValue) tap fires once") }
         expect(!ZoneAction.volume.worksAsTap && ZoneAction.outputMute.togglesOnTap, "levels cannot be taps; mute toggles")
+
+        let command = CGEventFlags.maskCommand.rawValue, shift = CGEventFlags.maskShift.rawValue
+        expect(EdgeCommand.resolve(.paste, increasing: false) == .key(9, command, global: false), "paste is Command-V to the app in front")
+        expect(EdgeCommand.resolve(.pastePlain, increasing: true) == .key(9, command | shift | CGEventFlags.maskAlternate.rawValue, global: false), "plain paste adds Option-Shift")
+        expect(EdgeCommand.resolve(.undoRedo, increasing: false) == .key(6, command, global: false), "down undoes")
+        expect(EdgeCommand.resolve(.undoRedo, increasing: true) == .key(6, command | shift, global: false), "up redoes")
+        expect(EdgeCommand.resolve(.newCloseTab, increasing: true) == .key(17, command, global: false)
+               && EdgeCommand.resolve(.newCloseTab, increasing: false) == .key(13, command, global: false), "up opens a tab, down closes one")
+        expect(EdgeCommand.resolve(.lockScreen, increasing: true) == .key(12, command | CGEventFlags.maskControl.rawValue, global: true), "lock screen is a global shortcut")
+        expect(ZoneAction.undoRedo.repeatsWhileSwiping && ZoneAction.clipboardHistory.repeatsWhileSwiping && !ZoneAction.paste.repeatsWhileSwiping,
+               "undo and history step as you swipe; paste fires once")
+        expect(ZoneAction.paste.worksAsTap && ZoneAction.pastePrevious.worksAsTap && ZoneAction.categories.contains("Editing"), "editing actions fit corner taps")
+
+        // Clipboard history rules, without touching the real pasteboard.
+        expect(ClipboardHistory.shouldRecord(types: ["public.utf8-plain-text"], text: "hello"), "ordinary text is recorded")
+        expect(!ClipboardHistory.shouldRecord(types: ["public.utf8-plain-text", "org.nspasteboard.ConcealedType"], text: "hunter2"), "concealed items are never recorded")
+        expect(!ClipboardHistory.shouldRecord(types: ["org.nspasteboard.TransientType"], text: "otp"), "transient items are never recorded")
+        expect(!ClipboardHistory.shouldRecord(types: [], text: "   \n") && !ClipboardHistory.shouldRecord(types: [], text: nil), "blank or missing text is skipped")
+        expect(!ClipboardHistory.shouldRecord(types: [], text: String(repeating: "x", count: ClipboardHistory.maximumLength + 1)), "huge items are skipped")
+        var history = ClipboardHistory.inserting("b", into: ["a"])
+        history = ClipboardHistory.inserting("a", into: history)
+        expect(history == ["a", "b"], "re-copying moves an item to the front without duplicates")
+        history = (0..<30).reduce(history) { ClipboardHistory.inserting("item \($1)", into: $0) }
+        expect(history.count == ClipboardHistory.capacity && history.first == "item 29", "history keeps only the newest items")
+        expect(ClipboardHistory.preview("one\n\n  two  \nthree") == "one ⏎ two ⏎ three", "multi-line previews fit one row")
+        expect(ClipboardHistory.preview(String(repeating: "y", count: 200)).count == 90, "long previews are shortened")
+        expect(!ClipboardHistory.shared.isEnabled, "history is off unless a clipboard action is assigned")
+        ClipboardHistory.shared.noteCopy()
+        expect(ClipboardHistory.shared.items.isEmpty, "a disabled history never reads the pasteboard")
     }
 
     static func testActionLibrary() {
@@ -186,12 +215,13 @@ private final class ModelFixture {
         expect(events.allSatisfy { $0.getIntegerValueField(.eventSourceUserData) == EdgeActionController.eventMarker }, "own events never count as typing")
         let held = EdgeActionController.keyboardEvents(code: 48, flags: CGEventFlags.maskCommand.rawValue, physicalFlags: .maskCommand)!
         expect(held.count == 2, "physically held modifiers are not synthetically released")
-        expect(ZoneAction.allCases.count == 37, "36 assignable actions plus Off")
+        expect(ZoneAction.allCases.count == 50, "49 assignable actions plus Off")
         for action in ZoneAction.allCases {
             expect(!action.label.isEmpty && !action.icon.isEmpty && !action.guidance.isEmpty, "every action has usable metadata")
             expect(ZoneAction.categories.contains(action.category), "all actions appear in a category")
             let performedDirectly: [ZoneAction] = [.outputMute, .microphoneMute, .customShortcut, .disabled, .audioOutput,
-                                                   .nowPlaying, .tileWindow, .trueTone, .runShortcut, .cheatSheet]
+                                                   .nowPlaying, .tileWindow, .trueTone, .runShortcut, .cheatSheet,
+                                                   .pastePrevious, .clipboardHistory, .sleepDisplay]
             if action.isContinuous || performedDirectly.contains(action) {
                 expect(EdgeCommand.resolve(action, increasing: true) == nil, "\(action.rawValue) never becomes a keystroke")
             } else {

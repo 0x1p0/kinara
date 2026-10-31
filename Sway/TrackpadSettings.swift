@@ -14,6 +14,8 @@ enum ZoneAction: String, CaseIterable, Identifiable, Codable {
     case customShortcut
     case appVolume, audioOutput, seek, nowPlaying, tileWindow
     case nightShift, trueTone, extraDim, runShortcut, cheatSheet
+    case copy, cut, paste, pastePlain, pastePrevious, clipboardHistory, undoRedo, selectAll, find
+    case newCloseTab, reopenTab, lockScreen, sleepDisplay
     case disabled   = "disabled"
 
     /// Unknown values from a newer version or a hand-edited export become Off.
@@ -61,6 +63,19 @@ enum ZoneAction: String, CaseIterable, Identifiable, Codable {
         case .extraDim: return "Extra dim"
         case .runShortcut: return "Run a Shortcut"
         case .cheatSheet: return "Show edge map"
+        case .copy: return "Copy"
+        case .cut: return "Cut"
+        case .paste: return "Paste"
+        case .pastePlain: return "Paste as plain text"
+        case .pastePrevious: return "Paste previous item"
+        case .clipboardHistory: return "Clipboard history"
+        case .undoRedo: return "Undo / redo"
+        case .selectAll: return "Select all"
+        case .find: return "Find"
+        case .newCloseTab: return "New / close tab"
+        case .reopenTab: return "Reopen closed tab"
+        case .lockScreen: return "Lock screen"
+        case .sleepDisplay: return "Sleep displays"
         case .disabled:   return "Off"
         }
     }
@@ -103,6 +118,19 @@ enum ZoneAction: String, CaseIterable, Identifiable, Codable {
         case .extraDim: return "moon.fill"
         case .runShortcut: return "square.stack.3d.up.fill"
         case .cheatSheet: return "map"
+        case .copy: return "doc.on.doc"
+        case .cut: return "scissors"
+        case .paste: return "doc.on.clipboard"
+        case .pastePlain: return "doc.plaintext"
+        case .pastePrevious: return "arrow.uturn.backward.circle"
+        case .clipboardHistory: return "list.clipboard"
+        case .undoRedo: return "arrow.uturn.backward"
+        case .selectAll: return "selection.pin.in.out"
+        case .find: return "text.magnifyingglass"
+        case .newCloseTab: return "plus.square.on.square"
+        case .reopenTab: return "arrow.counterclockwise.circle"
+        case .lockScreen: return "lock"
+        case .sleepDisplay: return "moon.zzz"
         case .disabled:   return "slash.circle"
         }
     }
@@ -115,14 +143,19 @@ enum ZoneAction: String, CaseIterable, Identifiable, Codable {
         case .tabs, .history, .zoom, .pages, .documentEnds: return "Navigation"
         case .workspaces, .missionControl, .appWindows, .showDesktop, .switchApps, .cycleWindows,
              .fullScreen, .minimizeWindow, .hideApp, .tileWindow: return "Windows & desktops"
-        case .spotlight, .screenshotTools, .emojiPicker, .runShortcut, .cheatSheet, .customShortcut: return "Tools & shortcuts"
+        case .spotlight, .screenshotTools, .emojiPicker, .runShortcut, .cheatSheet, .customShortcut,
+             .lockScreen, .sleepDisplay: return "Tools & shortcuts"
+        case .copy, .cut, .paste, .pastePlain, .pastePrevious, .clipboardHistory, .undoRedo, .selectAll, .find: return "Editing"
+        case .newCloseTab, .reopenTab: return "Navigation"
         case .disabled: return "Other"
         }
     }
-    static let categories = ["Display & keyboard", "Audio & microphone", "Media", "Navigation", "Windows & desktops", "Tools & shortcuts", "Other"]
+    static let categories = ["Display & keyboard", "Audio & microphone", "Media", "Editing", "Navigation", "Windows & desktops", "Tools & shortcuts", "Other"]
     /// Follows finger travel as a level rather than firing commands.
     var isContinuous: Bool { [.brightness, .volume, .microphoneLevel, .appVolume, .nightShift, .extraDim, .seek].contains(self) }
-    var repeatsWhileSwiping: Bool { [.keyboardBrightness, .tabs, .zoom, .pages, .cycleWindows, .audioOutput].contains(self) }
+    var repeatsWhileSwiping: Bool { [.keyboardBrightness, .tabs, .zoom, .pages, .cycleWindows, .audioOutput, .undoRedo, .clipboardHistory].contains(self) }
+    /// Uses Sway's private, in-memory clipboard history.
+    var usesClipboardHistory: Bool { self == .pastePrevious || self == .clipboardHistory }
     /// Taps fire once with no direction, so only commands and toggles fit.
     var worksAsTap: Bool { !isContinuous }
     /// A tap flips these instead of sending their "up" command.
@@ -165,6 +198,19 @@ enum ZoneAction: String, CaseIterable, Identifiable, Codable {
         case .extraDim: return "Down dims below the display’s lowest backlight level; up restores it. Quitting Sway always restores normal brightness."
         case .runShortcut: return "Runs the Shortcut you choose for this edge: one for up/right, another for down/left. Opens a world of automations, such as smart lights."
         case .cheatSheet: return "Shows what every edge does in the current app. Changes nothing."
+        case .copy: return "Either direction copies the selection (Command-C)."
+        case .cut: return "Either direction cuts the selection (Command-X)."
+        case .paste: return "Either direction pastes the clipboard (Command-V). Great on a corner double-tap."
+        case .pastePlain: return "Pastes without formatting (Option-Shift-Command-V) in apps that support it."
+        case .pastePrevious: return "Pastes the item you copied before the current one. Uses Sway’s clipboard history, kept only in memory."
+        case .clipboardHistory: return "Swipe to browse your recent copies, then lift to paste the one shown. Kept only in memory, never saved; password managers’ items are skipped."
+        case .undoRedo: return "Down undoes; up redoes (Command-Z / Shift-Command-Z). Repeats as you keep swiping."
+        case .selectAll: return "Either direction selects everything (Command-A)."
+        case .find: return "Either direction opens Find (Command-F) in the app in front."
+        case .newCloseTab: return "Up opens a new tab (Command-T); down closes the current one (Command-W)."
+        case .reopenTab: return "Either direction reopens the last closed tab (Shift-Command-T) in apps that support it."
+        case .lockScreen: return "Either direction locks your Mac (Control-Command-Q)."
+        case .sleepDisplay: return "Either direction puts your displays to sleep right away. Your Mac stays awake."
         case .disabled: return "This edge behaves like the rest of your trackpad."
         }
     }
@@ -522,6 +568,10 @@ class TrackpadSettings: ObservableObject {
     @Published var tapCornerSize: Double {
         didSet { defaults.set(tapCornerSize, forKey: "tapCornerSize") }
     }
+    /// 1 lets corner taps use one finger while swipes use two; 0 follows swipes.
+    @Published var cornerTapFingers: Int {
+        didSet { defaults.set(cornerTapFingers, forKey: "cornerTapFingers") }
+    }
 
     // ── Feel ──────────────────────────────────────────────────────────
     @Published var precisionEnabled: Bool {
@@ -644,6 +694,7 @@ class TrackpadSettings: ObservableObject {
         dockedProfileEnabled = defaults.object(forKey: "dockedProfileEnabled") as? Bool ?? false
         dockedProfile = Self.load(ActionProfile.self, "dockedProfile", from: defaults) ?? ActionProfile(name: "Docked")
         tapCornerSize = Self.clamp(defaults.object(forKey: "tapCornerSize") as? Double ?? 0.14, to: Self.cornerSizeRange, fallback: 0.14)
+        cornerTapFingers = defaults.integer(forKey: "cornerTapFingers") == 1 ? 1 : 0
         precisionEnabled = defaults.object(forKey: "precisionEnabled") as? Bool ?? true
         accelerationEnabled = defaults.object(forKey: "accelerationEnabled") as? Bool ?? true
         notchesEnabled = defaults.object(forKey: "notchesEnabled") as? Bool ?? true
@@ -765,7 +816,7 @@ class TrackpadSettings: ObservableObject {
         "osdHorizontalWidth", "menuBarValueSource", "muteAtZero", "minimumFingers", "cursorFreezeOnOneFinger",
         "topEdgeEnabled", "topEdgeHeight", "topEdgeSwipeDirection", "topLeftAction", "topRightAction",
         "topEdgeAction", "palmRejectionMode", "typingCooldown", "bottomEdgeEnabled", "bottomEdgeHeight",
-        "bottomEdgeAction", "edgeBindings", "appProfiles", "dockedProfileEnabled", "dockedProfile", "tapCornerSize",
+        "bottomEdgeAction", "edgeBindings", "appProfiles", "dockedProfileEnabled", "dockedProfile", "tapCornerSize", "cornerTapFingers",
         "precisionEnabled", "accelerationEnabled", "notchesEnabled", "volumeFavorite", "brightnessFavorite",
         "deviceVolumeLimits", "brightnessFollowsPointer", "extraDimBelowMinimum", "volumeFeedbackSound",
         "nowPlayingHUD", "menuBarScroll", "cheatSheetHotkey", "urlCommandsEnabled",
@@ -830,6 +881,7 @@ class TrackpadSettings: ObservableObject {
         bindings = other.bindings; appProfiles = other.appProfiles
         dockedProfileEnabled = other.dockedProfileEnabled; dockedProfile = other.dockedProfile
         tapCornerSize = other.tapCornerSize
+        cornerTapFingers = other.cornerTapFingers
         precisionEnabled = other.precisionEnabled; accelerationEnabled = other.accelerationEnabled
         notchesEnabled = other.notchesEnabled
         volumeFavorite = other.volumeFavorite; brightnessFavorite = other.brightnessFavorite
@@ -878,6 +930,7 @@ class TrackpadSettings: ObservableObject {
         // like the shared pair, so a reset never discards typed-in work.
         bindings = bindings.filter { EdgeSlot.swipe.contains($0.key) }
         tapCornerSize = 0.14
+        cornerTapFingers = 0
         precisionEnabled = true
         accelerationEnabled = true
         notchesEnabled = true
@@ -912,6 +965,16 @@ enum GesturePreset: String, CaseIterable, Identifiable {
 
 // MARK: - Appearance helper (moved from ContentView extension)
 extension TrackpadSettings {
+    /// The same choice for AppKit surfaces (windows, panels, popovers), so
+    /// their glass and backgrounds match the SwiftUI text drawn on them.
+    var themeAppearance: NSAppearance? {
+        switch appearanceMode {
+        case "light": return NSAppearance(named: .aqua)
+        case "dark": return NSAppearance(named: .darkAqua)
+        default: return nil
+        }
+    }
+
     var resolvedColorScheme: ColorScheme? {
         switch appearanceMode {
         case "light": return .light

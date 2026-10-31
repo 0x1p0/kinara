@@ -52,6 +52,7 @@ final class EdgeMapHUD {
         let host = NSHostingView(rootView: view)
         let size = host.fittingSize
         let panel = self.panel ?? makePanel()
+        panel.appearance = settings.themeAppearance
         panel.contentView = host
         panel.setContentSize(size)
         let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main

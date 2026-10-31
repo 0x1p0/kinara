@@ -20,7 +20,7 @@ test("local assets exist and external links point to the public project", () => 
 });
 test("native controls, explicit demo labels, and reduced-motion support remain", () => {
   assert.equal([...html.matchAll(/type="range"/g)].length, 2);
-  assert.equal([...html.matchAll(/<details\b/g)].length, 18);
+  assert.equal([...html.matchAll(/<details\b/g)].length, 19);
   assert.match(html, /Your Mac’s settings won’t change/);
   assert.match(html, /not notarized by Apple/);
   assert.match(html, /Made with care by/);
@@ -41,13 +41,13 @@ test("the static action library matches every shipped native action", () => {
     .flatMap((match) => match[1].split(",").map((item) => item.trim().split(/\s|=/)[0]))
     .filter((item) => item !== "disabled").sort();
   const web = [...html.matchAll(/data-action-id="([^"]+)"/g)].map((match) => match[1]).sort();
-  assert.equal(web.length, 36);
+  assert.equal(web.length, 49);
   assert.deepEqual(web, native);
-  assert.equal(new Set(web).size, 36);
+  assert.equal(new Set(web).size, 49);
 });
 test("catalog stays usable without JavaScript and clearly describes its limits", () => {
   assert.match(html, /id="library-toolbar" hidden/);
-  assert.equal([...html.matchAll(/class="action-group"/g)].length, 6);
+  assert.equal([...html.matchAll(/class="action-group"/g)].length, 7);
   assert.match(html, /never opens a recording stream/);
   assert.match(html, /Other inputs and app mute buttons stay separate/);
   assert.match(html, /Browsing here doesn’t change Sway/);

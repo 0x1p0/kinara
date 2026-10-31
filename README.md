@@ -50,14 +50,14 @@ its source.
 
 ## Start here
 
-On first launch, a focused **Welcome to Sway** window shows the menu bar icon,
-explains trackpad access, and requests Accessibility if it has not already been
-granted. Sway asks automatically only once, not every launch. You can continue
-with sliders without granting access and enable gestures later. Closing the guide
-or choosing **Continue with sliders** does not finish setup: it returns on the next
-launch or explicit reopen while access is missing. After granting access, click
-**Get started** to finish. Revoked permission also returns the guide on launch.
-Users affected by the older close-without-permission bug are recovered automatically.
+On first launch, a five-step **Welcome to Sway** guide walks through Sway one
+calm screen at a time: what it does, Accessibility, a practice swipe, your
+style (gesture preset, haptic strength, indicator), and where Sway lives in the
+menu bar. macOS's Accessibility prompt appears only when you choose **Allow
+Accessibility**, never by surprise at launch, and the guide notices the grant
+by itself while it's on screen. The practice swipe uses the safe test: nothing
+on your Mac changes. Skipping access keeps the sliders usable; the guide returns
+on the next launch until access is ready. Revoked permission also returns the guide.
 
 Use **Show menu bar controls** to reveal the real menu and highlight its icon.
 If the icon is hidden or your menu bar is crowded, reopen **Sway from Spotlight
@@ -112,9 +112,19 @@ front; a **docked profile** applies while an external display is connected.
 Order: app, then docked, then everyday. **Per-device volume limits** are
 remembered by Core Audio device UID, so headphones can stay quieter.
 
-**New actions (36 in total).** App volume (the front app only, macOS 14.2+),
+**New actions (49 in total).** App volume (the front app only, macOS 14.2+),
 switch audio output, seek in track, show now playing, tile window, Night Shift
-warmth, True Tone, extra dim, Run a Shortcut, and show edge map. Custom
+warmth, True Tone, extra dim, Run a Shortcut, and show edge map. **Editing:**
+copy, cut, paste, paste as plain text, paste previous item, clipboard history,
+undo/redo, select all, and find. Plus new/close tab, reopen closed tab, lock
+screen, and sleep displays.
+
+**Clipboard history** exists only while an action that uses it is assigned. It
+is event-driven: Sway reads the clipboard right after a copy it can see (⌘C/⌘X,
+its own Copy and Cut, an app switch, or opening the history), never on a timer.
+Up to 12 text items live in memory only, never on disk, and anything marked by
+a password manager (nspasteboard.org concealed or transient types) is skipped.
+Swipe to browse, lift to paste; a rejected or cancelled swipe pastes nothing. Custom
 shortcuts and Shortcut names are now recorded **per edge**; edges without their
 own recording keep using the original shared pair.
 
@@ -135,6 +145,18 @@ volume is changed”. **Export and import** your settings, including profiles;
 login and setup state never travel. **`sway://` links** let Shortcuts and scripts
 pause, resume or toggle gestures, set volume or brightness within your limits,
 or show the edge map; links can’t change assignments.
+
+**A complete redesign.** Settings opens on an **Overview** with Sway's status,
+a live map of every zone (click one to edit it), quick toggles, and suggestions
+for what to set up next. A grouped sidebar, a master switch with live status,
+and refined cards run throughout. The menu bar panel gains a status line, device
+names under each level, and quick tiles for the edge map, pausing, and Settings.
+
+**Lighter at idle.** The input tap no longer receives pointer movement; a second
+tap exists only while a one-finger gesture holds the pointer, so moving the
+mouse never wakes Sway. A paused, icon-only profile measured about 0.015% of
+one CPU core and 12.3 MB of physical memory on Apple silicon (one short sample,
+not a guarantee).
 
 **Honest limits.** DDC, per-app volume and Now Playing were built against
 macOS interfaces that the automated tests can’t exercise with real hardware;

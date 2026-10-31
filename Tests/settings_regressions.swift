@@ -269,6 +269,11 @@ enum SettingsRegressionTests {
             try expect(settings.volumeFeedbackSound == "system" && settings.nowPlayingHUD && settings.menuBarScroll, "feedback follows macOS and the menu bar scrolls")
             try expect(settings.cheatSheetHotkey.isEmpty && settings.urlCommandsEnabled, "no global cheat-sheet hotkey is registered by default")
             try expect(settings.notches(for: .volume) == [0.5], "the middle notch is the only default notch")
+            try expect(settings.cornerTapFingers == 0, "corner taps follow the swipe finger count by default")
+            settings.cornerTapFingers = 1
+            try expect(TrackpadSettings(defaults: defaults).cornerTapFingers == 1, "one-finger corner taps persist")
+            defaults.set(7, forKey: "cornerTapFingers")
+            try expect(TrackpadSettings(defaults: defaults).cornerTapFingers == 0, "unknown corner finger counts fall back to following swipes")
         }
 
         try isolated("bindings, profiles and resolution order", seed: ["leftZoneAction": "volume"]) { defaults, _ in

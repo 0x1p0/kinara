@@ -55,6 +55,7 @@ static uint64_t g_generation;
 static MTFrameCallback g_frameCallback;
 static MTDeviceStartFn g_startDevice;
 static MTDeviceStopFn g_stopDevice;
+static MTDeviceRef g_lastTouchedDevice;
 
 static void mt_callback(MTDeviceRef device, MTContact *contacts, int32_t count,
                         double timestamp, int32_t frame) {
@@ -118,6 +119,7 @@ static void mt_callback(MTDeviceRef device, MTContact *contacts, int32_t count,
         return;
     }
     g_activeDevice = device;
+    g_lastTouchedDevice = device;
     // The Swift trampoline only copies data and queues work. Calling it while
     // locked makes Stop a delivery barrier without retaining a Swift object.
     g_frameCallback(touching, copied, timestamp, g_generation);
@@ -179,4 +181,73 @@ void MTBridge_Stop(void) {
     if (wasRunning && g_stopDevice) {
         for (int i = 0; i < g_deviceCount; i++) g_stopDevice(g_devices[i]);
     }
+}
+
+// Haptics through the same private framework's actuator: the strongest
+// waveforms are beyond NSHapticFeedbackManager's three public patterns.
+// Signatures follow the published HapticKey header; every symbol is optional
+// and any failure leaves the caller on the public patterns.
+typedef int32_t (*MTDeviceGetDeviceIDFn)(MTDeviceRef, uint64_t *);
+typedef CFTypeRef (*MTActuatorCreateFn)(uint64_t);
+typedef int32_t (*MTActuatorOpenFn)(CFTypeRef);
+typedef int32_t (*MTActuatorActuateFn)(CFTypeRef, int32_t, uint32_t, float, float);
+
+enum { maximumActuators = 4 };
+static pthread_mutex_t g_actuatorLock = PTHREAD_MUTEX_INITIALIZER;
+static int g_actuatorsLoaded;
+static CFArrayRef g_actuatorDevices;
+static uint64_t g_actuatorIDs[maximumActuators];
+static CFTypeRef g_actuators[maximumActuators];
+static int g_actuatorCount;
+static MTDeviceGetDeviceIDFn g_deviceID;
+static MTActuatorCreateFn g_createActuator;
+static MTActuatorOpenFn g_openActuator;
+static MTActuatorActuateFn g_actuate;
+
+// Opened actuators are kept for the process lifetime, like the device list.
+static CFTypeRef actuator_for_device(MTDeviceRef device) {
+    uint64_t identifier = 0;
+    if (!device || g_deviceID(device, &identifier) != 0) return NULL;
+    for (int i = 0; i < g_actuatorCount; i++) {
+        if (g_actuatorIDs[i] == identifier) return g_actuators[i];
+    }
+    if (g_actuatorCount >= maximumActuators) return NULL;
+    CFTypeRef actuator = g_createActuator(identifier);
+    if (!actuator) return NULL;
+    if (g_openActuator(actuator) != 0) { CFRelease(actuator); return NULL; }
+    g_actuatorIDs[g_actuatorCount] = identifier;
+    g_actuators[g_actuatorCount] = actuator;
+    g_actuatorCount++;
+    return actuator;
+}
+
+int MTBridge_Actuate(int32_t actuationID, float unknown1, float unknown2) {
+    if (actuationID < 1 || actuationID > 16 || !isfinite(unknown1) || !isfinite(unknown2)) return 0;
+    pthread_mutex_lock(&g_lock);
+    MTDeviceRef touched = g_lastTouchedDevice;
+    pthread_mutex_unlock(&g_lock);
+    pthread_mutex_lock(&g_actuatorLock);
+    if (!g_actuatorsLoaded) {
+        g_actuatorsLoaded = 1;
+        void *library = dlopen("/System/Library/PrivateFrameworks/MultitouchSupport.framework/MultitouchSupport", RTLD_NOW | RTLD_LOCAL);
+        MTDeviceCreateListFn createList = library ? (MTDeviceCreateListFn)dlsym(library, "MTDeviceCreateList") : NULL;
+        g_deviceID = library ? (MTDeviceGetDeviceIDFn)dlsym(library, "MTDeviceGetDeviceID") : NULL;
+        g_createActuator = library ? (MTActuatorCreateFn)dlsym(library, "MTActuatorCreateFromDeviceID") : NULL;
+        g_openActuator = library ? (MTActuatorOpenFn)dlsym(library, "MTActuatorOpen") : NULL;
+        g_actuate = library ? (MTActuatorActuateFn)dlsym(library, "MTActuatorActuate") : NULL;
+        if (createList && g_deviceID && g_createActuator && g_openActuator && g_actuate) g_actuatorDevices = createList();
+    }
+    CFTypeRef actuator = NULL;
+    if (g_actuatorDevices && g_actuate) {
+        actuator = actuator_for_device(touched);
+        // Before any gesture (for example the Haptics preview), use the first
+        // trackpad whose actuator opens.
+        CFIndex count = CFArrayGetCount(g_actuatorDevices);
+        for (CFIndex i = 0; !actuator && !touched && i < count && i < maximumDevices; i++) {
+            actuator = actuator_for_device((MTDeviceRef)CFArrayGetValueAtIndex(g_actuatorDevices, i));
+        }
+    }
+    int fired = actuator && g_actuate(actuator, actuationID, 0, unknown1, unknown2) == 0;
+    pthread_mutex_unlock(&g_actuatorLock);
+    return fired;
 }

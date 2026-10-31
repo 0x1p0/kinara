@@ -2,10 +2,11 @@ import AppKit
 import SwiftUI
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case gestures, taps, profiles, protection, levels, feedback, appearance, general, updates, about
+    case overview, gestures, taps, profiles, protection, levels, feedback, appearance, general, updates, about
     var id: String { rawValue }
     var title: String {
         switch self {
+        case .overview: return "Overview"
         case .gestures: return "Gestures"
         case .taps: return "Taps & corners"
         case .profiles: return "Profiles"
@@ -20,6 +21,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     }
     var icon: String {
         switch self {
+        case .overview: return "square.grid.2x2"
         case .gestures: return "hand.draw"
         case .taps: return "hand.tap"
         case .profiles: return "square.stack"
@@ -34,6 +36,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     }
     var detail: String {
         switch self {
+        case .overview: return "Everything Sway is doing, at a glance."
         case .gestures: return "Assign edges, layers, and how swipes feel."
         case .taps: return "Double-tap or tap-and-hold edges and corners."
         case .profiles: return "Change edges for specific apps or when docked."
@@ -49,7 +52,8 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     private var keywords: String {
         switch self {
         case .gestures: return "preset finger fingers one two edge zones width narrow sensitivity direction top bottom left right swipe reverse action volume brightness microphone keyboard backlight media playback track tab navigation zoom window desktop workspace shortcut screenshot emoji spotlight mute precision fine scrub speed acceleration flick layer option modifier tile shortcuts night shift true tone dim seek output app volume map"
-        case .taps: return "tap double-tap hold tap-and-hold corner corners hot click"
+        case .overview: return "overview home status summary quick toggle"
+        case .taps: return "tap double-tap hold tap-and-hold corner corners hot click paste"
         case .profiles: return "app apps profile profiles per-app docked dock external monitor display override"
         case .protection: return "palm rejection strict balanced typing cooldown activation distance test diagnostics permission accessibility"
         case .levels: return "volume brightness audio display minimum maximum limit mute zero favorite notch device airpods headphones external monitor ddc pointer extra dim"
@@ -60,11 +64,62 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .about: return "help welcome setup guide accessibility permission reset version"
         }
     }
+    /// Sidebar grouping, in display order.
+    var group: String {
+        switch self {
+        case .overview: return ""
+        case .gestures, .taps, .profiles, .protection: return "Edges"
+        case .levels, .feedback, .appearance: return "Feel & look"
+        case .general, .updates, .about: return "Sway"
+        }
+    }
+    static let groups = ["", "Edges", "Feel & look", "Sway"]
+
     func matches(_ query: String) -> Bool {
         let haystack = "\(title) \(detail) \(keywords)"
         return query.split(whereSeparator: \.isWhitespace).allSatisfy {
             haystack.range(of: String($0), options: [.caseInsensitive, .diacriticInsensitive]) != nil
         }
+    }
+}
+
+/// Sway's mark for the menu bar: a trackpad outline whose right edge carries
+/// the swipe, matching the app icon. A template image, so macOS tints it for
+/// light, dark and tinted menu bars. Paused keeps the outline, dims the swipe.
+enum SwayGlyph {
+    static func image(active: Bool, badge: Bool = false) -> NSImage {
+        let image = NSImage(size: NSSize(width: badge ? 24 : 19, height: 16), flipped: false) { _ in
+            let pad = NSBezierPath(roundedRect: NSRect(x: 1, y: 2.25, width: 17, height: 11.5), xRadius: 3.4, yRadius: 3.4)
+            pad.lineWidth = 1.4
+            NSColor.black.setStroke()
+            pad.stroke()
+            // The quiet left track and the swipe rising on the right edge.
+            NSColor.black.withAlphaComponent(0.35).setFill()
+            NSBezierPath(roundedRect: NSRect(x: 3.7, y: 4.5, width: 2.2, height: 7), xRadius: 1.1, yRadius: 1.1).fill()
+            NSColor.black.withAlphaComponent(active ? 1 : 0.35).setFill()
+            NSBezierPath(roundedRect: NSRect(x: 12.9, y: 4.5, width: 2.4, height: active ? 7 : 3.4), xRadius: 1.2, yRadius: 1.2).fill()
+            if badge {
+                NSColor.black.setFill()
+                NSBezierPath(ovalIn: NSRect(x: 20, y: 1, width: 4, height: 4)).fill()
+            }
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = badge ? "Sway — update available" : "Sway"
+        return image
+    }
+}
+
+/// The app icon wherever Sway shows its own logo inside its windows.
+struct SwayLogo: View {
+    var size: CGFloat = 32
+    var dimmed = false
+    var body: some View {
+        Image(nsImage: NSApp.applicationIconImage)
+            .resizable().interpolation(.high)
+            .frame(width: size, height: size)
+            .opacity(dimmed ? 0.55 : 1)
+            .accessibilityHidden(true)
     }
 }
 
@@ -144,15 +199,18 @@ struct MoreOptionsButton: NSViewRepresentable {
 
 /// Explicit monochrome foreground/background pairing, including macOS 26's
 /// prominent-button rendering. A semantic primary tint alone is not sufficient.
+/// Label-colored fill with window-colored text. Both are dynamic AppKit
+/// colors resolved by the view's own appearance at draw time, so the pair can
+/// never disagree (white on white) while a window's appearance settles.
 struct MonochromePrimaryButtonStyle: ButtonStyle {
-    @Environment(\.colorScheme) private var scheme
     @Environment(\.isEnabled) private var enabled
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(scheme == .dark ? Color.black : Color.white)
-            .padding(.horizontal, 14).padding(.vertical, 8)
-            .background(scheme == .dark ? Color.white : Color.black, in: RoundedRectangle(cornerRadius: 9))
-            .opacity(!enabled ? 0.4 : configuration.isPressed ? 0.72 : 1)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(Color(nsColor: .windowBackgroundColor))
+            .padding(.horizontal, 16).padding(.vertical, 8)
+            .background(Color(nsColor: .labelColor), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .opacity(!enabled ? 0.4 : configuration.isPressed ? 0.75 : 1)
             .contentShape(RoundedRectangle(cornerRadius: 9))
     }
 }

@@ -95,6 +95,31 @@ enum HapticRegressionTests {
         _ = notched.update(value: 0.6, bounds: 0...1, at: 10.7, notches: [0.5])
         expect(notched.update(value: 0.5, bounds: 0...1, at: 10.75, notches: [0.5]) == nil, "notches obey the shared tap cadence")
         expect(notched.update(value: 0.4, bounds: 0...1, at: 11, notches: []) == .soft, "without notches ordinary steps continue")
+        var strongClock = 0.0
+        var strongCalls: [NSHapticFeedbackManager.FeedbackPattern] = []
+        var actuations = 0
+        var actuatorWorks = true
+        let strongOutput = HapticOutput(now: { strongClock }, perform: { pattern, _ in strongCalls.append(pattern) },
+                                        strong: { actuations += 1; return actuatorWorks })
+        strongOutput.play(.strong)
+        expect(actuations == 1 && strongCalls.isEmpty, "Strongest uses the actuator instead of a public pattern")
+        strongClock = 0.05
+        strongOutput.play(.strong)
+        expect(actuations == 1, "Strongest obeys the shared tap cadence")
+        strongClock = 0.2
+        actuatorWorks = false
+        strongOutput.play(.strong)
+        expect(actuations == 2 && strongCalls == [.levelChange], "an unavailable actuator falls back to Crisp")
+        strongClock = 0.4
+        strongOutput.play(.standard)
+        expect(actuations == 2 && strongCalls.last == .generic, "other styles never touch the actuator")
+        let noActuator = HapticOutput(now: { 1 }, perform: { pattern, _ in strongCalls.append(pattern) })
+        noActuator.play(.strong)
+        expect(strongCalls.last == .levelChange, "without an installed actuator Strongest is Crisp")
+        var strongNotch = GestureHapticFeedback()
+        _ = strongNotch.begin(value: 0.45, configuration: HapticConfiguration(enabled: true, style: .strong, spacing: .sparse, onStart: false), at: 20)
+        expect(strongNotch.update(value: 0.5, bounds: 0...1, at: 20.2, notches: [0.5]) == .strong, "with Strongest, notches are strongest too")
+        expect(HapticStyle.strong.label == "Strongest" && HapticStyle.allCases.last == .strong, "Strongest is offered last, after Crisp")
         print("\(checks) haptic assertions passed. Fake clock and performer only; no physical haptics ran.")
     }
 }

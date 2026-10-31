@@ -46,10 +46,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     private var menuBrightnessTimer: Timer?
     private var menuScrollMonitor: Any?
     private var lastMenuSignature: String?
-    private lazy var activeIcon = menuIcon("waveform.path")
-    private lazy var pausedIcon = menuIcon("pause.circle")
-    private lazy var activeUpdateIcon = badgedMenuIcon("waveform.path")
-    private lazy var pausedUpdateIcon = badgedMenuIcon("pause.circle")
+    private lazy var activeIcon: NSImage? = SwayGlyph.image(active: true)
+    private lazy var pausedIcon: NSImage? = SwayGlyph.image(active: false)
+    private lazy var activeUpdateIcon: NSImage? = SwayGlyph.image(active: true, badge: true)
+    private lazy var pausedUpdateIcon: NSImage? = SwayGlyph.image(active: false, badge: true)
 
     init(presentsSetupOnLaunch: Bool = true) {
         self.presentsSetupOnLaunch = presentsSetupOnLaunch
@@ -64,7 +64,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         ExcludedAppsManager.shared.start()
         HotkeyManager.shared.startWithSavedHotkey()
         _ = EdgeMapHUD.shared // Listens for the hold-to-show hotkey.
+        // Waveform 6 is the actuator's firmest click; unknown2 follows HapticKey.
+        HapticOutput.strongActuator = { MTBridge_Actuate(6, 0, 2) != 0 }
         installMenuBarScroll()
+
+        // Sway's chosen theme must reach AppKit too, or a Light choice on a
+        // dark system draws light-mode text on dark glass. Only Sway's own
+        // windows and panel: the status item follows the real menu bar.
+        TrackpadSettings.shared.$appearanceMode.removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.applyTheme() }.store(in: &cancellables)
 
         TrackpadSettings.shared.$brightnessFollowsPointer.removeDuplicates()
             .receive(on: DispatchQueue.main)
@@ -170,16 +179,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             .sink { _ in controls.refreshAccess() }.store(in: &cancellables)
 
         if presentsSetupOnLaunch, setupProgress.shouldPresent(hasAccess: AXIsProcessTrusted()) {
-            DispatchQueue.main.async { [weak self] in
-                self?.showGettingStarted()
-                // Explain the request in a visible window first. Ask once on
-                // first launch; denial never causes repeated launch prompts.
-                if !AXIsProcessTrusted(), !UserDefaults.standard.bool(forKey: "hasRequestedLaunchAccessibility") {
-                    UserDefaults.standard.set(true, forKey: "hasRequestedLaunchAccessibility")
-                    AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
-                }
-            }
+            // The guide explains Accessibility first and asks only when the
+            // person chooses Allow; no system prompt appears by surprise.
+            DispatchQueue.main.async { [weak self] in self?.showGettingStarted() }
         }
+    }
+
+    private var themeAppearance: NSAppearance? { TrackpadSettings.shared.themeAppearance }
+
+    private func applyTheme() {
+        let appearance = themeAppearance
+        popover?.appearance = appearance
+        for window in managedWindows { window.appearance = appearance }
     }
 
     /// Scroll over the menu bar icon: volume, or brightness while holding ⌥.
@@ -262,7 +273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             window = existingWindow
         } else {
             window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 700, height: 640),
+                contentRect: NSRect(x: 0, y: 0, width: 820, height: 660),
                 styleMask: [.titled, .closable, .miniaturizable],
                 backing: .buffered,
                 defer: false
@@ -305,8 +316,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
 
     @objc func showGettingStarted() {
         if let welcomeWindow { present(welcomeWindow); return }
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 550),
+        // Content sits below a transparent title bar rather than under it, so
+        // the page keeps its exact size: no safe-area shift, clipping or gap.
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 600),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.isMovableByWindowBackground = true
         window.title = "Welcome to Sway"
         window.identifier = NSUserInterfaceItemIdentifier("Sway.Welcome")
         window.isReleasedWhenClosed = false
@@ -316,7 +332,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             openControls: { [weak self] in
                 self?.setupProgress.finish(hasAccess: AXIsProcessTrusted())
                 self?.welcomeWindow?.close()
-                self?.showQuickControls()
+                // Finish where Sway lives: its menu, not another window.
+                self?.revealMenuBar()
             }))
         host.sizingOptions = [.intrinsicContentSize, .preferredContentSize]
         window.contentViewController = host
@@ -349,6 +366,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     }
 
     private func present(_ window: NSWindow) {
+        window.appearance = themeAppearance
         dockPresence.windowWillOpen(window)
         focus.show(window, closingPrevious: { self.closePopover() })
     }
@@ -374,25 +392,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     }
 
     @objc func revealMenuBar() { showPopover() }
-
-    private func menuIcon(_ name: String) -> NSImage? {
-        let icon = NSImage(systemSymbolName: name, accessibilityDescription: "Sway")
-        icon?.isTemplate = true
-        return icon
-    }
-
-    private func badgedMenuIcon(_ name: String) -> NSImage? {
-        guard let symbol = menuIcon(name) else { return nil }
-        let image = NSImage(size: NSSize(width: 22, height: 18), flipped: false) { _ in
-            symbol.draw(in: NSRect(x: 0, y: 1, width: 16, height: 16))
-            NSColor.labelColor.setFill()
-            NSBezierPath(ovalIn: NSRect(x: 18, y: 1, width: 4, height: 4)).fill()
-            return true
-        }
-        image.isTemplate = true
-        image.accessibilityDescription = "Sway — update available"
-        return image
-    }
 
     private func updateMenuBar() {
         guard let button = statusItem?.button else { return }
@@ -438,6 +437,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         }
         ControlCenterModel.shared.setVisible("popover", true)
         ControlCenterModel.shared.refresh()
+        popover.appearance = themeAppearance
         popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         WindowFocusCoordinator.activateApplication()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)

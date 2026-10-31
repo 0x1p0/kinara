@@ -1,21 +1,24 @@
 import AppKit
 
-/// Public macOS patterns, not an undocumented actuator-strength control.
+/// Soft, Standard and Crisp are public macOS patterns. Strongest drives the
+/// trackpad's actuator directly for a firmer click than any public pattern,
+/// and falls back to Crisp wherever that private actuator is unavailable.
 enum HapticStyle: String, CaseIterable, Identifiable {
-    case soft, standard, crisp
+    case soft, standard, crisp, strong
     var id: String { rawValue }
     var label: String {
         switch self {
         case .soft: return "Soft"
         case .standard: return "Standard"
         case .crisp: return "Crisp"
+        case .strong: return "Strongest"
         }
     }
     var pattern: NSHapticFeedbackManager.FeedbackPattern {
         switch self {
         case .soft: return .alignment
         case .standard: return .generic
-        case .crisp: return .levelChange
+        case .crisp, .strong: return .levelChange
         }
     }
 }
@@ -64,8 +67,8 @@ struct GestureHapticFeedback {
         return configuration.onStart ? pulse(at: time) : nil
     }
 
-    /// A notch always uses the crisp pattern so it reads as a detent, not a step.
-    static let notchStyle: HapticStyle = .crisp
+    /// A notch is at least crisp so it reads as a detent, not a step.
+    var notchStyle: HapticStyle { configuration.style == .strong ? .strong : .crisp }
 
     mutating func update(value: Double, bounds: ClosedRange<Double>, at time: Double,
                          notches: [Double] = []) -> HapticStyle? {
@@ -81,7 +84,7 @@ struct GestureHapticFeedback {
         if notches.contains(where: { abs($0 - value) < 0.005 && abs($0 - previous) >= 0.005 }) {
             guard pulse(at: time) != nil else { return nil }
             self.anchor = value
-            return Self.notchStyle
+            return notchStyle
         }
         let reachedLimit = (value <= bounds.lowerBound + 0.000_001 && previous > bounds.lowerBound + 0.000_001)
             || (value >= bounds.upperBound - 0.000_001 && previous < bounds.upperBound - 0.000_001)
@@ -108,16 +111,22 @@ struct GestureHapticFeedback {
 /// The performer is fetched per tap: macOS can change the active input device.
 final class HapticOutput {
     static let shared = HapticOutput()
+    /// Installed by the app at launch: fires the actuator's strongest waveform
+    /// and reports whether it did. Unset (tests, unsupported Macs) means Crisp.
+    static var strongActuator: (() -> Bool)?
     private let now: () -> Double
     private let perform: (NSHapticFeedbackManager.FeedbackPattern, NSHapticFeedbackManager.PerformanceTime) -> Void
+    private let strong: (() -> Bool)?
     private var lastPulseTime: Double?
 
     init(now: @escaping () -> Double = { ProcessInfo.processInfo.systemUptime },
          perform: @escaping (NSHapticFeedbackManager.FeedbackPattern, NSHapticFeedbackManager.PerformanceTime) -> Void = {
              NSHapticFeedbackManager.defaultPerformer.perform($0, performanceTime: $1)
-         }) {
+         },
+         strong: (() -> Bool)? = nil) {
         self.now = now
         self.perform = perform
+        self.strong = strong
     }
 
     func play(_ style: HapticStyle) {
@@ -125,6 +134,7 @@ final class HapticOutput {
         guard time.isFinite,
               lastPulseTime.map({ time - $0 >= GestureHapticFeedback.minimumInterval }) ?? true else { return }
         lastPulseTime = time
+        if style == .strong, (strong ?? Self.strongActuator)?() == true { return }
         perform(style.pattern, .now)
     }
 }

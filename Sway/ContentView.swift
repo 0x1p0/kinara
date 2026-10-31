@@ -295,7 +295,7 @@ struct MenuBarView: View {
     @ObservedObject private var settings: TrackpadSettings
     @ObservedObject private var session = SwaySession.shared
     @ObservedObject private var monitor = TrackpadMonitor.shared
-    @ObservedObject private var telemetry = GestureTelemetry.shared
+    private let telemetry = GestureTelemetry.shared
     @ObservedObject private var exclusions = ExcludedAppsManager.shared
     @ObservedObject private var updates = UpdateChecker.shared
     @StateObject private var controls: ControlCenterModel
@@ -315,16 +315,34 @@ struct MenuBarView: View {
         _controls = StateObject(wrappedValue: preview ? ControlCenterModel(settings: settings, preview: true) : .shared)
     }
 
+    /// Light chosen in Sway on a dark Mac, or the reverse. The popover's
+    /// glass passes the system-colored content behind it straight through.
+    private var themeDiffersFromSystem: Bool {
+        let systemDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        return (settings.appearanceMode == "light" && systemDark) || (settings.appearanceMode == "dark" && !systemDark)
+    }
+
+    private var statusLine: String {
+        if !controls.hasAccess { return "Needs Accessibility" }
+        if !settings.isEnabled { return session.pauseUntil == nil || preview ? "Paused" : "Paused for a while" }
+        if exclusions.activeAppIsExcluded && !preview { return "Paused in \(exclusions.currentAppName)" }
+        if let id = exclusions.currentAppBundleID, let profile = settings.appProfiles[id], !preview { return "\(profile.name) profile" }
+        return "Edges ready"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
-            HStack(spacing: 8) {
-                Text("Sway").font(.system(size: 14, weight: .semibold))
+            HStack(spacing: 10) {
+                SwayLogo(size: 30, dimmed: !settings.isEnabled)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Sway").font(.system(size: 14, weight: .semibold))
+                    Text(statusLine).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                }
                 Spacer()
-                Text("Gestures").font(.system(size: 11)).foregroundStyle(.secondary)
                 Toggle("Enable trackpad gestures", isOn: Binding(get: { settings.isEnabled }, set: {
                     if preview { settings.isEnabled = $0 } else { session.setEnabled($0) }
                 }))
-                .labelsHidden().toggleStyle(.switch).controlSize(.mini)
+                .labelsHidden().toggleStyle(.switch).controlSize(.small)
                 .help(settings.isEnabled ? "Pause edge gestures; sliders stay available" : "Resume edge gestures")
             }
 
@@ -380,15 +398,23 @@ struct MenuBarView: View {
                         .font(.system(size: 11)).frame(maxWidth: .infinity, alignment: .leading)
                 }.buttonStyle(.plain).help("Review and install the signed update")
             }
+            HStack(spacing: 8) {
+                MenuTile(title: "Edge map", icon: "map") { if !preview { EdgeMapHUD.shared.show(autoHide: true) } }
+                if settings.isEnabled {
+                    MenuTile(title: "Pause 15 min", icon: "pause.circle") { if !preview { session.pause(for: 15 * 60) } else { settings.isEnabled = false } }
+                } else {
+                    MenuTile(title: "Resume", icon: "play.circle") { if preview { settings.isEnabled = true } else { session.setEnabled(true) } }
+                }
+                MenuTile(title: "Settings", icon: "gearshape", action: openSettings)
+                    .keyboardShortcut(",", modifiers: .command)
+            }
             Divider()
             HStack {
-                Button("Settings…", action: openSettings)
-                    .keyboardShortcut(",", modifiers: .command)
-                Spacer()
                 if controls.undoValues != nil {
-                    Button { controls.undo() } label: { Image(systemName: "arrow.uturn.backward") }
-                        .help("Undo last adjustment").accessibilityLabel("Undo last adjustment")
+                    Button { controls.undo() } label: { Label("Undo", systemImage: "arrow.uturn.backward") }
+                        .help("Undo your last adjustment").accessibilityLabel("Undo last adjustment")
                 }
+                Spacer()
                 MoreOptionsButton(isExpanded: showsMoreOptions) { showsMoreOptions.toggle() }
                     .frame(width: 24, height: 20)
             }
@@ -398,9 +424,6 @@ struct MenuBarView: View {
                     Button { if !preview { (NSApp.delegate as? AppDelegate)?.showQuickControls() } } label: {
                         Label("Open Controls…", systemImage: "macwindow").frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    Button { if !preview { EdgeMapHUD.shared.show(autoHide: true) } } label: {
-                        Label("Show Edge Map", systemImage: "map").frame(maxWidth: .infinity, alignment: .leading)
-                    }.help("What every edge does in the app you’re using")
                     Button { if !preview { (NSApp.delegate as? AppDelegate)?.checkForUpdates() } } label: {
                         Label("Software Updates…", systemImage: "arrow.down.circle").frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -425,7 +448,8 @@ struct MenuBarView: View {
         .padding(17)
         .frame(width: 320)
         .fixedSize(horizontal: false, vertical: true)
-        .modifier(MenuGlassSurface(standalone: previewStandaloneSurface, forceOpaque: previewReduceTransparency))
+        .modifier(MenuGlassSurface(standalone: previewStandaloneSurface, forceOpaque: previewReduceTransparency,
+                                   themeDiffersFromSystem: !preview && themeDiffersFromSystem))
         .tint(.primary)
         .preferredColorScheme(settings.resolvedColorScheme)
     }
@@ -443,24 +467,29 @@ private struct QuickLevelRow: View {
     var onMute: (() -> Void)?
 
     var body: some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 7) {
+        VStack(spacing: 6) {
+            HStack(spacing: 9) {
                 if let onMute {
                     Button(action: onMute) {
                         Image(systemName: muted || value <= 0.01 ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                            .frame(width: 18, height: 18)
+                            .frame(width: 26, height: 26)
+                            .background(Color.primary.opacity(0.08), in: Circle())
                     }
                     .buttonStyle(.plain).disabled(!available || !muteAvailable)
                     .help(muted || value <= 0.01 ? "Restore audio" : "Mute audio")
                     .accessibilityLabel(muted || value <= 0.01 ? "Restore audio" : "Mute audio")
                 } else {
-                    Image(systemName: action.icon).frame(width: 18, height: 18)
+                    Image(systemName: action.icon).frame(width: 26, height: 26)
+                        .background(Color.primary.opacity(0.08), in: Circle())
                 }
-                Text(action.label).fontWeight(.medium)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(action.label).fontWeight(.medium)
+                    Text(device).font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(1)
+                }
                 Spacer()
                 Text(available ? (muted ? "Muted" : "\(Int((value * 100).rounded()))%") : "Unavailable")
-                    .monospacedDigit().foregroundStyle(.secondary)
-            }.font(.system(size: 12))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded)).monospacedDigit().foregroundStyle(.secondary)
+            }.font(.system(size: 12.5))
             Slider(value: $value, in: bounds, onEditingChanged: { if $0 { onBegin() } })
                 .controlSize(.small).disabled(!available)
                 .accessibilityLabel(action.label)
@@ -470,14 +499,38 @@ private struct QuickLevelRow: View {
     }
 }
 
+/// A compact action in the menu: one icon, one word, one click.
+private struct MenuTile: View {
+    let title: String
+    let icon: String
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 15, weight: .medium))
+                Text(title).font(.system(size: 10.5, weight: .medium)).lineLimit(1)
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 9)
+            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+        }.buttonStyle(.plain).accessibilityLabel(title)
+    }
+}
+
 private struct MenuGlassSurface: ViewModifier {
     var standalone = false
     var forceOpaque = false
+    var themeDiffersFromSystem = false
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     func body(content: Content) -> some View {
-        if !standalone {
-            // NSPopover owns its native glass. Another material here would
-            // flatten it and make the panel look opaque.
+        if !standalone && themeDiffersFromSystem {
+            // Clear glass shows the system-colored windows behind it, so a
+            // Light choice on a dark Mac turned into a flat grey slab. A
+            // frosted backing in the chosen mode keeps it clean and legible.
+            content.background(.thickMaterial)
+        } else if !standalone {
+            // NSPopover owns its native glass when Sway follows the system.
+            // Another material here would flatten it.
             content
         } else if reduceTransparency || forceOpaque {
             content.background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 20))
@@ -505,7 +558,10 @@ private struct PopoverMaterial: NSViewRepresentable {
 struct ContentView: View {
     @ObservedObject private var settings: TrackpadSettings
     @ObservedObject private var monitor = TrackpadMonitor.shared
-    @ObservedObject private var telemetry = GestureTelemetry.shared
+    // Not observed: touch samples publish up to 30 times a second, and the
+    // whole window must not redraw for them. The map and the safe-test panel
+    // observe it themselves; this reads only rarely-changing flags.
+    private let telemetry = GestureTelemetry.shared
     @ObservedObject private var exclusions = ExcludedAppsManager.shared
     @ObservedObject private var login = LoginItemManager.shared
     @ObservedObject private var updates: UpdateChecker
@@ -521,7 +577,7 @@ struct ContentView: View {
     @State private var transferMessage: String?
     private let preview: Bool
 
-    init(initialPane: SettingsPane = .gestures, preview: Bool = false, settings: TrackpadSettings = .shared, updates: UpdateChecker = .shared) {
+    init(initialPane: SettingsPane = .overview, preview: Bool = false, settings: TrackpadSettings = .shared, updates: UpdateChecker = .shared) {
         self.preview = preview
         self.settings = settings
         self.updates = updates
@@ -531,45 +587,69 @@ struct ContentView: View {
 
     private var visiblePanes: [SettingsPane] { SettingsPane.allCases.filter { $0.matches(search) } }
 
+    /// One line that says what Sway is doing right now.
+    private var status: (title: String, detail: String, icon: String) {
+        if !controls.hasAccess { return ("Needs access", "Allow Accessibility to use gestures", "lock") }
+        if !settings.isEnabled { return ("Paused", "Sliders still work", "pause.circle") }
+        if exclusions.activeAppIsExcluded && !preview { return ("Paused here", "Excluded in \(exclusions.currentAppName)", "pause.circle") }
+        if let id = exclusions.currentAppBundleID, settings.appProfiles[id] != nil, !preview {
+            return ("Active", "\(settings.appProfiles[id]?.name ?? exclusions.currentAppName) profile", "checkmark.circle.fill")
+        }
+        return ("Active", "Edges are ready", "checkmark.circle.fill")
+    }
+
     var body: some View {
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Sway").font(.system(size: 20, weight: .semibold))
-                TextField("Find a setting", text: $search)
-                    .textFieldStyle(.roundedBorder).accessibilityLabel("Find a setting")
-                VStack(spacing: 4) {
-                    ForEach(visiblePanes) { item in
-                        Button { pane = item } label: {
-                            Label(item.title, systemImage: item.icon)
-                                .font(.system(size: 12, weight: pane == item ? .semibold : .regular))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 10).padding(.vertical, 10)
-                                .background(pane == item ? Color.primary.opacity(0.09) : .clear, in: RoundedRectangle(cornerRadius: 8))
-                                .contentShape(RoundedRectangle(cornerRadius: 8))
-                        }.buttonStyle(.plain).accessibilityAddTraits(pane == item ? [.isSelected] : [])
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 10) {
+                    SwayLogo(size: 34)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Sway").font(.system(size: 15, weight: .semibold))
+                        Label(status.title, systemImage: status.icon).font(.system(size: 11)).foregroundStyle(.secondary)
+                            .labelStyle(.titleAndIcon)
                     }
+                    Spacer(minLength: 4)
+                    Toggle("Gestures", isOn: Binding(get: { settings.isEnabled }, set: { value in
+                        if preview { settings.isEnabled = value } else { SwaySession.shared.setEnabled(value) }
+                    })).labelsHidden().toggleStyle(.switch).controlSize(.mini)
+                        .help(settings.isEnabled ? "Pause edge gestures" : "Resume edge gestures")
                 }
+                TextField("Search", text: $search)
+                    .textFieldStyle(.roundedBorder).accessibilityLabel("Find a setting")
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(SettingsPane.groups, id: \.self) { group in
+                            let items = visiblePanes.filter { $0.group == group }
+                            if !items.isEmpty {
+                                if !group.isEmpty {
+                                    Text(group).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                                        .padding(.horizontal, 8).padding(.top, 12).padding(.bottom, 4)
+                                }
+                                ForEach(items) { item in sidebarRow(item) }
+                            }
+                        }
+                    }
+                }.scrollIndicators(.never)
                 if visiblePanes.isEmpty { Text("No matching settings").font(.system(size: 12)).foregroundStyle(.secondary) }
-                Spacer()
-                Button("Getting started…") { if !preview { (NSApp.delegate as? AppDelegate)?.showGettingStarted() } }
-                    .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(.secondary)
+                Button { if !preview { (NSApp.delegate as? AppDelegate)?.showGettingStarted() } } label: {
+                    Label("Getting started", systemImage: "sparkles").font(.system(size: 12))
+                }.buttonStyle(.plain).foregroundStyle(.secondary)
             }
-            .padding(16).frame(width: 198)
-            .background(Color.primary.opacity(0.025))
+            .padding(14).frame(width: 224)
+            .background(Color.primary.opacity(0.03))
             Divider()
             VStack(alignment: .leading, spacing: 0) {
                 if visiblePanes.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: "magnifyingglass").font(.system(size: 28)).foregroundStyle(.secondary)
                         Text("No settings found").font(.headline)
-                        Text("Try a word like haptics, typing, or updates.").font(.subheadline).foregroundStyle(.secondary)
+                        Text("Try a word like haptics, paste, corner, or updates.").font(.subheadline).foregroundStyle(.secondary)
                         Button("Clear search") { search = "" }.buttonStyle(.bordered)
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                PageTitle(pane.title, subtitle: pane.detail).padding(22)
-                Divider()
+                PageTitle(pane.title, subtitle: pane.detail, icon: pane.icon).padding(.horizontal, 28).padding(.top, 24).padding(.bottom, 16)
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 22) {
                         if !controls.hasAccess && [.gestures, .protection, .about].contains(pane) { permissionCard }
                         if controls.hasAccess && settings.isEnabled && !monitor.isRunning && !preview && pane == .gestures {
                             VStack(alignment: .leading, spacing: 10) {
@@ -579,6 +659,7 @@ struct ContentView: View {
                         }
                         if let message = controls.message { Notice(message, icon: "exclamationmark.triangle", tint: .primary) }
                         switch pane {
+                        case .overview: overviewPage
                         case .gestures: gesturesPage
                         case .taps: tapsPage
                         case .profiles: profilesPage
@@ -590,12 +671,12 @@ struct ContentView: View {
                         case .updates: SettingsSection("Updates") { UpdatePreferencesContent(updates: updates, preview: preview) }
                         case .about: aboutPage
                         }
-                    }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
+                    }.padding(.horizontal, 28).padding(.bottom, 28).frame(maxWidth: .infinity, alignment: .leading)
                 }.id(pane)
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .frame(width: 700, height: 640)
+        .frame(width: 820, height: 660)
         .background(Color(nsColor: .windowBackgroundColor))
         .preferredColorScheme(settings.resolvedColorScheme)
         .tint(SwayTheme.accent)
@@ -618,6 +699,22 @@ struct ContentView: View {
         } message: { Text("Restores zone assignments, layers, taps, feel, sensitivity, palm protection, haptics, and limits. Your app profiles, recorded shortcuts, excluded apps, and appearance stay as they are.") }
     }
 
+    private func sidebarRow(_ item: SettingsPane) -> some View {
+        Button { pane = item } label: {
+            HStack(spacing: 9) {
+                Image(systemName: item.icon).font(.system(size: 11, weight: .semibold))
+                    .frame(width: 22, height: 22)
+                    .foregroundStyle(pane == item ? Color(nsColor: .windowBackgroundColor) : .primary)
+                    .background(pane == item ? Color.primary : Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                Text(item.title).font(.system(size: 13, weight: pane == item ? .semibold : .regular))
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 6).padding(.vertical, 5)
+            .background(pane == item ? Color.primary.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+        }.buttonStyle(.plain).accessibilityAddTraits(pane == item ? [.isSelected] : [])
+    }
+
     private var permissionCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Allow trackpad gestures", systemImage: "lock.shield")
@@ -634,6 +731,107 @@ struct ContentView: View {
         .padding(14).background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
     }
 
+
+    // MARK: Overview
+
+    private var overviewPage: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            HStack(alignment: .center, spacing: 16) {
+                Image(systemName: status.icon).font(.system(size: 26, weight: .medium))
+                    .frame(width: 54, height: 54)
+                    .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(controls.hasAccess ? (settings.isEnabled ? "Sway is ready" : "Gestures are paused") : "One step left")
+                        .font(.system(size: 18, weight: .semibold))
+                    Text(controls.hasAccess ? (settings.isEnabled ? (status.detail == "Edges are ready" ? "Swipe an edge, or double-tap a corner." : "\(status.detail) is active for the app in front.") : "Your sliders still work. Turn gestures back on anytime.")
+                                            : "Allow Accessibility so Sway can feel your edge swipes. Touch data stays on your Mac.")
+                        .font(.system(size: 12.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                if !controls.hasAccess {
+                    Button("Allow…", action: openAccessibility).buttonStyle(MonochromePrimaryButtonStyle())
+                } else if !settings.isEnabled {
+                    Button("Resume") { if !preview { SwaySession.shared.setEnabled(true) } else { settings.isEnabled = true } }
+                        .buttonStyle(MonochromePrimaryButtonStyle())
+                }
+            }.swayCard()
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Your trackpad").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
+                    Spacer()
+                    Text("Click a zone to change it").font(.system(size: 11)).foregroundStyle(.secondary)
+                }.padding(.horizontal, 4)
+                TrackpadMap(settings: settings, selectedZone: nil, telemetry: telemetry, showsTouches: telemetry.isLiveViewing,
+                            onSelect: { zone in
+                                if ["left", "right"].contains(zone) { selectedZone = zone }
+                                pane = zone == "bottom" || zone.hasPrefix("top") || ["left", "right"].contains(zone) ? .gestures : .taps
+                            }, showsCorners: true)
+                    .frame(height: 190)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Quick settings").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).padding(.leading, 4)
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                    QuickTile(title: "Haptics", value: settings.hapticFeedback ? settings.hapticStyle.label : "Off", icon: "waveform.path", isOn: settings.hapticFeedback) {
+                        settings.hapticFeedback.toggle()
+                    }
+                    QuickTile(title: "Fine control", value: settings.precisionEnabled ? "On" : "Off", icon: "scope", isOn: settings.precisionEnabled) {
+                        settings.precisionEnabled.toggle()
+                    }
+                    QuickTile(title: "Notches", value: settings.notchesEnabled ? "At 50%" : "Off", icon: "dial.medium", isOn: settings.notchesEnabled) {
+                        settings.notchesEnabled.toggle()
+                    }
+                    QuickTile(title: "Indicator", value: settings.osdStyle == "edge" ? "Follows finger" : settings.osdStyle == "off" ? "Off" : "Pill", icon: "rectangle.portrait.on.rectangle.portrait", isOn: settings.osdStyle != "off") {
+                        settings.osdStyle = settings.osdStyle == "edge" ? "horizontal" : "edge"
+                    }
+                    QuickTile(title: "Speed curve", value: settings.accelerationEnabled ? "On" : "Off", icon: "gauge.with.dots.needle.67percent", isOn: settings.accelerationEnabled) {
+                        settings.accelerationEnabled.toggle()
+                    }
+                    QuickTile(title: "Menu bar scroll", value: settings.menuBarScroll ? "On" : "Off", icon: "computermouse", isOn: settings.menuBarScroll) {
+                        settings.menuBarScroll.toggle()
+                    }
+                }
+            }
+
+            let ideas = suggestions
+            if !ideas.isEmpty {
+                SettingsSection("Try next") {
+                    ForEach(Array(ideas.enumerated()), id: \.offset) { index, idea in
+                        HStack(spacing: 12) {
+                            Image(systemName: idea.icon).font(.system(size: 14)).frame(width: 30, height: 30)
+                                .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(idea.title).font(.system(size: 13.5, weight: .medium))
+                                Text(idea.detail).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer(minLength: 8)
+                            Button("Set up") { pane = idea.pane }.buttonStyle(.bordered).controlSize(.small)
+                        }.padding(.horizontal, 16).padding(.vertical, 11)
+                        if index < ideas.count - 1 { Divider().padding(.leading, 58) }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Next steps that match what isn't set up yet, never more than three.
+    private var suggestions: [(title: String, detail: String, icon: String, pane: SettingsPane)] {
+        var ideas: [(String, String, String, SettingsPane)] = []
+        if !EdgeSlot.allTaps.contains(where: { settings.slotIsAssigned($0) }) {
+            ideas.append(("Double-tap a corner to paste", "Corners make great buttons: paste, Mission Control, a Shortcut.", "hand.tap", .taps))
+        }
+        if settings.appProfiles.isEmpty {
+            ideas.append(("Give an app its own edges", "Switch tabs in your browser, scrub in your editor.", "square.stack", .profiles))
+        }
+        if !EdgeSlot.sides.contains(where: { settings.slotIsAssigned(EdgeSlot.option($0)) }) {
+            ideas.append(("Hold ⌥ for a second action", "Each side edge can do two things.", "option", .gestures))
+        }
+        if settings.cheatSheetHotkey.isEmpty {
+            ideas.append(("Peek at your edges", "Hold a shortcut to see what every edge does in the app you’re using.", "map", .general))
+        }
+        return Array(ideas.prefix(3)).map { (title: $0.0, detail: $0.1, icon: $0.2, pane: $0.3) }
+    }
 
     private var everydayBinding: (String) -> Binding<EdgeBinding> {
         { slot in Binding(get: { settings.baseBinding(slot) }, set: { settings.setBaseBinding($0, for: slot) }) }
@@ -758,7 +956,7 @@ struct ContentView: View {
 
     private var tapsPage: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Tap twice quickly for a double-tap. Tap once, then touch again and hold still for tap-and-hold. Both start with a short, still tap, so a resting palm never triggers them. Taps use \(settings.minimumFingers == 1 ? "one finger" : "two fingers"), like your swipes.")
+            Text("Tap twice quickly for a double-tap. Tap once, then touch again and hold still for tap-and-hold. Both start with a short, still tap, so a resting palm never triggers them. Edge taps use \(settings.minimumFingers == 1 ? "one finger" : "two fingers"), like your swipes\(settings.minimumFingers == 2 && settings.cornerTapFingers == 1 ? "; corners use one finger" : "").")
                 .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             TrackpadMap(settings: settings, selectedZone: nil, telemetry: telemetry,
                         showsTouches: telemetry.isLiveViewing, onSelect: nil, showsCorners: true)
@@ -773,6 +971,14 @@ struct ContentView: View {
             }
             SettingsSection("Corners") {
                 LabeledSlider("Corner size", detail: "Corners with a tap action take this much of each edge, for taps only. Swipes still start from the side edges.", value: $settings.tapCornerSize, range: TrackpadSettings.cornerSizeRange, display: "\(Int((settings.tapCornerSize * 100).rounded()))%")
+                if settings.minimumFingers == 2 {
+                    Divider()
+                    SettingRow("Fingers for corner taps", detail: settings.cornerTapFingers == 1 ? "One finger in a corner, two fingers on the edges. Tap-to-click in a corner with an action belongs to Sway." : "Same as your swipes: two fingers.") {
+                        Picker("Fingers for corner taps", selection: $settings.cornerTapFingers) {
+                            Text("Like swipes").tag(0); Text("1 finger").tag(1)
+                        }.pickerStyle(.segmented).frame(width: 190)
+                    }
+                }
                 ForEach(["topLeftCorner", "topRightCorner", "bottomLeftCorner", "bottomRightCorner"], id: \.self) { corner in
                     Divider()
                     SlotEditor(title: "\(EdgeSlot.title(corner)) double-tap", binding: everydayBinding(EdgeSlot.tap(corner, "doubleTap")), tapOnly: true)
@@ -882,51 +1088,7 @@ struct ContentView: View {
                     .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             DisclosureGroup("Test gestures safely", isExpanded: $showsSafeTest) {
-                VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 12) {
-                Image(systemName: "testtube.2").font(.system(size: 24)).foregroundStyle(SwayTheme.accent)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(telemetry.isTesting ? "Test running" : "Safe test")
-                        .font(.system(size: 14, weight: .semibold))
-                    Text("All actions are disabled during testing. No device changes or shortcuts are sent.")
-                        .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 0)
-                Button(telemetry.isTesting ? "Stop test" : "Start test") {
-                    guard !preview else { return }
-                    if telemetry.isTesting { endTesting() }
-                    else { monitor.cancelCurrentGesture(); telemetry.resetCounters(); telemetry.isTesting = true; monitor.start() }
-                }
-                .buttonStyle(.bordered)
-                .disabled(!controls.hasAccess || !settings.isEnabled)
-            }.swayCard()
-            if !settings.isEnabled {
-                HStack {
-                    Text("Gestures are paused.").font(.system(size: 12)).foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Resume") { if !preview { SwaySession.shared.setEnabled(true) } }.buttonStyle(.bordered)
-                }
-            }
-            TrackpadMap(settings: settings, selectedZone: nil, telemetry: telemetry, showsTouches: telemetry.isTesting, onSelect: nil)
-                .frame(height: 145)
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Label(telemetry.isTesting ? telemetry.phase : "Ready to test", systemImage: telemetry.phase == "Accepted" && telemetry.isTesting ? "checkmark.circle.fill" : "waveform.path")
-                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(SwayTheme.accent)
-                    Spacer()
-                    Text("\(telemetry.acceptedCount) accepted · \(telemetry.rejectedCount) stopped")
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
-                }
-                Text(telemetry.isTesting ? telemetry.reason : "Start a test, then begin a deliberate swipe inside an edge zone.")
-                    .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 0) {
-                    EvidenceMetric(label: "Contacts", value: "\(telemetry.fingerCount)")
-                    EvidenceMetric(label: "Travel", value: String(format: "%.1f%%", telemetry.displacement * 100))
-                    EvidenceMetric(label: "Straightness", value: telemetry.sampleCount > 1 ? "\(Int(telemetry.straightness * 100))%" : "—")
-                    EvidenceMetric(label: "Duration", value: "\(telemetry.elapsedMilliseconds) ms")
-                }
-            }.swayCard()
-                }.padding(.top, 14)
+                SafeTestPanel(settings: settings, controls: controls, preview: preview, endTesting: endTesting).padding(.top, 14)
             }.font(.system(size: 13, weight: .medium))
         }
     }
@@ -1002,7 +1164,7 @@ struct ContentView: View {
                 SettingRow("Tap style") {
                     Picker("Haptic tap style", selection: $settings.hapticStyle) {
                         ForEach(HapticStyle.allCases) { style in Text(style.label).tag(style) }
-                    }.pickerStyle(.segmented).frame(width: 230)
+                    }.pickerStyle(.segmented).frame(width: 310)
                 }
                 Divider()
                 SettingRow("Level steps", detail: "Smaller steps give more taps.") {
@@ -1020,7 +1182,7 @@ struct ContentView: View {
                     .buttonStyle(.bordered)
                     .disabled(telemetry.isTesting)
                     .help("Click while keeping a finger on your Force Touch trackpad.")
-                    Text(telemetry.isTesting ? "Stop the gesture test to preview haptics." : "Keep a finger resting on your Force Touch trackpad. These are tap patterns; macOS controls the strength and may suppress feedback.")
+                    Text(telemetry.isTesting ? "Stop the gesture test to preview haptics." : settings.hapticStyle == .strong ? "Strongest drives the trackpad’s actuator directly for the firmest click it can make. It uses a private macOS interface and falls back to Crisp where unavailable." : "Keep a finger resting on your Force Touch trackpad. These are tap patterns; macOS controls the strength and may suppress feedback.")
                         .font(.system(size: 12)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }.padding(14)
@@ -1197,7 +1359,7 @@ struct ContentView: View {
     /// Live finger dots only while a page with a map is on screen.
     private func updateLiveView(_ value: SettingsPane) {
         guard !preview else { return }
-        telemetry.isLiveViewing = value == .gestures || value == .taps
+        telemetry.isLiveViewing = value == .overview || value == .gestures || value == .taps
     }
 
     private func endTesting() {
@@ -1285,86 +1447,412 @@ private struct AccessibilityRecoveryHelp: View {
     }
 }
 
+/// First run, one calm step at a time. macOS's permission prompt appears
+/// only when the person chooses Allow, never by surprise at launch, and the
+/// guide notices the grant by itself while it is on screen.
 struct GettingStartedView: View {
+    enum Step: Int, CaseIterable { case welcome, access, practice, personalize, done }
+
     @ObservedObject var settings: TrackpadSettings
     @StateObject private var controls: ControlCenterModel
+    @ObservedObject private var telemetry = GestureTelemetry.shared
+    @ObservedObject private var monitor = TrackpadMonitor.shared
+    @State private var step: Step
+    @State private var requestedAccess = false
+    /// When Allow was pressed, to recognize an old entry that never applies.
+    @State private var requestedAt: Date?
+    @State private var now = Date()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let preview: Bool
+    private let animatesInPreview: Bool
     let openControls: () -> Void
 
-    init(settings: TrackpadSettings = .shared, preview: Bool = false, hasAccess: Bool? = nil, openControls: @escaping () -> Void) {
+    init(settings: TrackpadSettings = .shared, preview: Bool = false, hasAccess: Bool? = nil,
+         previewStep: Step? = nil, animatesInPreview: Bool = false, openControls: @escaping () -> Void) {
         self.settings = settings
         self.preview = preview
+        self.animatesInPreview = animatesInPreview
         self.openControls = openControls
         let controls = preview ? ControlCenterModel(settings: settings, preview: true) : .shared
         if preview, let hasAccess { controls.hasAccess = hasAccess }
         _controls = StateObject(wrappedValue: controls)
+        _step = State(initialValue: previewStep ?? (preview && hasAccess == false ? .access : .welcome))
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 14) {
-                Image(systemName: "waveform.path").font(.system(size: 34, weight: .medium))
-                    .frame(width: 58, height: 58).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Meet Sway").font(.system(size: 25, weight: .semibold))
-                    Text("A lighter touch for your Mac.").font(.system(size: 13)).foregroundStyle(.secondary)
+        VStack(spacing: 0) {
+            Group {
+                switch step {
+                case .welcome: welcome
+                case .access: access
+                case .practice: practice
+                case .personalize: personalize
+                case .done: done
                 }
             }
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 14) {
-                    Text("Your menu bar").font(.system(size: 11)).foregroundStyle(.secondary)
-                    Spacer()
-                    Image(systemName: "waveform.path").font(.system(size: 18, weight: .semibold))
-                        .padding(8).background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 7))
-                        .accessibilityLabel("Sway menu bar icon")
-                    Image(systemName: "wifi").foregroundStyle(.secondary)
-                    Text("9:41").font(.system(size: 12)).foregroundStyle(.secondary)
-                }.padding(.horizontal, 12).padding(.vertical, 5)
-                    .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
-                Text("Sway lives at the top of your screen. Click this waveform for volume and brightness.")
-                    .font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
-                Button("Show menu bar controls") {
-                    if !preview { (NSApp.delegate as? AppDelegate)?.revealMenuBar() }
-                }.buttonStyle(.bordered)
-            }
-            VStack(alignment: .leading, spacing: 10) {
-                Label(controls.hasAccess ? "Trackpad access is ready" : "Allow trackpad gestures",
-                      systemImage: controls.hasAccess ? "checkmark.circle" : "hand.draw")
-                    .font(.system(size: 14, weight: .semibold))
-                Text("Accessibility lets Sway recognize edge swipes and keep them from scrolling. Touch data stays on your Mac.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                if !controls.hasAccess {
-                    HStack {
-                        Button("Open Accessibility Settings…") {
-                            guard !preview else { return }
-                            AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
-                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
-                        }
-                        Button("Check again") { controls.refresh() }
-                    }.buttonStyle(.bordered)
-                    AccessibilityRecoveryHelp()
-                    Text("Use the sliders for now. This guide returns next time you open Sway until trackpad access is ready.")
-                        .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                }
-            }.padding(14).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
-            VStack(alignment: .leading, spacing: 8) {
-                Toggle("Show in Dock while windows are open", isOn: $settings.showDockIcon).toggleStyle(.switch).controlSize(.small)
-                Text("Close the last window to hide the Dock icon; Sway stays in your menu bar. Reopen it from Spotlight or Applications whenever you need controls.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-            Divider()
-            HStack(alignment: .center, spacing: 16) {
-                Text("Checks GitHub for updates daily.\nChange this in Software updates.")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-                Button(controls.hasAccess ? "Get started" : "Continue with sliders", action: openControls)
-                    .buttonStyle(MonochromePrimaryButtonStyle()).keyboardShortcut(.defaultAction)
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .padding(.horizontal, 36).padding(.vertical, 20)
+            .transition(reduceMotion ? .opacity : .asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
+                                                              removal: .move(edge: .leading).combined(with: .opacity)))
+            .id(step)
+            footer
         }
-        .padding(26).frame(width: 460)
+        .frame(width: 560, height: 600)
         .background(Color(nsColor: .windowBackgroundColor))
         .preferredColorScheme(settings.resolvedColorScheme)
         .tint(.primary)
+        .onChange(of: controls.hasAccess) { granted in
+            // Granted in System Settings while the guide waits: move on by itself.
+            guard granted, step == .access else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { go(to: .practice) }
+        }
+        .onChange(of: step) { value in setPracticing(value == .practice) }
+        .background {
+            if step == .access && !controls.hasAccess && !preview {
+                // Checks once a second only while this step waits, even with
+                // System Settings in front; gone as soon as access arrives.
+                AccessWatcher { now = Date(); controls.refreshAccess() }
+            }
+        }
+        .onDisappear { setPracticing(false) }
+    }
+
+    // MARK: Steps
+
+    private var welcome: some View {
+        VStack(spacing: 22) {
+            OnboardingTrackpad(animate: !reduceMotion && (!preview || animatesInPreview)).frame(width: 300, height: 190)
+            VStack(spacing: 8) {
+                Text("Meet Sway").font(.system(size: 30, weight: .bold))
+                Text("The edges of your trackpad become controls: volume, brightness, media, windows, and anything Shortcuts can do.")
+                    .font(.system(size: 14)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true).frame(maxWidth: 420)
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                feature("hand.draw", "Swipe an edge", "Two fingers along the side, just like scrolling.")
+                feature("hand.tap", "Tap a corner", "Double-tap to paste, open Mission Control, and more.")
+                feature("waveform.path", "Feels built in", "Haptic notches, a native indicator, almost no battery.")
+            }.frame(maxWidth: 400)
+        }
+    }
+
+    private var access: some View {
+        VStack(spacing: 20) {
+            Image(systemName: controls.hasAccess ? "checkmark.seal.fill" : "hand.raised.fingers.spread")
+                .font(.system(size: 40, weight: .regular))
+                .frame(width: 88, height: 88)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .contentTransition(.opacity)
+            VStack(spacing: 8) {
+                Text(controls.hasAccess ? "You’re all set" : "Let Sway feel your trackpad").font(.system(size: 24, weight: .bold))
+                Text(controls.hasAccess ? "Accessibility is on. Let’s try a swipe."
+                                        : "macOS asks you to allow Accessibility for apps that respond to gestures. Sway uses it only to recognize edge swipes and keep them from scrolling.")
+                    .font(.system(size: 13.5)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true).frame(maxWidth: 430)
+            }
+            if !controls.hasAccess {
+                VStack(alignment: .leading, spacing: 10) {
+                    privacyLine("lock", "Touch data never leaves your Mac and is never saved.")
+                    privacyLine("eye.slash", "Sway never reads what you type, only that you’re typing.")
+                    privacyLine("arrow.uturn.backward", "You can turn it off anytime in System Settings.")
+                }.padding(16).frame(maxWidth: 430, alignment: .leading)
+                    .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                if requestedAccess {
+                    if staleEntryLikely {
+                        // Switched on, but for an older copy: macOS keeps the
+                        // old entry and never applies it to this one.
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label("Already switched on, but nothing happens?", systemImage: "exclamationmark.circle")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text("That entry belongs to an older copy of Sway. In the list, select Sway and click −. Then choose Allow Accessibility here and switch the new entry on.")
+                                .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            Button("Open Accessibility Settings", action: openAccessibilitySettings).buttonStyle(.bordered).controlSize(.small)
+                        }
+                        .padding(14).frame(maxWidth: 430, alignment: .leading)
+                        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    } else {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Switch on Sway in System Settings. This page continues by itself.")
+                                .font(.system(size: 12)).foregroundStyle(.secondary)
+                        }
+                        Button("No prompt? Open Accessibility Settings", action: openAccessibilitySettings)
+                            .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(.secondary).underline()
+                    }
+                }
+            }
+        }
+    }
+
+    private var staleEntryLikely: Bool {
+        guard let requestedAt, !controls.hasAccess else { return false }
+        return now.timeIntervalSince(requestedAt) > 12
+    }
+
+    private func openAccessibilitySettings() {
+        guard !preview else { return }
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+    }
+
+    private var practice: some View {
+        VStack(spacing: 18) {
+            VStack(spacing: 8) {
+                Text(practiced ? "That’s it" : "Try a swipe").font(.system(size: 24, weight: .bold))
+                Text(practiceInstruction).font(.system(size: 13.5)).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true).frame(maxWidth: 430)
+            }
+            TrackpadMap(settings: settings, selectedZone: practiced ? nil : "right", telemetry: telemetry,
+                        showsTouches: telemetry.isTesting, onSelect: nil)
+                .frame(width: 440, height: 250)
+            Label(practiced ? "Recognized. Nothing on your Mac changed during practice." : controls.hasAccess ? "Practice mode: no levels change yet." : "Gestures need Accessibility. You can practice later in Palm protection.",
+                  systemImage: practiced ? "checkmark.circle.fill" : "info.circle")
+                .font(.system(size: 12)).foregroundStyle(.secondary)
+        }
+    }
+
+    private var personalize: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Make it yours").font(.system(size: 24, weight: .bold))
+                Text("You can change everything later in Settings.").font(.system(size: 13.5)).foregroundStyle(.secondary)
+            }
+            HStack(spacing: 10) {
+                ForEach(GesturePreset.allCases) { preset in
+                    Button { settings.applyGesturePreset(preset) } label: {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Image(systemName: preset.icon).font(.system(size: 18))
+                            Text(preset.title).font(.system(size: 13, weight: .semibold))
+                            Text(preset.detail).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading).padding(12)
+                        .background(Color.primary.opacity(currentPreset == preset ? 0.1 : 0.035), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(currentPreset == preset ? 0.7 : 0.08), lineWidth: currentPreset == preset ? 1.5 : 1))
+                        .contentShape(RoundedRectangle(cornerRadius: 12))
+                    }.buttonStyle(.plain).accessibilityAddTraits(currentPreset == preset ? [.isSelected] : [])
+                }
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Haptic strength").font(.system(size: 13, weight: .semibold))
+                HStack {
+                    Picker("Haptic strength", selection: $settings.hapticStyle) {
+                        ForEach(HapticStyle.allCases) { style in Text(style.label).tag(style) }
+                    }.pickerStyle(.segmented).labelsHidden()
+                    Button("Feel it") { if !preview { HapticOutput.shared.play(settings.hapticStyle) } }.buttonStyle(.bordered)
+                }
+                Text("Rest a finger on the trackpad, then press Feel it.").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Indicator").font(.system(size: 13, weight: .semibold))
+                Picker("Indicator", selection: $settings.osdStyle) {
+                    Text("Pill").tag("horizontal"); Text("Follow finger").tag("edge"); Text("Off").tag("off")
+                }.pickerStyle(.segmented).labelsHidden()
+            }
+        }
+    }
+
+    private var done: some View {
+        VStack(spacing: 20) {
+            HStack(spacing: 14) {
+                Spacer()
+                Image(nsImage: SwayGlyph.image(active: true)).renderingMode(.template)
+                    .padding(7).background(Color.primary.opacity(0.14), in: RoundedRectangle(cornerRadius: 6))
+                    .accessibilityLabel("Sway menu bar icon")
+                Image(systemName: "wifi").foregroundStyle(.secondary)
+                Image(systemName: "battery.75percent").foregroundStyle(.secondary)
+                Text("9:41").font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 6).frame(maxWidth: 420)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(spacing: 8) {
+                Text("Sway lives in your menu bar").font(.system(size: 24, weight: .bold))
+                Text("Click Sway’s icon for volume and brightness, quick options, and Settings. Scroll over it to change the volume.")
+                    .font(.system(size: 13.5)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true).frame(maxWidth: 430)
+            }
+            Button("Show me") { if !preview { (NSApp.delegate as? AppDelegate)?.revealMenuBar() } }.buttonStyle(.bordered)
+            VStack(spacing: 0) {
+                onboardingSwitch("Open Sway when you log in", icon: "power", value: $settings.launchAtLogin)
+                Divider().padding(.leading, 44)
+                onboardingSwitch("Show in the Dock while windows are open", icon: "dock.rectangle", value: $settings.showDockIcon)
+            }
+            .frame(maxWidth: 430)
+            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
+    // MARK: Footer
+
+    // Three columns: side columns share the remaining width equally, so the
+    // dots stay centered and no label can slide underneath them.
+    private var footer: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 18) {
+                if step != .welcome {
+                    Button("Back") { go(to: Step(rawValue: step.rawValue - 1) ?? .welcome) }
+                }
+                if step == .access && !controls.hasAccess {
+                    Button("Skip for now") { go(to: .personalize) }
+                }
+            }
+            .buttonStyle(.plain).foregroundStyle(.secondary).font(.system(size: 13))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 7) {
+                ForEach(Step.allCases, id: \.self) { item in
+                    Capsule().fill(Color.primary.opacity(item == step ? 0.85 : 0.18))
+                        .frame(width: item == step ? 18 : 7, height: 7)
+                }
+            }
+            .fixedSize()
+            .accessibilityElement().accessibilityLabel("Step \(step.rawValue + 1) of \(Step.allCases.count)")
+            Button(primaryTitle, action: primaryAction)
+                .buttonStyle(MonochromePrimaryButtonStyle()).keyboardShortcut(.defaultAction)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .padding(.horizontal, 28).padding(.vertical, 18)
+        .background(Color.primary.opacity(0.025))
+        .overlay(Divider(), alignment: .top)
+    }
+
+    private var primaryTitle: String {
+        switch step {
+        case .welcome: return "Get started"
+        case .access: return controls.hasAccess ? "Continue" : "Allow Accessibility"
+        case .practice: return practiced || !controls.hasAccess ? "Continue" : "Skip"
+        case .personalize: return "Continue"
+        case .done: return "Done"
+        }
+    }
+
+    private func primaryAction() {
+        switch step {
+        case .welcome: go(to: controls.hasAccess ? .practice : .access)
+        case .access:
+            if controls.hasAccess { go(to: .practice); return }
+            requestedAccess = true
+            requestedAt = Date()
+            guard !preview else { return }
+            // One system surface per press: macOS's own prompt, which adds
+            // Sway to the list and has its own button to System Settings.
+            // If macOS doesn't show it again, the link below opens Settings.
+            AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
+        case .practice: go(to: .personalize)
+        case .personalize: go(to: .done)
+        case .done: openControls()
+        }
+    }
+
+    private func go(to next: Step) {
+        if reduceMotion { step = next } else { withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) { step = next } }
+    }
+
+    // MARK: Helpers
+
+    private var practiced: Bool { telemetry.isTesting && telemetry.acceptedCount > 0 }
+
+    private var practiceInstruction: String {
+        if practiced { return "Sway recognized your swipe. On the right edge that would change your \(settings.rightZoneAction.label.lowercased())." }
+        let fingers = settings.minimumFingers == 1 ? "one finger" : "two fingers"
+        return "Place \(fingers) inside the highlighted right edge, then swipe up."
+    }
+
+    private var currentPreset: GesturePreset {
+        if settings.minimumFingers == 1 { return .oneFinger }
+        return settings.palmRejectionMode == "strict" ? .precise : .everyday
+    }
+
+    /// Practice uses the safe test: gestures are recognized, nothing changes.
+    private func setPracticing(_ on: Bool) {
+        guard !preview else { return }
+        if on, controls.hasAccess, settings.isEnabled {
+            monitor.cancelCurrentGesture()
+            telemetry.resetCounters()
+            telemetry.isTesting = true
+            monitor.start()
+        } else if !on, telemetry.isTesting {
+            monitor.cancelCurrentGesture()
+            telemetry.isTesting = false
+        }
+    }
+
+    private func feature(_ icon: String, _ title: String, _ detail: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon).font(.system(size: 16, weight: .medium)).frame(width: 38, height: 38)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 13.5, weight: .semibold))
+                Text(detail).font(.system(size: 12)).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func onboardingSwitch(_ title: String, icon: String, value: Binding<Bool>) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).frame(width: 20)
+            Text(title).font(.system(size: 13))
+            Spacer(minLength: 8)
+            Toggle(title, isOn: value).labelsHidden().toggleStyle(.switch).controlSize(.small)
+        }.padding(.horizontal, 14).padding(.vertical, 11)
+    }
+
+    private func privacyLine(_ icon: String, _ text: String) -> some View {
+        Label { Text(text).font(.system(size: 12.5)).fixedSize(horizontal: false, vertical: true) } icon: {
+            Image(systemName: icon).frame(width: 18)
+        }
+    }
+}
+
+private struct AccessWatcher: View {
+    let tick: () -> Void
+    @State private var timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    var body: some View { Color.clear.onReceive(timer) { _ in tick() } }
+}
+
+/// The welcome illustration: a finger glides up the right edge while the
+/// level fills. The loop is attached only to those two shapes and starts
+/// after the window's first layout; a looping transaction started during
+/// layout would make every other view in the window animate forever too.
+private struct OnboardingTrackpad: View {
+    let animate: Bool
+    @State private var raised = false
+    private static let loop = Animation.easeInOut(duration: 1.5).repeatForever(autoreverses: true)
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width, height = geo.size.height
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color.primary.opacity(0.05))
+                RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Color.primary.opacity(0.14), lineWidth: 1)
+                Rectangle().fill(Color.primary.opacity(0.09)).frame(width: width * 0.2, height: height)
+                    .offset(x: width * 0.8)
+                Rectangle().fill(Color.primary.opacity(0.05)).frame(width: width * 0.2, height: height)
+                HStack(spacing: 6) {
+                    Circle().fill(Color.primary.opacity(0.85)).frame(width: 18, height: 18)
+                    Circle().fill(Color.primary.opacity(0.85)).frame(width: 18, height: 18)
+                }
+                .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
+                .offset(x: width * 0.83, y: raised ? height * 0.18 : height * 0.68)
+                .animation(animate ? Self.loop : nil, value: raised)
+                // The level the swipe is changing.
+                VStack(spacing: 6) {
+                    Image(systemName: "speaker.wave.2.fill").font(.system(size: 13, weight: .semibold))
+                    ZStack(alignment: .bottom) {
+                        Capsule().fill(Color.primary.opacity(0.12)).frame(width: 6, height: 70)
+                        Capsule().fill(Color.primary.opacity(0.85)).frame(width: 6, height: raised ? 60 : 18)
+                            .animation(animate ? Self.loop : nil, value: raised)
+                    }
+                }
+                .padding(10)
+                .background(Color(nsColor: .windowBackgroundColor).opacity(0.9), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .offset(x: width * 0.42, y: height * 0.2)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        }
+        .accessibilityHidden(true)
+        .onAppear {
+            guard animate else { raised = true; return }
+            // Next run-loop pass: the window has its final size and appearance.
+            DispatchQueue.main.async { raised = true }
+        }
     }
 }
 
@@ -1498,22 +1986,38 @@ private struct TrackpadMap: View {
 private struct PageTitle: View {
     let title: String
     let subtitle: String
-    init(_ title: String, subtitle: String) { self.title = title; self.subtitle = subtitle }
+    let icon: String?
+    init(_ title: String, subtitle: String, icon: String? = nil) { self.title = title; self.subtitle = subtitle; self.icon = icon }
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.system(size: 17, weight: .semibold))
-            Text(subtitle).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        HStack(alignment: .center, spacing: 14) {
+            if let icon {
+                Image(systemName: icon).font(.system(size: 18, weight: .semibold))
+                    .frame(width: 40, height: 40)
+                    .foregroundStyle(Color(nsColor: .windowBackgroundColor))
+                    .background(Color.primary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.system(size: 22, weight: .bold))
+                Text(subtitle).font(.system(size: 12.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 }
 
-private struct CardModifier: ViewModifier {
+/// One surface for every card: continuous corners, a hairline, and in light
+/// mode a barely-there lift, so cards read as objects without decoration.
+private struct CardSurface: ViewModifier {
     @Environment(\.colorScheme) private var scheme
     func body(content: Content) -> some View {
-        content.padding(15)
-            .background(scheme == .dark ? Color.white.opacity(0.045) : Color.white, in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.primary.opacity(0.07), lineWidth: 1))
+        content
+            .background(scheme == .dark ? Color.white.opacity(0.05) : Color.white, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(Color.primary.opacity(scheme == .dark ? 0.09 : 0.06), lineWidth: 1))
+            .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.04), radius: 3, y: 1)
     }
+}
+
+private struct CardModifier: ViewModifier {
+    func body(content: Content) -> some View { content.padding(15).modifier(CardSurface()) }
 }
 
 private extension View { func swayCard() -> some View { modifier(CardModifier()) } }
@@ -1532,14 +2036,12 @@ private struct Notice: View {
 }
 
 private struct SettingsCard<Content: View>: View {
-    @Environment(\.colorScheme) private var scheme
     @ViewBuilder var content: () -> Content
     var body: some View {
         VStack(alignment: .leading, spacing: 0, content: content)
             .frame(maxWidth: .infinity)
-            .background(scheme == .dark ? Color.white.opacity(0.045) : .white, in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.primary.opacity(0.07), lineWidth: 1))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .modifier(CardSurface())
     }
 }
 
@@ -1548,8 +2050,8 @@ private struct SettingsSection<Content: View>: View {
     @ViewBuilder let content: () -> Content
     init(_ title: String, @ViewBuilder content: @escaping () -> Content) { self.title = title; self.content = content }
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.system(size: 15, weight: .semibold))
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).padding(.leading, 4)
             SettingsCard(content: content)
         }
     }
@@ -1561,14 +2063,14 @@ private struct SettingRow<Control: View>: View {
     @ViewBuilder let control: () -> Control
     init(_ title: String, detail: String? = nil, @ViewBuilder control: @escaping () -> Control) { self.title = title; self.detail = detail; self.control = control }
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 12) {
-                Text(title).font(.system(size: 14, weight: .medium))
+                Text(title).font(.system(size: 13.5, weight: .medium))
                 Spacer(minLength: 8)
                 control().labelsHidden()
             }
             if let detail { Text(detail).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
-        }.padding(14)
+        }.padding(.horizontal, 16).padding(.vertical, 13)
     }
 }
 
@@ -1578,12 +2080,15 @@ private struct ToggleRow: View {
     @Binding var value: Bool
     init(_ title: String, detail: String, value: Binding<Bool>) { self.title = title; self.detail = detail; _value = value }
     var body: some View {
-        Toggle(isOn: $value) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.system(size: 14, weight: .medium))
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.system(size: 13.5, weight: .medium))
                 Text(detail).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-        }.toggleStyle(.switch).controlSize(.small).padding(14)
+            Spacer(minLength: 8)
+            // The switch sits at the trailing edge, like System Settings.
+            Toggle(title, isOn: $value).labelsHidden().toggleStyle(.switch).controlSize(.small)
+        }.padding(.horizontal, 16).padding(.vertical, 13)
     }
 }
 
@@ -1599,13 +2104,15 @@ private struct LabeledSlider: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack {
-                Text(title).font(.system(size: 14, weight: .medium))
+                Text(title).font(.system(size: 13.5, weight: .medium))
                 Spacer()
-                Text(display).font(.system(size: 13, weight: .semibold, design: .rounded)).monospacedDigit().foregroundStyle(SwayTheme.accent)
+                Text(display).font(.system(size: 12.5, weight: .semibold, design: .rounded)).monospacedDigit()
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(Color.primary.opacity(0.07), in: Capsule())
             }
             Text(detail).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Slider(value: $value, in: range).accessibilityLabel(title).accessibilityValue(display)
-        }.padding(14)
+        }.padding(.horizontal, 16).padding(.vertical, 13)
     }
 }
 
@@ -1743,6 +2250,36 @@ private struct ZoneEditor: View {
             }.padding(14)
             BindingExtras(binding: binding, sharedFallback: true)
         }.background(selected ? action.tint.opacity(0.045) : .clear)
+    }
+}
+
+/// A square quick-setting: tap to flip, with its current state underneath.
+private struct QuickTile: View {
+    let title: String
+    let value: String
+    let icon: String
+    let isOn: Bool
+    let action: () -> Void
+    @Environment(\.colorScheme) private var scheme
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 10) {
+                Image(systemName: icon).font(.system(size: 14, weight: .semibold))
+                    .frame(width: 30, height: 30)
+                    .foregroundStyle(isOn ? Color(nsColor: .windowBackgroundColor) : .primary)
+                    .background(isOn ? Color.primary : Color.primary.opacity(0.08), in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: 13, weight: .semibold))
+                    Text(value).font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(13)
+            .modifier(CardSurface())
+            .contentShape(RoundedRectangle(cornerRadius: 13))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title).accessibilityValue(value).accessibilityAddTraits(isOn ? [.isSelected] : [])
     }
 }
 
@@ -1979,6 +2516,64 @@ private struct LimitEditor: View {
                 Slider(value: Binding(get: { upper }, set: { upper = max($0, lower + 0.05) }), in: 0.05...1, step: 0.01).accessibilityLabel("Maximum \(action.label)")
             }
         }.padding(14).tint(action.tint)
+    }
+}
+
+/// The only part of Settings that redraws with every touch sample.
+private struct SafeTestPanel: View {
+    @ObservedObject var settings: TrackpadSettings
+    @ObservedObject var controls: ControlCenterModel
+    @ObservedObject private var telemetry = GestureTelemetry.shared
+    private let monitor = TrackpadMonitor.shared
+    let preview: Bool
+    let endTesting: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 12) {
+                Image(systemName: "testtube.2").font(.system(size: 24)).foregroundStyle(SwayTheme.accent)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(telemetry.isTesting ? "Test running" : "Safe test")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("All actions are disabled during testing. No device changes or shortcuts are sent.")
+                        .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                Button(telemetry.isTesting ? "Stop test" : "Start test") {
+                    guard !preview else { return }
+                    if telemetry.isTesting { endTesting() }
+                    else { monitor.cancelCurrentGesture(); telemetry.resetCounters(); telemetry.isTesting = true; monitor.start() }
+                }
+                .buttonStyle(.bordered)
+                .disabled(!controls.hasAccess || !settings.isEnabled)
+            }.swayCard()
+            if !settings.isEnabled {
+                HStack {
+                    Text("Gestures are paused.").font(.system(size: 12)).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Resume") { if !preview { SwaySession.shared.setEnabled(true) } }.buttonStyle(.bordered)
+                }
+            }
+            TrackpadMap(settings: settings, selectedZone: nil, telemetry: telemetry, showsTouches: telemetry.isTesting, onSelect: nil)
+                .frame(height: 145)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Label(telemetry.isTesting ? telemetry.phase : "Ready to test", systemImage: telemetry.phase == "Accepted" && telemetry.isTesting ? "checkmark.circle.fill" : "waveform.path")
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(SwayTheme.accent)
+                    Spacer()
+                    Text("\(telemetry.acceptedCount) accepted · \(telemetry.rejectedCount) stopped")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                Text(telemetry.isTesting ? telemetry.reason : "Start a test, then begin a deliberate swipe inside an edge zone.")
+                    .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 0) {
+                    EvidenceMetric(label: "Contacts", value: "\(telemetry.fingerCount)")
+                    EvidenceMetric(label: "Travel", value: String(format: "%.1f%%", telemetry.displacement * 100))
+                    EvidenceMetric(label: "Straightness", value: telemetry.sampleCount > 1 ? "\(Int(telemetry.straightness * 100))%" : "—")
+                    EvidenceMetric(label: "Duration", value: "\(telemetry.elapsedMilliseconds) ms")
+                }
+            }.swayCard()
+        }
     }
 }
 

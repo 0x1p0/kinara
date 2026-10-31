@@ -19,6 +19,10 @@ struct RenderUI {
         let output = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "/private/tmp/SwayUI")
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         NSApplication.shared.setActivationPolicy(previewMenu || previewOSD ? .accessory : .prohibited)
+        // The renderer is not an app bundle; show Sway's real icon in logo spots.
+        if let icon = NSImage(contentsOfFile: "Sway/Assets.xcassets/AppIcon.appiconset/icon_1024x1024.png") {
+            NSApplication.shared.applicationIconImage = icon
+        }
         if previewOSD {
             showIndicatorPreview()
             return
@@ -26,8 +30,12 @@ struct RenderUI {
 
         let fixtures = [
             Fixture(surface: .actions),
-            Fixture(surface: .welcome(false)),
-            Fixture(surface: .welcome(true)),
+            Fixture(surface: .welcome(.welcome, true)),
+            Fixture(surface: .welcome(.access, false)),
+            Fixture(surface: .welcome(.access, true)),
+            Fixture(surface: .welcome(.practice, true)),
+            Fixture(surface: .welcome(.personalize, true)),
+            Fixture(surface: .welcome(.done, true)),
             Fixture(surface: .updates),
             Fixture(surface: .updates, suffix: "-inactive"),
             Fixture(surface: .updates, suffix: "-available"),
@@ -114,9 +122,9 @@ struct RenderUI {
                 case .actions:
                     content = AnyView(EdgeActionLibrary(action: .constant(.microphoneLevel), edgeName: "Left edge action", preview: true))
                     width = 590
-                case .welcome(let access):
-                    content = AnyView(GettingStartedView(settings: settings, preview: true, hasAccess: access, openControls: {}))
-                    width = 460
+                case let .welcome(step, access):
+                    content = AnyView(GettingStartedView(settings: settings, preview: true, hasAccess: access, previewStep: step, openControls: {}))
+                    width = 560
                 case .updates:
                     content = AnyView(UpdateWindowView(updates: UpdateChecker(defaults: defaults, current: "1.0.6"), settings: settings, preview: true, previewUpdateAvailable: fixture.suffix == "-available"))
                     width = 440
@@ -127,7 +135,7 @@ struct RenderUI {
                         previewExpandedOptions: fixture.suffix == "-expanded", openSettings: {
                             guard previewMenu else { return }
                             let window = previewSettingsWindow ?? NSWindow(
-                                contentRect: NSRect(x: 0, y: 0, width: 700, height: 640),
+                                contentRect: NSRect(x: 0, y: 0, width: 820, height: 660),
                                 styleMask: [.titled, .closable], backing: .buffered, defer: false)
                             if previewSettingsWindow == nil {
                                 window.title = "Sway Settings Preview"
@@ -144,7 +152,7 @@ struct RenderUI {
                 case .preferences(let tab):
                     content = AnyView(ContentView(initialPane: tab, preview: true, settings: settings,
                                                   updates: UpdateChecker(defaults: defaults, current: "1.0.6")))
-                    width = 700
+                    width = 820
                 }
                 let root = content
                     .environment(\.colorScheme, scheme)
@@ -464,7 +472,7 @@ struct RenderUI {
 
     private enum Surface {
         case actions
-        case welcome(Bool)
+        case welcome(GettingStartedView.Step, Bool)
         case updates
         case menu
         case preferences(SettingsPane)
@@ -472,7 +480,7 @@ struct RenderUI {
         var name: String {
             switch self {
             case .actions: return "action-library"
-            case .welcome(let access): return access ? "welcome-ready" : "welcome-permission"
+            case let .welcome(step, access): return "welcome-\(step)" + (step == .access && !access ? "-needed" : "")
             case .updates: return "updates"
             case .menu: return "menu"
             case .preferences(let tab): return "settings-\(tab.rawValue)"

@@ -61,6 +61,16 @@ enum EdgeCommand: Equatable {
         case .spotlight: return .key(49, command, global: true)
         case .screenshotTools: return .key(23, command | shift, global: true)
         case .emojiPicker: return .key(49, command | control, global: false)
+        case .copy: return .key(8, command, global: false)
+        case .cut: return .key(7, command, global: false)
+        case .paste: return .key(9, command, global: false)
+        case .pastePlain: return .key(9, command | shift | CGEventFlags.maskAlternate.rawValue, global: false)
+        case .undoRedo: return .key(6, command | (increasing ? shift : 0), global: false)
+        case .selectAll: return .key(0, command, global: false)
+        case .find: return .key(3, command, global: false)
+        case .newCloseTab: return .key(increasing ? 17 : 13, command, global: false)
+        case .reopenTab: return .key(17, command | shift, global: false)
+        case .lockScreen: return .key(12, command | control, global: true)
         case .customShortcut:
             guard !custom.isEmpty, custom.keyCode <= 127,
                   custom.modifiers & UInt32(cmdKey | controlKey | optionKey) != 0 else { return nil }
@@ -73,7 +83,7 @@ enum EdgeCommand: Equatable {
         case .brightness, .volume, .microphoneLevel, .outputMute, .microphoneMute, .disabled: return nil
         // Performed directly (Accessibility, Core Audio, Shortcuts, HUDs), not as keys.
         case .appVolume, .audioOutput, .seek, .nowPlaying, .tileWindow, .nightShift, .trueTone,
-             .extraDim, .runShortcut, .cheatSheet: return nil
+             .extraDim, .runShortcut, .cheatSheet, .pastePrevious, .clipboardHistory, .sleepDisplay: return nil
         }
     }
 }

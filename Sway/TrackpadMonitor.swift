@@ -14,6 +14,10 @@ final class TrackpadMonitor: ObservableObject {
     private var taps = EdgeTapRecognizer()
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    /// Exists only while a one-finger gesture holds the pointer, so ordinary
+    /// mouse movement never wakes Sway.
+    private var freezeTap: CFMachPort?
+    private var freezeSource: CFRunLoopSource?
     private var generation: UInt64 = 0
     private var outputRevision: UInt64 = 0
     private var activeValue: RelativeGestureValue?
@@ -66,6 +70,7 @@ final class TrackpadMonitor: ObservableObject {
         guard settings.isEnabled else { statusMessage = "Paused"; return }
         guard !isRunning else { return }
         let actions = assignedActions
+        ClipboardHistory.shared.isEnabled = actions.contains { $0.usesClipboardHistory }
         if actions.contains(.keyboardBrightness) { KeyboardBacklightCapability.shared.refresh() }
         if actions.contains(.microphoneLevel) || actions.contains(.microphoneMute) { VolumeController.microphone.refresh() }
         guard AXIsProcessTrusted() else {
@@ -185,10 +190,13 @@ final class TrackpadMonitor: ObservableObject {
         taps.bottomEnabled = result.bottomEnabled
         taps.bottomHeight = result.bottomHeight
         taps.cornerSize = settings.tapCornerSize
+        taps.cornerFingers = settings.cornerTapFingers == 1 ? 1 : nil
         taps.typingCooldown = result.typingCooldown
         taps.slots = Set(EdgeSlot.allTaps.filter { settings.slotIsAssigned($0) })
         cachedTapConfiguration = taps
         configurationIsDirty = false
+        // History exists only while something can use it.
+        ClipboardHistory.shared.isEnabled = assignedActions.contains { $0.usesClipboardHistory }
     }
 
     private var feel: GestureFeel { GestureFeel(precision: settings.precisionEnabled, acceleration: settings.accelerationEnabled) }
@@ -264,6 +272,7 @@ final class TrackpadMonitor: ObservableObject {
         if contacts.isEmpty { scrollCapture.touchesEnded() }
         // A stalled main thread must never replay queued gestures onto hardware.
         if ProcessInfo.processInfo.systemUptime - timestamp > 0.12 {
+            taps.cancel()
             if !contacts.isEmpty {
                 _ = recognizer.process(contacts: contacts, timestamp: timestamp, configuration: configuration)
                 cancelCurrentGesture(reason: "Input arrived too late. Lift your fingers and try again.")
@@ -428,11 +437,19 @@ final class TrackpadMonitor: ObservableObject {
             // coordinates, including negative origins on secondary displays.
             frozenCursorPosition = event.location
             cursorFreezeActive = true
+            installFreezeTap()
             NSCursor.hide()
         }
     }
 
     private func finishAdjustment(cancelPending: Bool = true) {
+        if activeAction == .clipboardHistory, ClipboardHUD.shared.isActive {
+            // A completed swipe pastes what's highlighted; anything else pastes nothing.
+            if !cancelPending, let text = ClipboardHUD.shared.selectedText, let application = activeApplication {
+                ClipboardHistory.shared.paste(text, into: application)
+            }
+            ClipboardHUD.shared.end()
+        }
         brightnessPreparationGeneration &+= 1
         brightnessPreparationStarted = false
         brightnessBaseline = nil
@@ -462,6 +479,7 @@ final class TrackpadMonitor: ObservableObject {
         levelChanged = false
         if cursorFreezeActive {
             cursorFreezeActive = false
+            removeFreezeTap()
             NSCursor.unhide()
         }
     }
@@ -629,6 +647,11 @@ final class TrackpadMonitor: ObservableObject {
             inverted: settings.invertScrollDirection, repeats: activeAction.repeatsWhileSwiping,
             at: ProcessInfo.processInfo.systemUptime) else { return }
         let action = activeAction
+        if action == .clipboardHistory {
+            if ClipboardHUD.shared.isActive { ClipboardHUD.shared.move(newer: increasing) } else { ClipboardHUD.shared.begin() }
+            if settings.hapticFeedback { HapticOutput.shared.play(settings.hapticStyle) }
+            return
+        }
         if action == .outputMute || action == .microphoneMute {
             let controller = action == .outputMute ? VolumeController.shared : VolumeController.microphone
             let revision = outputRevision
@@ -696,12 +719,21 @@ final class TrackpadMonitor: ObservableObject {
         case .cheatSheet:
             EdgeMapHUD.shared.toggle()
             return true
+        case .pastePrevious, .clipboardHistory:
+            // A tap cannot browse, so history on a tap pastes the previous item.
+            return ClipboardHistory.shared.pastePrevious(into: application)
+        case .sleepDisplay:
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
+            process.arguments = ["displaysleepnow"]
+            return (try? process.run()) != nil
         default:
             let custom = settings.customShortcut(for: binding, increasing: increasing)
             guard let command = EdgeCommand.resolve(binding.action, increasing: increasing, custom: custom),
                   EdgeActionController.send(command, expectedApplication: application) else { return false }
             // Players need a moment to change tracks before they report them.
             if binding.action == .mediaTracks || binding.action == .playPause { showNowPlaying(after: 0.45) }
+            if binding.action == .copy || binding.action == .cut { ClipboardHistory.shared.noteCopy() }
             return true
         }
     }
@@ -813,8 +845,9 @@ final class TrackpadMonitor: ObservableObject {
 
     private func installEventTap() -> Bool {
         guard eventTap == nil else { return true }
-        let types: [CGEventType] = [.scrollWheel, .keyDown, .mouseMoved,
-                                   .leftMouseDragged, .rightMouseDragged, .otherMouseDragged,
+        // No pointer-movement events here: those would wake Sway on every
+        // mouse move. The freeze tap below takes them only while needed.
+        let types: [CGEventType] = [.scrollWheel, .keyDown,
                                    .leftMouseDown, .rightMouseDown, .otherMouseDown,
                                    .leftMouseUp, .rightMouseUp, .otherMouseUp]
         let mask = types.reduce(CGEventMask(0)) { $0 | (1 << $1.rawValue) }
@@ -832,6 +865,7 @@ final class TrackpadMonitor: ObservableObject {
     }
 
     private func removeEventTap() {
+        removeFreezeTap()
         if let eventTap {
             CGEvent.tapEnable(tap: eventTap, enable: false)
             CFMachPortInvalidate(eventTap)
@@ -839,6 +873,42 @@ final class TrackpadMonitor: ObservableObject {
         if let runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes) }
         eventTap = nil
         runLoopSource = nil
+    }
+
+    private func installFreezeTap() {
+        guard freezeTap == nil else { return }
+        let types: [CGEventType] = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+        let mask = types.reduce(CGEventMask(0)) { $0 | (1 << $1.rawValue) }
+        guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap,
+                                         options: .defaultTap, eventsOfInterest: mask,
+                                         callback: { _, type, event, _ in
+            TrackpadMonitor.shared.handleFreezeEvent(type: type, event: event)
+        }, userInfo: nil) else { return }
+        freezeTap = tap
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        freezeSource = source
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+    }
+
+    private func removeFreezeTap() {
+        if let freezeTap {
+            CGEvent.tapEnable(tap: freezeTap, enable: false)
+            CFMachPortInvalidate(freezeTap)
+        }
+        if let freezeSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), freezeSource, .commonModes) }
+        freezeTap = nil
+        freezeSource = nil
+    }
+
+    private func handleFreezeEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let freezeTap { CGEvent.tapEnable(tap: freezeTap, enable: true) }
+            return Unmanaged.passUnretained(event)
+        }
+        guard cursorFreezeActive else { return Unmanaged.passUnretained(event) }
+        CGWarpMouseCursorPosition(frozenCursorPosition)
+        return nil
     }
 
     private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
@@ -851,16 +921,13 @@ final class TrackpadMonitor: ObservableObject {
             if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: true) }
             return pass
         }
-        if type == .mouseMoved || type == .leftMouseDragged || type == .rightMouseDragged || type == .otherMouseDragged {
-            if cursorFreezeActive {
-                CGWarpMouseCursorPosition(frozenCursorPosition)
-                return nil
-            }
-            return pass
-        }
         let now = ProcessInfo.processInfo.systemUptime
         if type == .keyDown {
             if event.getIntegerValueField(.eventSourceUserData) == EdgeActionController.eventMarker { return pass }
+            // ⌘C / ⌘X: let clipboard history read the result once, shortly after.
+            if event.flags.contains(.maskCommand), [7, 8].contains(event.getIntegerValueField(.keyboardEventKeycode)) {
+                ClipboardHistory.shared.noteCopy()
+            }
             let decision = recognizer.keyDown(at: now)
             taps.keyDown(at: now)
             GestureTelemetry.shared.publish(decision, at: now, force: true)

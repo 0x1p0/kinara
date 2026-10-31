@@ -515,5 +515,72 @@ enum GestureRegressionTests {
         expect(tapper.process(contacts: [], timestamp: 13.05, configuration: none) == nil && tapper.claimsClicksUntil < 13,
                "with no tap actions the recognizer stays inert")
         expect(TapEvent(region: .left, gesture: .doubleTap).slot == "left.doubleTap", "slot names are stable for settings")
+
+        // Corners can take one finger while edges keep two.
+        var mixed = TapConfiguration()
+        mixed.requiredFingers = 2
+        mixed.cornerFingers = 1
+        mixed.slots = ["topRightCorner.doubleTap", "bottomLeftCorner.tapHold", "left.doubleTap"]
+        taps = mixed
+        tapper = EdgeTapRecognizer()
+        _ = tap(0.95, 0.95, at: 20)
+        expect(tap(0.95, 0.95, at: 20.2) == TapEvent(region: .topRightCorner, gesture: .doubleTap), "one-finger corner double-tap in two-finger mode")
+        tapper = EdgeTapRecognizer()
+        _ = tap(0.94, 0.95, at: 21, fingers: 2)
+        expect(tap(0.94, 0.95, at: 21.2, fingers: 2) == nil, "two fingers in a one-finger corner are not a corner tap")
+        tapper = EdgeTapRecognizer()
+        _ = tap(0.1, 0.5, at: 22)
+        expect(tap(0.1, 0.5, at: 22.2) == nil, "edges still need the swipe finger count")
+        tapper = EdgeTapRecognizer()
+        _ = tap(0.1, 0.5, at: 23, fingers: 2)
+        expect(tap(0.1, 0.5, at: 23.2, fingers: 2) == TapEvent(region: .left, gesture: .doubleTap), "two-finger edge taps keep working")
+        tapper = EdgeTapRecognizer()
+        _ = tap(0.05, 0.05, at: 24)
+        held = nil
+        for i in 0...60 { held = tapper.process(contacts: [touch(1, 0.05, 0.05)], timestamp: 24.2 + Double(i) * 0.01, configuration: taps) ?? held }
+        expect(held == TapEvent(region: .bottomLeftCorner, gesture: .tapHold), "one-finger corner tap-and-hold")
+        expect(mixed.requiredFingers(for: .left) == 2 && mixed.requiredFingers(for: .topLeftCorner) == 1, "finger count per region")
+        mixed.cornerFingers = nil
+        expect(mixed.requiredFingers(for: .topLeftCorner) == 2, "without the option corners follow the swipe count")
+
+        // The reported case: only tap-and-hold assigned, then a quick double-tap.
+        var holdOnly = TapConfiguration()
+        holdOnly.requiredFingers = 2
+        holdOnly.cornerFingers = 1
+        holdOnly.slots = ["topLeftCorner.tapHold"]
+        taps = holdOnly
+        func realisticTap(_ x: Double, _ y: Double, at start: Double, duration: Double) -> [TapEvent] {
+            var events: [TapEvent] = []
+            var t = start
+            while t < start + duration {
+                if let event = tapper.process(contacts: [touch(1, x, y)], timestamp: t, configuration: taps) { events.append(event) }
+                t += 0.011
+            }
+            if let event = tapper.process(contacts: [], timestamp: start + duration, configuration: taps) { events.append(event) }
+            return events
+        }
+        tapper = EdgeTapRecognizer()
+        var fired = realisticTap(0.05, 0.95, at: 30, duration: 0.09) + realisticTap(0.05, 0.95, at: 30.22, duration: 0.11)
+        expect(fired.isEmpty, "a quick double-tap never fires tap-and-hold")
+        tapper = EdgeTapRecognizer()
+        fired = realisticTap(0.05, 0.95, at: 31, duration: 0.09) + realisticTap(0.05, 0.95, at: 31.2, duration: 0.6)
+        expect(fired == [TapEvent(region: .topLeftCorner, gesture: .tapHold)], "tap, then a real hold, still fires once")
+
+        // A missed lift (late input) must never turn the next touch into a hold.
+        tapper = EdgeTapRecognizer()
+        _ = realisticTap(0.05, 0.95, at: 32, duration: 0.09)
+        _ = tapper.process(contacts: [touch(1, 0.05, 0.95)], timestamp: 32.2, configuration: taps)
+        _ = tapper.process(contacts: [touch(1, 0.05, 0.95)], timestamp: 32.25, configuration: taps)
+        // ...the lift and everything after it were lost; a touch arrives much later.
+        var stale: TapEvent?
+        for i in 0...5 { stale = tapper.process(contacts: [touch(1, 0.05, 0.95)], timestamp: 33 + Double(i) * 0.011, configuration: taps) ?? stale }
+        expect(stale == nil, "a reused contact after a silence starts fresh instead of finishing an old hold")
+        tapper = EdgeTapRecognizer()
+        _ = realisticTap(0.05, 0.95, at: 34, duration: 0.09)
+        _ = tapper.process(contacts: [touch(1, 0.05, 0.95)], timestamp: 34.2, configuration: taps)
+        tapper.cancel()
+        stale = nil
+        for i in 0...60 { stale = tapper.process(contacts: [touch(1, 0.05, 0.95)], timestamp: 34.21 + Double(i) * 0.011, configuration: taps) ?? stale }
+        expect(stale == nil, "cancelling for late input forgets the pending tap entirely")
     }
 }
