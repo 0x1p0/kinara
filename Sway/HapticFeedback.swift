@@ -64,7 +64,11 @@ struct GestureHapticFeedback {
         return configuration.onStart ? pulse(at: time) : nil
     }
 
-    mutating func update(value: Double, bounds: ClosedRange<Double>, at time: Double) -> HapticStyle? {
+    /// A notch always uses the crisp pattern so it reads as a detent, not a step.
+    static let notchStyle: HapticStyle = .crisp
+
+    mutating func update(value: Double, bounds: ClosedRange<Double>, at time: Double,
+                         notches: [Double] = []) -> HapticStyle? {
         guard configuration.enabled, let anchor, let previous,
               value.isFinite, time.isFinite,
               bounds.lowerBound.isFinite, bounds.upperBound.isFinite else { return nil }
@@ -73,6 +77,12 @@ struct GestureHapticFeedback {
         // Only fresh, changed readbacks can request feedback. No delayed replay
         // when a stationary value arrives after a rate-limited step.
         guard abs(value - previous) > 0.000_001 else { return nil }
+        // Drivers quantize, so "on the notch" allows half a percent of readback error.
+        if notches.contains(where: { abs($0 - value) < 0.005 && abs($0 - previous) >= 0.005 }) {
+            guard pulse(at: time) != nil else { return nil }
+            self.anchor = value
+            return Self.notchStyle
+        }
         let reachedLimit = (value <= bounds.lowerBound + 0.000_001 && previous > bounds.lowerBound + 0.000_001)
             || (value >= bounds.upperBound - 0.000_001 && previous < bounds.upperBound - 0.000_001)
         guard abs(value - anchor) + 0.000_001 >= configuration.spacing.amount || reachedLimit,

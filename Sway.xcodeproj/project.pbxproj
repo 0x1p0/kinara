@@ -25,6 +25,12 @@
 		A016 /* AppPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B021; };
 		A017 /* InAppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = B022; };
 		A019 /* EdgeActionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B023; };
+		A021 /* SystemActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = B024; };
+		A022 /* DisplayColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B025; };
+		A023 /* EdgeMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = B026; };
+		A024 /* ExternalDisplayDDC.swift in Sources */ = {isa = PBXBuildFile; fileRef = B027; };
+		A025 /* NowPlaying.swift in Sources */ = {isa = PBXBuildFile; fileRef = B028; };
+		A026 /* AppVolumeController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B029; };
 		A018 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = SP002; };
 		A020 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B020; };
 /* End PBXBuildFile section */
@@ -54,6 +60,12 @@
 		B021 /* AppPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPresentation.swift; sourceTree = "<group>"; };
 		B022 /* InAppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InAppUpdater.swift; sourceTree = "<group>"; };
 		B023 /* EdgeActionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EdgeActionController.swift; sourceTree = "<group>"; };
+		B024 /* SystemActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemActions.swift; sourceTree = "<group>"; };
+		B025 /* DisplayColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayColor.swift; sourceTree = "<group>"; };
+		B026 /* EdgeMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EdgeMap.swift; sourceTree = "<group>"; };
+		B027 /* ExternalDisplayDDC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalDisplayDDC.swift; sourceTree = "<group>"; };
+		B028 /* NowPlaying.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlaying.swift; sourceTree = "<group>"; };
+		B029 /* AppVolumeController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppVolumeController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -78,6 +90,7 @@
 				B010, B011, B012,
 				B013, B014, B015, B016, B017, B018, B019,
 				B020, B021, B022, B023,
+				B024, B025, B026, B027, B028, B029,
 				B008, B009,
 			);
 			path = Sway;
@@ -142,7 +155,7 @@
 		E001 = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = (A001, A002, A003, A004, A005, A006, A007, A008, A009, A010, A011, A012, A013, A014, A015, A016, A017, A019);
+			files = (A001, A002, A003, A004, A005, A006, A007, A008, A009, A010, A011, A012, A013, A014, A015, A016, A017, A019, A021, A022, A023, A024, A025, A026);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */

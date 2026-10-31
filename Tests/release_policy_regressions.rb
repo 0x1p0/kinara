@@ -70,7 +70,7 @@ end
 end
 entitlements = REXML::Document.new(File.read(File.join(root, 'Sway/Sway.entitlements')))
 keys = REXML::XPath.match(entitlements, '//key').map(&:text)
-expect.call(keys == ['com.apple.security.cs.disable-library-validation'], 'only the required cross-signer exception is allowed')
+expect.call(keys == ['com.apple.security.cs.disable-library-validation', 'com.apple.security.automation.apple-events', 'com.apple.security.device.audio-input'], 'only the documented cross-signer, Apple Events and audio-input entitlements are allowed')
 build_script = File.read(File.join(root, 'scripts/build.sh'))
 expect.call(build_script.include?('--options runtime') && build_script.include?('scripts/verify-runtime.sh'), 'runtime must be enabled and checked in release builds')
 signer = File.read(File.join(root, 'scripts/sign-update.swift'))

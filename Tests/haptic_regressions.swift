@@ -83,6 +83,18 @@ enum HapticRegressionTests {
         now = .nan
         output.play(.standard)
         expect(calls.count == 3, "invalid performer clock is silent")
+
+        var notched = GestureHapticFeedback()
+        _ = notched.begin(value: 0.47, configuration: HapticConfiguration(enabled: true, style: .soft, spacing: .sparse, onStart: false), at: 10)
+        expect(notched.update(value: 0.49, bounds: 0...1, at: 10.1, notches: [0.5]) == nil, "approaching a notch stays quiet below the step size")
+        expect(notched.update(value: 0.5, bounds: 0...1, at: 10.2, notches: [0.5]) == .crisp, "landing on a notch taps crisply, whatever the step style")
+        expect(notched.update(value: 0.502, bounds: 0...1, at: 10.3, notches: [0.5]) == nil, "jitter on a notch does not chatter")
+        expect(notched.update(value: 0.5, bounds: 0...1, at: 10.4, notches: [0.5]) == nil, "re-reading the notch value is not a new notch")
+        expect(notched.update(value: 0.53, bounds: 0...1, at: 10.5, notches: [0.5]) == nil, "leaving a notch restarts step spacing from it")
+        expect(notched.update(value: 0.505, bounds: 0...1, at: 10.6, notches: [0.5]) == nil, "re-entering within readback error of the last notch value stays quiet")
+        _ = notched.update(value: 0.6, bounds: 0...1, at: 10.7, notches: [0.5])
+        expect(notched.update(value: 0.5, bounds: 0...1, at: 10.75, notches: [0.5]) == nil, "notches obey the shared tap cadence")
+        expect(notched.update(value: 0.4, bounds: 0...1, at: 11, notches: []) == .soft, "without notches ordinary steps continue")
         print("\(checks) haptic assertions passed. Fake clock and performer only; no physical haptics ran.")
     }
 }

@@ -41,9 +41,9 @@ test("the static action library matches every shipped native action", () => {
     .flatMap((match) => match[1].split(",").map((item) => item.trim().split(/\s|=/)[0]))
     .filter((item) => item !== "disabled").sort();
   const web = [...html.matchAll(/data-action-id="([^"]+)"/g)].map((match) => match[1]).sort();
-  assert.equal(web.length, 26);
+  assert.equal(web.length, 36);
   assert.deepEqual(web, native);
-  assert.equal(new Set(web).size, 26);
+  assert.equal(new Set(web).size, 36);
 });
 test("catalog stays usable without JavaScript and clearly describes its limits", () => {
   assert.match(html, /id="library-toolbar" hidden/);

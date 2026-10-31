@@ -28,6 +28,8 @@ struct AudioOutputConfiguration {
     let volumeWritable: Bool
     let muteElements: [AudioObjectPropertyElement]
     let muteWritable: Bool
+    /// Stable across reconnects and restarts, unlike the AudioDeviceID.
+    var uid: String? = nil
 }
 
 enum AudioBackendEvent { case route, state }
@@ -47,6 +49,7 @@ protocol AudioOutputBackend: AnyObject {
 
 private struct AudioOutputSnapshot: Equatable {
     var targetIdentifier: String?
+    var uid: String?
     var name = "No audio output"
     var volume: Float?
     var isAvailable = false
@@ -122,6 +125,7 @@ final class VolumeController {
     var targetIdentifier: String? { readSnapshot().targetIdentifier }
     var isAvailable: Bool { readSnapshot().isAvailable }
     var deviceName: String { readSnapshot().name }
+    var deviceUID: String? { readSnapshot().uid }
     var isMuted: Bool { readSnapshot().isMuted }
     var supportsMute: Bool { readSnapshot().supportsMute }
     func getVolume() -> Float { readSnapshot().volume ?? 0 }
@@ -363,6 +367,7 @@ final class VolumeController {
         var next = AudioOutputSnapshot()
         if let route {
             next.targetIdentifier = route.token.identifier
+            next.uid = route.uid
             next.name = route.name
             for element in route.volumeElements {
                 if let value = backend.volume(device: route.token.device, element: element),
@@ -462,7 +467,7 @@ private final class CoreAudioOutputBackend: AudioOutputBackend {
                 isSettable(device: device, selector: kAudioDevicePropertyVolumeScalar, element: $0)
             }, muteElements: mutes, muteWritable: !mutes.isEmpty && mutes.allSatisfy {
                 isSettable(device: device, selector: kAudioDevicePropertyMute, element: $0)
-            })
+            }, uid: deviceUID(device))
     }
 
     func observe(_ configuration: AudioOutputConfiguration?) {
@@ -514,6 +519,15 @@ private final class CoreAudioOutputBackend: AudioOutputBackend {
         var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
         guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &name) == noErr, let name else { return "Audio output" }
         return name.takeRetainedValue() as String
+    }
+
+    private func deviceUID(_ device: AudioDeviceID) -> String? {
+        var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyDeviceUID,
+            mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        var uid: Unmanaged<CFString>?
+        var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &uid) == noErr, let uid else { return nil }
+        return uid.takeRetainedValue() as String
     }
 
     private func isSettable(device: AudioDeviceID, selector: AudioObjectPropertySelector,

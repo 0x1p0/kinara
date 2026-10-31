@@ -2,11 +2,13 @@ import AppKit
 import SwiftUI
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case gestures, protection, levels, feedback, appearance, general, updates, about
+    case gestures, taps, profiles, protection, levels, feedback, appearance, general, updates, about
     var id: String { rawValue }
     var title: String {
         switch self {
         case .gestures: return "Gestures"
+        case .taps: return "Taps & corners"
+        case .profiles: return "Profiles"
         case .protection: return "Palm protection"
         case .levels: return "Volume & brightness"
         case .feedback: return "Haptics"
@@ -19,6 +21,8 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .gestures: return "hand.draw"
+        case .taps: return "hand.tap"
+        case .profiles: return "square.stack"
         case .protection: return "hand.raised"
         case .levels: return "slider.horizontal.3"
         case .feedback: return "waveform.path"
@@ -30,24 +34,28 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     }
     var detail: String {
         switch self {
-        case .gestures: return "Assign edges and choose how you swipe."
+        case .gestures: return "Assign edges, layers, and how swipes feel."
+        case .taps: return "Double-tap or tap-and-hold edges and corners."
+        case .profiles: return "Change edges for specific apps or when docked."
         case .protection: return "Tune intent checks and try gestures safely."
-        case .levels: return "Set comfortable volume and brightness limits."
+        case .levels: return "Limits, favorite levels, devices, and displays."
         case .feedback: return "Choose the taps you feel on your trackpad."
         case .appearance: return "Customize the menu bar and on-screen indicator."
-        case .general: return "Startup, Dock access, shortcuts, and excluded apps."
+        case .general: return "Startup, shortcuts, automation, and your settings file."
         case .updates: return "Check, download, and install signed updates."
         case .about: return "Setup help, version information, and reset."
         }
     }
     private var keywords: String {
         switch self {
-        case .gestures: return "preset finger fingers one two edge zones width narrow sensitivity direction top left right swipe reverse action volume brightness microphone keyboard backlight media playback track tab navigation zoom window desktop workspace shortcut screenshot emoji spotlight mute"
+        case .gestures: return "preset finger fingers one two edge zones width narrow sensitivity direction top bottom left right swipe reverse action volume brightness microphone keyboard backlight media playback track tab navigation zoom window desktop workspace shortcut screenshot emoji spotlight mute precision fine scrub speed acceleration flick layer option modifier tile shortcuts night shift true tone dim seek output app volume map"
+        case .taps: return "tap double-tap hold tap-and-hold corner corners hot click"
+        case .profiles: return "app apps profile profiles per-app docked dock external monitor display override"
         case .protection: return "palm rejection strict balanced typing cooldown activation distance test diagnostics permission accessibility"
-        case .levels: return "volume brightness audio display minimum maximum limit mute zero"
-        case .feedback: return "haptic feedback soft standard crisp tap vibration strength spacing steps preview"
-        case .appearance: return "theme dark light system liquid glass indicator osd pill vertical horizontal position width menu bar icon"
-        case .general: return "login launch startup dock spotlight shortcut hotkey pause exclude excluded apps"
+        case .levels: return "volume brightness audio display minimum maximum limit mute zero favorite notch device airpods headphones external monitor ddc pointer extra dim"
+        case .feedback: return "haptic feedback soft standard crisp tap vibration strength spacing steps preview notch notches detent sound click"
+        case .appearance: return "theme dark light system liquid glass indicator osd pill vertical horizontal position width menu bar icon follow finger edge now playing artwork scroll"
+        case .general: return "login launch startup dock spotlight shortcut hotkey pause exclude excluded apps cheat sheet edge map url automation export import backup settings file"
         case .updates: return "github update release install download version automatic daily"
         case .about: return "help welcome setup guide accessibility permission reset version"
         }

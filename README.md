@@ -90,6 +90,62 @@ touch frames before choosing ownership at the actual scroll start, using
 
 ## A small menu, a separate settings window
 
+### What’s new in the next release (1.2)
+
+Not yet in a published download; this describes the current source.
+
+**Feel.** Slide inward from the edge while swiping for **fine control**, like
+scrubbing a video (a soft tap confirms it). **Speed-sensitive levels** make slow
+swipes precise and quick flicks cover more range. **Notches** hold a level at
+50% and at your favorite volume or brightness with a crisp tap. All three can
+be turned off in Gestures and Haptics.
+
+**More gestures.** A **bottom edge** (one finger, left/right). **Double-tap** and
+**tap-and-hold** on edges and on four **corners**: both begin with a short,
+still tap, which a resting palm doesn’t produce. Where a tap action exists,
+tap-to-click there no longer clicks what’s under the pointer; pressing the
+trackpad always clicks. **Layers** give each side edge more actions: hold ⌥
+while swiping, or use the other finger count (1 instead of 2, or 2 instead of 1).
+
+**Context.** **App profiles** change only the edges you choose while an app is in
+front; a **docked profile** applies while an external display is connected.
+Order: app, then docked, then everyday. **Per-device volume limits** are
+remembered by Core Audio device UID, so headphones can stay quieter.
+
+**New actions (36 in total).** App volume (the front app only, macOS 14.2+),
+switch audio output, seek in track, show now playing, tile window, Night Shift
+warmth, True Tone, extra dim, Run a Shortcut, and show edge map. Custom
+shortcuts and Shortcut names are now recorded **per edge**; edges without their
+own recording keep using the original shared pair.
+
+**Displays.** **Brightness follows the pointer**: Apple displays through
+DisplayServices, other monitors over **DDC/CI** on Apple silicon where the
+monitor supports it, otherwise the built-in display. With the lid closed, a
+controllable external display is used. **Extra dim** continues below the
+backlight minimum by scaling the display’s gamma; quitting Sway, or macOS when
+any process exits, restores it.
+
+**Delight.** A **Follow finger** indicator hugs the matching screen edge and moves
+with your finger. A **Now Playing** display shows artwork and progress for media
+actions. The Gestures and Taps pages show **live finger positions** on the map.
+Hold an optional **edge map** shortcut to see what every edge does in the current
+app and where each assignment comes from. **Scroll the menu bar icon** for volume
+(⌥ for brightness). The **volume click** follows macOS’s “Play feedback when
+volume is changed”. **Export and import** your settings, including profiles;
+login and setup state never travel. **`sway://` links** let Shortcuts and scripts
+pause, resume or toggle gestures, set volume or brightness within your limits,
+or show the edge map; links can’t change assignments.
+
+**Honest limits.** DDC, per-app volume and Now Playing were built against
+macOS interfaces that the automated tests can’t exercise with real hardware;
+they fail closed and report unavailability rather than pretending. DDC isn’t
+available on Intel Macs or through many docks, DisplayLink adapters and TVs,
+and ambiguous multi-monitor setups are reported unsupported rather than
+guessed. Now Playing reads Music and Spotify through Apple Events (macOS asks
+once per player and Sway never launches a player); other players appear only
+where macOS still exposes them. Night Shift and True Tone use private
+CoreBrightness clients, checked by method signature before every use.
+
 ### Expanded edge actions in 1.1.0
 
 Version 1.1.0 adds **26 assignable actions, plus Off**.
@@ -117,7 +173,10 @@ mode never executes an action, changes hardware, or sends a shortcut.
 
 **Microphone controls are not a universal privacy switch.** Gain and hardware
 mute affect only macOS’s current default input, not other devices or an app’s
-own mute state. Sway never opens a recording stream. Raising or lowering input
+own mute state. These controls never open a recording stream. (The separate
+App volume action routes one app’s sound through a Core Audio process tap,
+after macOS’s System Audio Recording permission; it is never recorded, saved,
+or sent.) Raising or lowering input
 gain never unmutes the device. Hardware mute is offered only if the driver
 provides a readable, writable mute control, and feedback follows readback.
 Unsupported devices are clearly marked; gain zero is never called “muted.”
@@ -145,12 +204,14 @@ Use **Find a setting** to filter categories by words such as typing, haptics, lo
 
 | Category | What you can do |
 | --- | --- |
-| **Gestures** | Choose Everyday, Precise, or One finger; assign actions to each edge; adjust zone width, sensitivity, direction, and optional top-edge gestures. |
+| **Gestures** | Choose Everyday, Precise, or One finger; assign actions and per-edge shortcuts; set feel (fine control, speed, sensitivity, direction); add ⌥ and finger-count layers and optional top and bottom edges. |
+| **Taps & corners** | Assign double-tap and tap-and-hold actions to edges and corners, and set corner size. |
+| **Profiles** | Override edges for specific apps, or while an external display is connected. |
 | **Palm protection** | Tune intent checks, typing protection, and activation distance. Expand Test gestures safely for live evidence without changing device levels. |
-| **Volume & brightness** | Set comfort limits and mute behavior. |
-| **Haptics** | Choose tap style, spacing, and gesture-start feedback. |
-| **Appearance** | Set theme, menu bar display, and the on-screen indicator. |
-| **General** | Configure Dock access, excluded apps, a pause shortcut, and launch at login. |
+| **Volume & brightness** | Set comfort limits, per-device volume limits, favorite levels, brightness following the pointer, and extra dim. |
+| **Haptics** | Choose tap style, spacing, gesture-start feedback, notches, and the volume click. |
+| **Appearance** | Set theme, menu bar display and scrolling, the on-screen indicator (including Follow finger), and the Now Playing display. |
+| **General** | Configure Dock access, excluded apps, pause and edge map shortcuts, launch at login, `sway://` links, and settings export/import. |
 | **Software updates** | Check, download, and install signed updates. |
 | **About & help** | Reopen setup, see the version, or reset gesture preferences. |
 
@@ -219,10 +280,10 @@ The **Palm protection → Test gestures safely** section reports these checks di
 
 ## Requirements and device support
 
-- macOS 13 Ventura or later.
+- macOS 13 Ventura or later. App volume needs macOS 14.2 or later.
 - A compatible Apple Multi-Touch trackpad for edge gestures.
 - Accessibility access for gesture monitoring and interception.
-- A software-controllable audio output for volume, and a supported active built-in display for brightness. Sway does not add DDC brightness control to external monitors.
+- A software-controllable audio output for volume, and a supported display for brightness: the built-in display, an Apple display, or (on Apple silicon) a monitor that accepts DDC/CI brightness commands.
 
 Sway uses the private macOS MultitouchSupport framework. Availability and touch behavior may change with macOS or hardware updates. The panel reports unavailable devices and failed writes instead of presenting a simulated successful adjustment.
 
@@ -414,8 +475,12 @@ without opening Finder or launching Sway.
 Packaged Sway now enables **Hardened Runtime** and verifies its signature
 settings. Self-signed distribution needs one exception:
 **com.apple.security.cs.disable-library-validation**, so Sparkle can load
-without a shared Developer ID team identity. No debugger, JIT, unsigned
-executable-memory, or Apple Events exception is granted.
+without a shared Developer ID team identity. Two resource entitlements back
+specific features: **com.apple.security.automation.apple-events** (Now Playing
+reads Music or Spotify; macOS asks per app) and
+**com.apple.security.device.audio-input** (App volume’s process tap; macOS asks
+for System Audio Recording). No debugger, JIT, or unsigned executable-memory
+exception is granted, and the runtime check rejects any other entitlement.
 
 The app remains **self-signed and unnotarized**. This does not remove the
 initial Gatekeeper warning, provide Apple-verified publisher identity, or
@@ -439,6 +504,9 @@ bash scripts/test-presentation.sh
 bash scripts/test-audio.sh
 bash scripts/test-brightness.sh
 bash scripts/test-controls.sh
+bash scripts/test-ddc.sh
+bash scripts/test-app-volume.sh
+bash scripts/test-now-playing.sh
 ruby Tests/runtime_verification_regressions.rb
 python3 Tests/app_signing_regressions.py
 python3 Tests/app_archive_regressions.py

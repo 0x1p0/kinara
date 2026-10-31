@@ -74,6 +74,31 @@ private final class FakeBrightnessHardware: BrightnessHardware {
     var writtenDisplays: [CGDirectDisplayID] { lock.lock(); defer { lock.unlock() }; return writes.map(\.0) }
 }
 
+/// External displays that can be controlled, plus a movable pointer.
+private final class PointerBrightnessHardware: BrightnessHardware {
+    private let lock = NSLock()
+    var displays: [CGDirectDisplayID] = [1, 5, 6]
+    var builtInDisplay: CGDirectDisplayID? = 1
+    var controllable: Set<CGDirectDisplayID> = [1, 5]
+    var pointer: CGDirectDisplayID?
+    var values: [CGDirectDisplayID: Float] = [1: 0.4, 5: 0.8, 6: 0.3]
+    var writes: [CGDirectDisplayID] = []
+    var canWrite: Bool { true }
+    func activeDisplays() -> [CGDirectDisplayID] { lock.lock(); defer { lock.unlock() }; return displays }
+    func isBuiltIn(_ display: CGDirectDisplayID) -> Bool { lock.lock(); defer { lock.unlock() }; return display == builtInDisplay }
+    func isActive(_ display: CGDirectDisplayID) -> Bool { lock.lock(); defer { lock.unlock() }; return displays.contains(display) }
+    func isControllable(_ display: CGDirectDisplayID) -> Bool { lock.lock(); defer { lock.unlock() }; return controllable.contains(display) }
+    func displayUnderPointer() -> CGDirectDisplayID? { lock.lock(); defer { lock.unlock() }; return pointer }
+    func read(_ display: CGDirectDisplayID) -> Float? { lock.lock(); defer { lock.unlock() }; return controllable.contains(display) ? values[display] : nil }
+    func write(_ value: Float, to display: CGDirectDisplayID) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard controllable.contains(display) else { return false }
+        values[display] = value; writes.append(display); return true
+    }
+    func observeChanges(_ callback: @escaping () -> Void) {}
+    func update(_ change: (PointerBrightnessHardware) -> Void) { lock.lock(); change(self); lock.unlock() }
+}
+
 @main
 enum BrightnessRegressionTests {
     static var checks = 0
@@ -222,6 +247,43 @@ enum BrightnessRegressionTests {
         wait { baseline != nil }
         expect(failed(baseline) && !controller.isAvailable, "invalid hardware read cannot become relative baseline")
         expect(!hardware.writtenDisplays.contains(3), "all writes remained on the original fake display")
+        pointerChecks()
         print("PASS: \(checks) brightness controller regression checks (fake hardware only)")
+    }
+
+    static func pointerChecks() {
+        let hardware = PointerBrightnessHardware()
+        let controller = BrightnessController(backend: hardware)
+        var result: BrightnessRequestResult?
+        controller.refresh { result = $0 }
+        wait { result != nil }
+        expect(value(result) == 0.4 && controller.activeDisplay == 1, "without pointer following the built-in display stays the target")
+        hardware.update { $0.pointer = 5 }
+        controller.followsPointer = true
+        result = nil
+        controller.refresh { result = $0 }
+        wait { result != nil }
+        expect(value(result) == 0.8 && controller.activeDisplay == 5, "the controllable display under the pointer becomes the target")
+        expect(controller.deviceName == "External display" && !controller.isBuiltInDisplayActive, "an external target is named as external")
+        var write: BrightnessRequestResult?
+        controller.requestBrightness(0.6) { write = $0 }
+        wait { write != nil }
+        expect(value(write) == 0.6 && hardware.writes == [5], "writes go to the pointer's display only")
+        hardware.update { $0.pointer = 6 }
+        result = nil
+        controller.refresh { result = $0 }
+        wait { result != nil }
+        expect(value(result) == 0.4 && controller.activeDisplay == 1, "an uncontrollable pointer display falls back to built-in")
+        hardware.update { $0.displays = [5, 6]; $0.builtInDisplay = nil; $0.pointer = nil }
+        controller.followsPointer = false
+        result = nil
+        controller.refresh { result = $0 }
+        wait { result != nil }
+        expect(value(result) == 0.6 && controller.activeDisplay == 5, "with the lid closed a controllable external display is used")
+        hardware.update { $0.controllable = [] }
+        result = nil
+        controller.refresh { result = $0 }
+        wait { result != nil }
+        expect(failed(result) && !controller.isAvailable, "no controllable display means unavailable, not a guess")
     }
 }

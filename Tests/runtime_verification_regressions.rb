@@ -8,6 +8,8 @@ root = File.expand_path('..', __dir__)
 verifier = File.join(root, 'scripts/verify-runtime.sh')
 native_path = '/usr/bin:/bin:/usr/sbin:/sbin'
 exception = 'com.apple.security.cs.disable-library-validation'
+automation = 'com.apple.security.automation.apple-events'
+audio = 'com.apple.security.device.audio-input'
 count = 0
 
 Dir.mktmpdir('sway-runtime-tests.') do |directory|
@@ -33,12 +35,16 @@ Dir.mktmpdir('sway-runtime-tests.') do |directory|
     abort("Missing tool masked the result for #{name}: #{output}") if output.include?('command not found') || status.exitstatus == 127
     count += 1
   end
-  valid = {exception => '<true/>'}
+  valid = {exception => '<true/>', automation => '<true/>', audio => '<true/>'}
   check.call('native-tools-only', valid, true, true)
+  check.call('missing-apple-events', {exception => '<true/>', audio => '<true/>'}, true, false)
+  check.call('missing-audio-input', {exception => '<true/>', automation => '<true/>'}, true, false)
+  check.call('camera-exception', valid.merge('com.apple.security.device.camera' => '<true/>'), true, false)
+  check.call('false-apple-events', valid.merge(automation => '<false/>'), true, false)
   check.call('missing-runtime', valid, false, false)
   check.call('missing-entitlements', {}, true, false)
-  check.call('false-exception', {exception => '<false/>'}, true, false)
-  check.call('wrong-value-type', {exception => '<string>true</string>'}, true, false)
+  check.call('false-exception', valid.merge(exception => '<false/>'), true, false)
+  check.call('wrong-value-type', valid.merge(exception => '<string>true</string>'), true, false)
   check.call('debugger-exception', valid.merge('com.apple.security.get-task-allow' => '<true/>'), true, false)
   check.call('jit-exception', valid.merge('com.apple.security.cs.allow-jit' => '<true/>'), true, false)
   check.call('unknown-exception', valid.merge('com.example.unexpected' => '<true/>'), true, false)

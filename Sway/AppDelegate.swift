@@ -44,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     private let presentsSetupOnLaunch: Bool
     private var cancellables = Set<AnyCancellable>()
     private var menuBrightnessTimer: Timer?
+    private var menuScrollMonitor: Any?
     private var lastMenuSignature: String?
     private lazy var activeIcon = menuIcon("waveform.path")
     private lazy var pausedIcon = menuIcon("pause.circle")
@@ -62,6 +63,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         setupMenuBar()
         ExcludedAppsManager.shared.start()
         HotkeyManager.shared.startWithSavedHotkey()
+        _ = EdgeMapHUD.shared // Listens for the hold-to-show hotkey.
+        installMenuBarScroll()
+
+        TrackpadSettings.shared.$brightnessFollowsPointer.removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { BrightnessController.shared.followsPointer = $0 }.store(in: &cancellables)
+        TrackpadSettings.shared.$extraDimBelowMinimum.removeDuplicates().dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { if !$0 { GammaDimmer.shared.restoreAll() } }.store(in: &cancellables)
 
         TrackpadSettings.shared.$isEnabled
             .removeDuplicates()
@@ -128,7 +138,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
                 .sink { note in
                     guard let value = note.object as? Float, value.isFinite else { return }
                     let type: OSDType = name == .microphoneLevelChanged ? .microphone : name == .volumeChanged || name == .topEdgeVolumeChanged ? .volume : .brightness
-                    OSDOverlay.shared.show(type: type, value: value)
+                    OSDOverlay.shared.show(type: type, value: value, placement: note.userInfo?["placement"] as? OSDPlacement,
+                                           fine: note.userInfo?["fine"] as? Bool ?? false)
                 }.store(in: &cancellables)
         }
         NotificationCenter.default.publisher(for: .microphoneMuteChanged).sink { note in
@@ -168,6 +179,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
                     AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
                 }
             }
+        }
+    }
+
+    /// Scroll over the menu bar icon: volume, or brightness while holding ⌥.
+    /// A local monitor sees only events already addressed to Sway's own
+    /// status item window; it never observes other apps.
+    private func installMenuBarScroll() {
+        menuScrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            guard let self, TrackpadSettings.shared.menuBarScroll,
+                  let window = self.statusItem?.button?.window, event.window === window else { return event }
+            let raw = event.isDirectionInvertedFromDevice ? -event.scrollingDeltaY : event.scrollingDeltaY
+            guard raw.isFinite, raw != 0 else { return nil }
+            // Wheels click in sixteenths, like the volume keys; trackpads glide.
+            let step = event.hasPreciseScrollingDeltas ? Double(raw) * 0.004 : (raw > 0 ? 1.0 : -1.0) / 16
+            let controls = ControlCenterModel.shared
+            let action: ZoneAction = event.modifierFlags.contains(.option) ? .brightness : .volume
+            // One undo point per trackpad scroll; wheel clicks are each tiny.
+            if event.phase == .began { controls.captureUndo(action) }
+            controls.adjust(action, to: (action == .volume ? controls.volume : controls.brightness) + step)
+            return nil
+        }
+    }
+
+    // MARK: URL commands
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard TrackpadSettings.shared.urlCommandsEnabled else { return }
+        for url in urls { if let command = SwayURLCommand.parse(url) { perform(command) } }
+    }
+
+    func perform(_ command: SwayURLCommand) {
+        let controls = ControlCenterModel.shared
+        switch command {
+        case let .pause(minutes):
+            if let minutes { SwaySession.shared.pause(for: minutes * 60) } else { SwaySession.shared.setEnabled(false) }
+        case .resume: SwaySession.shared.setEnabled(true)
+        case .toggle: SwaySession.shared.setEnabled(!TrackpadSettings.shared.isEnabled)
+        case let .volume(level): controls.captureUndo(.volume); controls.adjust(.volume, to: level)
+        case let .brightness(level): controls.captureUndo(.brightness); controls.adjust(.brightness, to: level)
+        case .settings: showSettings()
+        case .controls: showQuickControls()
+        case .edgeMap: EdgeMapHUD.shared.show(autoHide: true)
         }
     }
 
@@ -520,6 +573,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // Never leave a display dimmed or an app's audio rerouted after quitting.
+        GammaDimmer.shared.restoreAll()
+        AppVolumeController.shared.resetAll()
+        if let menuScrollMonitor { NSEvent.removeMonitor(menuScrollMonitor) }
         dismissal.stop()
         focus.cancel()
         UpdateChecker.shared.stop()

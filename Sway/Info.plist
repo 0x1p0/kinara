@@ -40,6 +40,21 @@
     <string>13.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.trackpadcontrol.app.commands</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>sway</string>
+            </array>
+        </dict>
+    </array>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Sway reads the current track from Music or Spotify to show it in the Now Playing display, and moves the playback position when you scrub with an edge swipe.</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>App volume changes the sound of the app in front by routing it through Sway at the level you choose. Sway never records, saves, or sends audio.</string>
     <key>NSAccessibilityUsageDescription</key>
     <string>Sway needs Accessibility access to monitor trackpad position and control system volume and brightness using edge-zone gestures.</string>
     <key>NSPrincipalClass</key>

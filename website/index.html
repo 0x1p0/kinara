@@ -209,30 +209,37 @@
             <button type="button" data-category="windows" aria-pressed="false">Windows</button>
             <button type="button" data-category="tools" aria-pressed="false">Tools</button>
           </div>
-          <p class="action-count" id="action-count" role="status" aria-live="polite" aria-atomic="true">26 actions · plus Off for any edge</p>
+          <p class="action-count" id="action-count" role="status" aria-live="polite" aria-atomic="true">36 actions · 10 arrive in 1.2 · plus Off for any edge</p>
         </div>
         <div class="action-groups" id="action-groups">
           <details class="action-group" data-category="display" open>
-            <summary><span class="category-mark" aria-hidden="true">☀</span><span class="category-title">Display & keyboard<small>Find your comfortable light.</small></span><span class="category-count">02</span><span class="detail-plus" aria-hidden="true"></span></summary>
+            <summary><span class="category-mark" aria-hidden="true">☀</span><span class="category-title">Display & keyboard<small>Find your comfortable light.</small></span><span class="category-count">05</span><span class="detail-plus" aria-hidden="true"></span></summary>
             <dl class="action-list">
-              <div data-action-id="brightness"><dt>Display brightness</dt><dd>Up brightens; down dims the built-in display. External-monitor DDC control isn’t supported.</dd></div>
+              <div data-action-id="brightness"><dt>Display brightness</dt><dd>Up brightens; down dims the built-in display. From 1.2 it can follow the pointer to Apple displays and to other monitors over DDC/CI where they support it.</dd></div>
               <div data-action-id="keyboardBrightness" data-keywords="keyboard lighting illumination"><dt>Keyboard backlight</dt><dd>Up brightens; down dims a supported backlit keyboard. macOS and ambient-light conditions can limit changes.</dd></div>
+              <div data-action-id="nightShift" data-keywords="new warm color temperature"><dt>Night Shift warmth <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Up warms the display; down cools it, and zero turns Night Shift off. Uses a private macOS interface that can change.</dd></div>
+              <div data-action-id="trueTone" data-keywords="new color ambient"><dt>True Tone <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Up turns True Tone on; down turns it off. Only on displays that support it.</dd></div>
+              <div data-action-id="extraDim" data-keywords="new darker night"><dt>Extra dim <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Dim below the lowest backlight level for late nights. Quitting Sway always restores normal brightness.</dd></div>
             </dl>
           </details>
           <details class="action-group" data-category="audio">
-            <summary><span class="category-mark" aria-hidden="true">♪</span><span class="category-title">Audio & microphone<small>A little more control over your sound.</small></span><span class="category-count">04</span><span class="detail-plus" aria-hidden="true"></span></summary>
+            <summary><span class="category-mark" aria-hidden="true">♪</span><span class="category-title">Audio & microphone<small>A little more control over your sound.</small></span><span class="category-count">06</span><span class="detail-plus" aria-hidden="true"></span></summary>
             <dl class="action-list">
               <div data-action-id="volume"><dt>Output volume</dt><dd>Up raises; down lowers the default audio output. Requires a device with software volume control.</dd></div>
+              <div data-action-id="appVolume" data-keywords="new mixer per-app"><dt>App volume <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Change only the sound of the app in front. macOS asks once for System Audio Recording; Sway never records or saves audio. macOS 14.2+.</dd></div>
+              <div data-action-id="audioOutput" data-keywords="new airpods speakers device switch"><dt>Switch audio output <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Up picks the next output, down the previous one. The indicator names the new device.</dd></div>
               <div data-action-id="microphoneLevel" data-keywords="mic input gain"><dt>Microphone level</dt><dd>Adjust the default input’s gain without recording audio. Changing gain never unmutes the device.</dd></div>
               <div data-action-id="outputMute"><dt>Speaker mute</dt><dd>Down mutes; up unmutes the default output. Available when the device provides a hardware mute control.</dd></div>
               <div data-action-id="microphoneMute" data-keywords="mic input"><dt>Microphone mute</dt><dd>Down mutes; up unmutes the default input, when readable, writable hardware mute is available. Other inputs and app mute buttons stay separate.</dd></div>
             </dl>
           </details>
           <details class="action-group" data-category="media">
-            <summary><span class="category-mark" aria-hidden="true">▷</span><span class="category-title">Media<small>Keep the soundtrack moving.</small></span><span class="category-count">02</span><span class="detail-plus" aria-hidden="true"></span></summary>
+            <summary><span class="category-mark" aria-hidden="true">▷</span><span class="category-title">Media<small>Keep the soundtrack moving.</small></span><span class="category-count">04</span><span class="detail-plus" aria-hidden="true"></span></summary>
             <dl class="action-list">
               <div data-action-id="mediaTracks" data-keywords="music song skip"><dt>Previous / next track</dt><dd>Up requests the next track; down requests the previous track in the active media app. One request per swipe.</dd></div>
               <div data-action-id="playPause" data-keywords="music song"><dt>Play / pause</dt><dd>Swipe either way to send play/pause to the active media app. Lift your fingers before toggling again.</dd></div>
+              <div data-action-id="seek" data-keywords="new scrub position music spotify"><dt>Seek in track <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Up moves forward, down moves back, with a Now Playing display. Works with Music and Spotify.</dd></div>
+              <div data-action-id="nowPlaying" data-keywords="new artwork music song"><dt>Show now playing <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Shows the current track with artwork and progress. Changes nothing.</dd></div>
             </dl>
           </details>
           <details class="action-group" data-category="navigation">
@@ -246,7 +253,7 @@
             </dl>
           </details>
           <details class="action-group" data-category="windows">
-            <summary><span class="category-mark" aria-hidden="true">▣</span><span class="category-title">Windows & desktops<small>A little room to think.</small></span><span class="category-count">09</span><span class="detail-plus" aria-hidden="true"></span></summary>
+            <summary><span class="category-mark" aria-hidden="true">▣</span><span class="category-title">Windows & desktops<small>A little room to think.</small></span><span class="category-count">10</span><span class="detail-plus" aria-hidden="true"></span></summary>
             <dl class="action-list">
               <div data-action-id="workspaces" data-keywords="spaces workspaces"><dt>Switch desktops</dt><dd>Up moves to the next desktop; down to the previous. Requires macOS Control-Arrow shortcuts.</dd></div>
               <div data-action-id="missionControl"><dt>Mission Control</dt><dd>Swipe either way to send Control-Up and get an overview of your windows.</dd></div>
@@ -257,15 +264,18 @@
               <div data-action-id="fullScreen"><dt>Toggle full screen</dt><dd>Swipe either way to send Control-Command-F to a supporting app.</dd></div>
               <div data-action-id="minimizeWindow"><dt>Minimize window</dt><dd>Swipe either way to minimize the current window with Command-M.</dd></div>
               <div data-action-id="hideApp"><dt>Hide current app</dt><dd>Swipe either way to hide the current app with Command-H.</dd></div>
+              <div data-action-id="tileWindow" data-keywords="new snap half split"><dt>Tile window <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Up fills the screen with the front window; down moves it to that edge’s half.</dd></div>
             </dl>
           </details>
           <details class="action-group" data-category="tools">
-            <summary><span class="category-mark" aria-hidden="true">⌘</span><span class="category-title">Tools & shortcuts<small>Your everyday, a swipe away.</small></span><span class="category-count">04</span><span class="detail-plus" aria-hidden="true"></span></summary>
+            <summary><span class="category-mark" aria-hidden="true">⌘</span><span class="category-title">Tools & shortcuts<small>Your everyday, a swipe away.</small></span><span class="category-count">06</span><span class="detail-plus" aria-hidden="true"></span></summary>
             <dl class="action-list">
               <div data-action-id="spotlight" data-keywords="search"><dt>Spotlight</dt><dd>Swipe either way to send Command-Space. Requires the standard Spotlight shortcut.</dd></div>
               <div data-action-id="screenshotTools" data-keywords="capture"><dt>Screenshot tools</dt><dd>Open the macOS screenshot toolbar with Command-Shift-5. You choose what to capture; Sway records nothing.</dd></div>
               <div data-action-id="emojiPicker" data-keywords="characters"><dt>Emoji & symbols</dt><dd>Open the character picker with Control-Command-Space. Either swipe direction works.</dd></div>
-              <div data-action-id="customShortcut" data-keywords="keyboard hotkey"><dt>Custom shortcuts</dt><dd>Record an up/right and down/left shortcut in Sway. Each runs once per swipe in the starting app. The pair is shared by edges assigned to Custom shortcuts.</dd></div>
+              <div data-action-id="runShortcut" data-keywords="new shortcuts automation smart home"><dt>Run a Shortcut <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>Run the Shortcut you choose for each direction, from smart lights to whole routines.</dd></div>
+              <div data-action-id="cheatSheet" data-keywords="new map help edges"><dt>Show edge map <span class="soon" title="Arrives in Sway 1.2">1.2</span></dt><dd>See what every edge does in the app you’re using. Changes nothing.</dd></div>
+              <div data-action-id="customShortcut" data-keywords="keyboard hotkey"><dt>Custom shortcuts</dt><dd>Record an up/right and down/left shortcut in Sway. Each runs once per swipe in the starting app. In 1.1 the pair is shared by edges; 1.2 lets every edge record its own.</dd></div>
             </dl>
           </details>
         </div>

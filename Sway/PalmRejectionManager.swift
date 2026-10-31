@@ -3,8 +3,9 @@ import Foundation
 // Observable evidence, not a "palm probability": identity, touchdown position,
 // exact count, elapsed time, axis displacement, path efficiency and typing.
 enum GestureRegion: String, CaseIterable {
-    case none, left, right, topLeft, topRight, top
+    case none, left, right, topLeft, topRight, top, bottom
     var isTop: Bool { self == .top || self == .topLeft || self == .topRight }
+    var isSide: Bool { self == .left || self == .right }
 }
 
 struct GestureContact {
@@ -86,11 +87,19 @@ struct GestureConfiguration: Equatable {
     var topHeight = 0.15
     var topEnabled = false
     var topHorizontal = true
-    var enabledRegions: Set<GestureRegion> = [.left, .right, .topLeft, .topRight, .top]
+    var bottomHeight = 0.15
+    var bottomEnabled = false
+    var enabledRegions: Set<GestureRegion> = [.left, .right, .topLeft, .topRight, .top, .bottom]
     var strict = false
     var activationThreshold = 4.0
     var typingCooldown = 0.45
+    /// Accept the other finger count (1 or 2) as a second layer, only in
+    /// regions that actually have an action for it.
+    var fingerLayers = false
+    var alternateRegions: Set<GestureRegion> = []
 
+    var maximumFingers: Int { fingerLayers ? 2 : requiredFingers }
+    func isHorizontal(_ region: GestureRegion) -> Bool { region == .bottom || (region.isTop && topHorizontal) }
     var minimumLifetime: Double { strict ? 0.095 : 0.065 }
     var minimumSamples: Int { strict ? 6 : 4 }
     var minimumDisplacement: Double {
@@ -103,6 +112,8 @@ struct GestureConfiguration: Equatable {
         let candidate: GestureRegion
         if topEnabled && y >= 1 - topHeight {
             candidate = topHorizontal ? (x < 0.5 ? .topLeft : .topRight) : .top
+        } else if bottomEnabled && y <= bottomHeight {
+            candidate = .bottom
         } else if x <= leftWidth {
             candidate = .left
         } else if x >= 1 - rightWidth {
@@ -130,6 +141,12 @@ struct GestureDecision {
     var justAccepted = false
     var justRejected = false
     var ended = false
+    /// Assembled contact count, which selects the finger layer.
+    var fingers = 0
+    /// Travel from the edge toward the trackpad centre since activation.
+    var inward = 0.0
+    /// Smoothed travel along the swipe axis, in trackpad heights per second.
+    var speed = 0.0
 }
 
 /// Deterministic and independent of AppKit, timers, controllers and wall-clock time.
@@ -145,6 +162,8 @@ struct EdgeGestureRecognizer {
     private var previousPositions: [Int32: GestureContact] = [:]
     private var pathLengths: [Int32: Double] = [:]
     private var assembledIDs: Set<Int32>?
+    private var assembledCentroid: (x: Double, y: Double)?
+    private var smoothedSpeed = 0.0
 
     var isCapturing: Bool { startedAt != nil && !decision.ended && (decision.phase == .gathering || decision.phase == .accepted) }
 
@@ -226,7 +245,7 @@ struct EdgeGestureRecognizer {
             reject("Typing cooldown is active. Lift your fingers, then try again.")
             return decision
         }
-        guard contacts.count <= configuration.requiredFingers else {
+        guard contacts.count <= configuration.maximumFingers else {
             reject("Extra contact detected. Lift all fingers to reset.")
             return decision
         }
@@ -257,21 +276,31 @@ struct EdgeGestureRecognizer {
                 reject("Both fingers must start in the same edge zone.")
                 return decision
             }
-            if contacts.count < configuration.requiredFingers {
-                if decision.elapsed > 0.1 {
-                    reject("This setup needs \(configuration.requiredFingers) fingers. Lift and try again.")
-                } else {
-                    decision.reason = "Waiting for \(configuration.requiredFingers) fingers together…"
+            if contacts.count < configuration.maximumFingers {
+                // With finger layers, a lone finger becomes the one-finger
+                // layer only after the window for a second finger has passed.
+                let loneLayer = configuration.fingerLayers && contacts.count == 1 && decision.elapsed > 0.1
+                if !loneLayer {
+                    if decision.elapsed > 0.1 {
+                        reject("This setup needs \(configuration.requiredFingers) fingers. Lift and try again.")
+                    } else {
+                        decision.reason = "Waiting for \(configuration.requiredFingers) fingers together…"
+                    }
+                    previousTime = timestamp
+                    return decision
                 }
-                previousTime = timestamp
+            } else if decision.elapsed > 0.1 {
+                reject("Place both fingers together, then swipe.")
                 return decision
             }
-            if decision.elapsed > 0.1 {
-                reject("Place both fingers together, then swipe.")
+            if contacts.count != configuration.requiredFingers && !configuration.alternateRegions.contains(decision.region) {
+                reject("This edge has no \(contacts.count)-finger action. Lift and try again.")
                 return decision
             }
             assembledIDs = ids
             assembledAt = timestamp
+            assembledCentroid = (decision.x, decision.y)
+            decision.fingers = contacts.count
             previousPositions = Dictionary(uniqueKeysWithValues: contacts.map { ($0.id, $0) })
         }
         let interval = timestamp - (previousTime ?? timestamp)
@@ -282,7 +311,7 @@ struct EdgeGestureRecognizer {
         if interval == 0 && decision.samples > 0 { return decision }
         previousTime = timestamp
         decision.samples += 1
-        let horizontal = decision.region.isTop && configuration.topHorizontal
+        let horizontal = configuration.isHorizontal(decision.region)
         var netAxis = 0.0, netPerpendicular = 0.0, delta = 0.0, path = 0.0
         var perFingerDisplacements: [Double] = []
         for contact in contacts {
@@ -309,13 +338,19 @@ struct EdgeGestureRecognizer {
         decision.straightness = path > 0.00001 ? min(1, abs(netAxis) / path) : 0
         if decision.phase == .accepted {
             decision.delta = delta / count
+            if interval > 0 {
+                let instant = abs(decision.delta) / interval
+                smoothedSpeed = smoothedSpeed == 0 ? instant : smoothedSpeed * 0.65 + instant * 0.35
+            }
+            decision.speed = smoothedSpeed
+            decision.inward = inwardTravel()
             return decision
         }
         let enoughTime = timestamp - (assembledAt ?? timestamp) >= configuration.minimumLifetime
         let enoughSamples = decision.samples >= configuration.minimumSamples
         guard enoughTime && enoughSamples else { return decision }
         if abs(netPerpendicular) > max(configuration.minimumDisplacement, abs(netAxis) * 1.2) {
-            reject(horizontal ? "Swipe left or right along this top zone." : "Swipe up or down along this side zone.")
+            reject(horizontal ? "Swipe left or right along this \(decision.region == .bottom ? "bottom" : "top") zone." : "Swipe up or down along this side zone.")
         } else if path > configuration.minimumDisplacement * 2.5 && decision.straightness < 0.45 {
             reject("Movement was mostly jitter or backtracking. Try a steady swipe.")
         } else if decision.displacement >= configuration.minimumDisplacement &&
@@ -337,16 +372,237 @@ struct EdgeGestureRecognizer {
         decision.reason = reason
         decision.delta = 0
     }
+
+    /// Perpendicular travel toward the centre. A top strip swiped vertically
+    /// has no perpendicular "inward" direction, so it never enters fine mode.
+    private func inwardTravel() -> Double {
+        guard let start = assembledCentroid else { return 0 }
+        let travel: Double
+        switch decision.region {
+        case .left: travel = decision.x - start.x
+        case .right: travel = start.x - decision.x
+        case .bottom: travel = decision.y - start.y
+        case .topLeft, .topRight: travel = start.y - decision.y
+        case .top, .none: travel = 0
+        }
+        return travel.isFinite ? max(0, travel) : 0
+    }
+}
+
+/// Precision and speed shaping for continuous levels. Pure: no clocks or AppKit.
+/// Sliding inward from the edge trades range for control, like scrubbing a
+/// video; a quick flick covers more range than a slow, deliberate movement.
+struct GestureFeel: Equatable {
+    var precision = true
+    var acceleration = true
+    static let precisionDeadZone = 0.03
+    static let precisionTravel = 0.18
+    static let finestScale = 0.2
+    private static let curve: [(speed: Double, scale: Double)] = [(0.15, 0.55), (0.5, 1), (1.5, 1.8), (2.5, 2.2)]
+
+    func precisionScale(inward: Double) -> Double {
+        guard precision, inward.isFinite else { return 1 }
+        let progress = min(1, max(0, (inward - Self.precisionDeadZone) / Self.precisionTravel))
+        return 1 - progress * (1 - Self.finestScale)
+    }
+
+    func accelerationScale(speed: Double) -> Double {
+        guard acceleration, speed.isFinite, speed >= 0 else { return 1 }
+        let points = Self.curve
+        if speed <= points[0].speed { return points[0].scale }
+        for (low, high) in zip(points, points.dropFirst()) where speed <= high.speed {
+            return low.scale + (speed - low.speed) / (high.speed - low.speed) * (high.scale - low.scale)
+        }
+        return points[points.count - 1].scale
+    }
+
+    /// Fine control wins: a fast inward slide must never undo precision.
+    func scale(speed: Double, inward: Double) -> Double {
+        let fine = precisionScale(inward: inward)
+        let speedScale = accelerationScale(speed: speed)
+        return fine < 1 ? fine * min(1, speedScale) : speedScale
+    }
+
+    func isFine(inward: Double) -> Bool { precisionScale(inward: inward) < 0.999 }
 }
 
 /// Clamp each relative sample, so overshooting a bound never delays reversal.
+/// Notches are magnetic: within `capture` of one, the level rests on it until
+/// continuous travel carries it back out, which is what makes it feel like a
+/// physical detent instead of a number that happens to pass 50%.
 struct RelativeGestureValue {
     private(set) var value: Double
-    mutating func apply(delta: Double, sensitivity: Double, inverted: Bool, bounds: ClosedRange<Double>) -> Double {
-        guard delta.isFinite, sensitivity.isFinite else { return value }
-        value = min(bounds.upperBound, max(bounds.lowerBound,
-                    value + delta * max(0.1, sensitivity) * 0.9 * (inverted ? -1 : 1)))
+    private var raw: Double?
+
+    init(value: Double) { self.value = value }
+
+    mutating func apply(delta: Double, sensitivity: Double, inverted: Bool, bounds: ClosedRange<Double>,
+                        scale: Double = 1, notches: [Double] = [], capture: Double = 0) -> Double {
+        guard delta.isFinite, sensitivity.isFinite, scale.isFinite else { return value }
+        let next = min(bounds.upperBound, max(bounds.lowerBound,
+                   (raw ?? value) + delta * max(0.1, sensitivity) * 0.9 * max(0, scale) * (inverted ? -1 : 1)))
+        raw = next
+        let nearest = notches.filter { $0.isFinite && bounds.contains($0) }
+            .min { abs($0 - next) < abs($1 - next) }
+        if let nearest, capture > 0, abs(nearest - next) <= capture { value = nearest }
+        else { value = next }
         return value
+    }
+}
+
+// MARK: - Taps
+
+/// Tap regions. Corners exist only for taps and win over the strips they
+/// overlap, but only when a corner actually has an action.
+enum TapRegion: String, CaseIterable {
+    case left, right, top, bottom, topLeftCorner, topRightCorner, bottomLeftCorner, bottomRightCorner
+    var isCorner: Bool { ![.left, .right, .top, .bottom].contains(self) }
+}
+
+enum TapGesture: String, CaseIterable { case doubleTap, tapHold }
+
+struct TapEvent: Equatable {
+    let region: TapRegion
+    let gesture: TapGesture
+    var slot: String { "\(region.rawValue).\(gesture.rawValue)" }
+}
+
+struct TapConfiguration: Equatable {
+    var requiredFingers = 2
+    var leftWidth = 0.2
+    var rightWidth = 0.2
+    var topEnabled = false
+    var topHeight = 0.15
+    var bottomEnabled = false
+    var bottomHeight = 0.15
+    var cornerSize = 0.14
+    var typingCooldown = 0.45
+    /// "region.gesture" slots that have an action; nothing else is recognized.
+    var slots: Set<String> = []
+
+    static let maximumTapDuration = 0.25
+    static let maximumTravel = 0.025
+    static let maximumGap = 0.35
+    static let holdDuration = 0.45
+
+    func region(x: Double, y: Double) -> TapRegion? {
+        let corners = slots.contains { TapRegion(rawValue: String($0.split(separator: ".")[0]))?.isCorner == true }
+        if corners {
+            let left = x <= cornerSize, right = x >= 1 - cornerSize
+            let top = y >= 1 - cornerSize, bottom = y <= cornerSize
+            if top && left { return .topLeftCorner }
+            if top && right { return .topRightCorner }
+            if bottom && left { return .bottomLeftCorner }
+            if bottom && right { return .bottomRightCorner }
+        }
+        if topEnabled && y >= 1 - topHeight { return .top }
+        if bottomEnabled && y <= bottomHeight { return .bottom }
+        if x <= leftWidth { return .left }
+        if x >= 1 - rightWidth { return .right }
+        return nil
+    }
+
+    func hasSlot(_ region: TapRegion) -> Bool {
+        TapGesture.allCases.contains { slots.contains("\(region.rawValue).\($0.rawValue)") }
+    }
+}
+
+/// Double-tap and tap-and-hold. Both begin with a short, still tap, which a
+/// resting palm does not produce, so a hand lying on an edge never triggers
+/// them. Deterministic and independent of AppKit and wall-clock time.
+struct EdgeTapRecognizer {
+    private var started: Double?
+    private var region: TapRegion?
+    private var starts: [Int32: GestureContact] = [:]
+    private var maxCount = 0
+    private var travel = 0.0
+    private var invalid = false
+    private var isSecond = false
+    private var holdFired = false
+    private var lastTap: (region: TapRegion, end: Double)?
+    private var lastKeyTime = -Double.infinity
+    /// Tap-to-click clicks that follow a recognized edge tap until this time
+    /// belong to Sway and are withheld from the app under the pointer.
+    private(set) var claimsClicksUntil = -Double.infinity
+    var isTouching: Bool { started != nil }
+
+    mutating func keyDown(at timestamp: Double) {
+        lastKeyTime = timestamp
+        invalid = started != nil
+        lastTap = nil
+    }
+
+    /// A physical click is not a tap and ends any pending double-tap.
+    mutating func click() {
+        if started != nil { invalid = true }
+        lastTap = nil
+    }
+
+    mutating func process(contacts: [GestureContact], timestamp: Double,
+                          configuration: TapConfiguration) -> TapEvent? {
+        guard timestamp.isFinite, !configuration.slots.isEmpty else { reset(keepingTap: false); return nil }
+        guard !contacts.isEmpty else { return lift(at: timestamp, configuration: configuration) }
+        if started == nil {
+            started = timestamp
+            let first = contacts[0]
+            region = configuration.region(x: first.x, y: first.y)
+            invalid = region.map { !configuration.hasSlot($0) } ?? true
+                || timestamp - lastKeyTime < configuration.typingCooldown
+            isSecond = lastTap.map { $0.region == region && timestamp - $0.end <= TapConfiguration.maximumGap } ?? false
+            if !isSecond { lastTap = nil }
+        }
+        guard let start = started, !invalid else { return nil }
+        for contact in contacts {
+            guard contact.x.isFinite, contact.y.isFinite else { invalid = true; return nil }
+            if let origin = starts[contact.id] {
+                travel = max(travel, hypot(contact.x - origin.x, contact.y - origin.y))
+            } else {
+                // Late or out-of-region contacts are a hand settling, not a tap.
+                guard timestamp - start <= 0.1, configuration.region(x: contact.x, y: contact.y) == region else {
+                    invalid = true; return nil
+                }
+                starts[contact.id] = contact
+            }
+        }
+        maxCount = max(maxCount, contacts.count)
+        if maxCount > configuration.requiredFingers || travel > TapConfiguration.maximumTravel { invalid = true; return nil }
+        if isSecond, !holdFired, let region, contacts.count == configuration.requiredFingers,
+           timestamp - start >= TapConfiguration.holdDuration,
+           configuration.slots.contains("\(region.rawValue).\(TapGesture.tapHold.rawValue)") {
+            holdFired = true
+            lastTap = nil
+            return TapEvent(region: region, gesture: .tapHold)
+        }
+        return nil
+    }
+
+    private mutating func lift(at timestamp: Double, configuration: TapConfiguration) -> TapEvent? {
+        guard let start = started else { return nil }
+        defer { reset(keepingTap: true) }
+        guard !invalid, !holdFired, let region, maxCount == configuration.requiredFingers,
+              timestamp - start <= TapConfiguration.maximumTapDuration else {
+            lastTap = nil
+            return nil
+        }
+        claimsClicksUntil = timestamp + 0.4
+        if isSecond, configuration.slots.contains("\(region.rawValue).\(TapGesture.doubleTap.rawValue)") {
+            lastTap = nil
+            return TapEvent(region: region, gesture: .doubleTap)
+        }
+        lastTap = (region, timestamp)
+        return nil
+    }
+
+    private mutating func reset(keepingTap: Bool) {
+        started = nil
+        region = nil
+        starts.removeAll(keepingCapacity: true)
+        maxCount = 0
+        travel = 0
+        invalid = false
+        isSecond = false
+        holdFired = false
+        if !keepingTap { lastTap = nil }
     }
 }
 
@@ -457,6 +713,7 @@ final class GestureTelemetry: ObservableObject {
         var decision = GestureDecision()
         var acceptedCount = 0
         var rejectedCount = 0
+        var lastTap: String?
     }
     // A single coherent publication per rendered sample. Publishing each field
     // separately invalidated every observing view up to 13 times per sample.
@@ -481,6 +738,10 @@ final class GestureTelemetry: ObservableObject {
             }
         }
     }
+    /// Settings is showing a live map: positions publish, counters do not.
+    @Published var isLiveViewing = false {
+        didSet { if isLiveViewing != oldValue { lastPublish = -Double.infinity } }
+    }
     private var lastPublish = -Double.infinity
 
     func resetCounters() {
@@ -495,16 +756,25 @@ final class GestureTelemetry: ObservableObject {
         snapshot = next
     }
 
+    /// Taps never change anything during a test; this only explains them.
+    func publishTap(_ event: TapEvent, title: String) {
+        guard isTesting else { return }
+        var next = snapshot
+        next.lastTap = "\(title) recognized. Nothing was sent during the test."
+        next.decision.reason = next.lastTap ?? next.decision.reason
+        snapshot = next
+    }
+
     func publish(_ decision: GestureDecision, at time: Double, force: Bool = false) {
         // No SwiftUI work, trail updates or counter churn during normal use.
-        guard isTesting else { return }
+        guard isTesting || isLiveViewing else { return }
         guard force || decision.justAccepted || decision.justRejected || decision.count == 0 ||
                 time - lastPublish >= 1.0 / 30 else { return }
         lastPublish = time
         var next = snapshot
         next.decision = decision
-        if decision.justAccepted { next.acceptedCount += 1 }
-        if decision.justRejected { next.rejectedCount += 1 }
+        if isTesting && decision.justAccepted { next.acceptedCount += 1 }
+        if isTesting && decision.justRejected { next.rejectedCount += 1 }
         snapshot = next
     }
 }

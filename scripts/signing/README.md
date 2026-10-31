@@ -58,3 +58,31 @@ release, grant Accessibility once, install a newer release signed by this same
 identity into the same location, and confirm gestures work without editing the
 Accessibility entry. Do not reset TCC, remove the permission entry, switch to an
 ad-hoc build, or install a certificate during that test.
+
+# Optional: Developer ID and notarization
+
+The self-signed identity above keeps Accessibility permission across updates,
+but it cannot remove Gatekeeper's "Apple could not verify Sway" warning. Only a
+**Developer ID Application** certificate plus Apple notarization can. That
+needs an Apple Developer Program membership, which only the maintainer can
+enroll in.
+
+`scripts/notarize.sh` signs a copy of `build/Sway.app` with Developer ID
+(Sparkle's nested code first), submits it to Apple's notary service, staples
+the ticket, and checks it with `spctl`. It never touches the input app or the
+release workflow. Instructions are at the top of the script.
+
+Before switching releases over, weigh the trade-off:
+
+- **One more Accessibility grant.** A Developer ID signature has a different
+  designated requirement than `CN=Sway`, so macOS treats the first Developer ID
+  build as a new app. Users re-enable Sway in Accessibility once; after that,
+  Developer ID builds keep the permission as reliably as the current identity.
+- **Update signing is unchanged.** Sparkle's EdDSA key is separate from app
+  signing, so existing installs keep receiving verified updates.
+- **Entitlements stay the same.** Once every release uses Developer ID and
+  Sparkle is re-signed with the same team, the library-validation exception
+  can be removed; update `scripts/verify-runtime.sh` and its tests together.
+- **CI.** Wiring this into the release workflow means a third protected secret
+  (the Developer ID identity) and notary credentials in the `release`
+  environment, with the same approval gates as today.

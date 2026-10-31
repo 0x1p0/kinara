@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import Carbon
 
 /// Deterministic visual inspection of the actual production SwiftUI hierarchy.
 /// This executable does not construct AppDelegate, enable monitoring, request
@@ -51,6 +52,36 @@ struct RenderUI {
                 $0.topEdgeHeight = 0.01
             }),
             Fixture(surface: .preferences(.appearance), suffix: "-vertical-osd", configure: { $0.osdStyle = "vertical" }),
+            Fixture(surface: .preferences(.appearance), suffix: "-follow-finger", configure: { $0.osdStyle = "edge" }),
+            Fixture(surface: .preferences(.gestures), suffix: "-layers", configure: {
+                $0.setBaseBinding(EdgeBinding(.customShortcut, up: HotkeyCombo(keyCode: 17, modifiers: UInt32(cmdKey))), for: "right")
+                $0.setBaseBinding(EdgeBinding(.keyboardBrightness), for: EdgeSlot.option("left"))
+                $0.setBaseBinding(EdgeBinding(.runShortcut, shortcut: "Desk Lamp Up", downShortcut: "Desk Lamp Down"), for: EdgeSlot.option("right"))
+                $0.setBaseBinding(EdgeBinding(.nightShift), for: EdgeSlot.alternate("left"))
+            }),
+            Fixture(surface: .preferences(.gestures), suffix: "-bottom-edge", configure: {
+                $0.applyGesturePreset(.oneFinger)
+                $0.bottomEdgeEnabled = true
+                $0.bottomEdgeAction = .seek
+            }),
+            Fixture(surface: .preferences(.taps), suffix: "-assigned", configure: {
+                $0.setBaseBinding(EdgeBinding(.playPause), for: "left.doubleTap")
+                $0.setBaseBinding(EdgeBinding(.missionControl), for: "right.tapHold")
+                $0.setBaseBinding(EdgeBinding(.screenshotTools), for: "topRightCorner.doubleTap")
+                $0.setBaseBinding(EdgeBinding(.cheatSheet), for: "bottomLeftCorner.doubleTap")
+            }),
+            Fixture(surface: .preferences(.profiles), suffix: "-with-profiles", configure: {
+                $0.appProfiles["com.apple.Safari"] = ActionProfile(name: "Safari", bindings: ["right": EdgeBinding(.tabs), "left.doubleTap": EdgeBinding(.history)])
+                $0.appProfiles["com.apple.FinalCut"] = ActionProfile(name: "Final Cut Pro", bindings: ["left": EdgeBinding(.zoom)])
+                $0.dockedProfileEnabled = true
+                $0.dockedProfile.bindings["left"] = EdgeBinding(.brightness)
+            }),
+            Fixture(surface: .preferences(.levels), suffix: "-device-limits", configure: {
+                $0.deviceVolumeLimits["preview-device"] = DeviceLimit(name: "MacBook speakers", min: 0.05, max: 0.7)
+                $0.deviceVolumeLimits["airpods"] = DeviceLimit(name: "AirPods Pro", min: 0, max: 0.6)
+                $0.volumeFavorite = 0.3
+                $0.extraDimBelowMinimum = true
+            }),
             Fixture(surface: .preferences(.feedback), suffix: "-haptics-off", configure: { $0.hapticFeedback = false }),
             Fixture(surface: .preferences(.feedback), suffix: "-haptics-crisp", configure: {
                 $0.hapticStyle = .crisp

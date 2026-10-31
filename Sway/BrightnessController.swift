@@ -17,6 +17,17 @@ protocol BrightnessHardware: AnyObject {
     func read(_ display: CGDirectDisplayID) -> Float?
     func write(_ value: Float, to display: CGDirectDisplayID) -> Bool
     func observeChanges(_ callback: @escaping () -> Void)
+    /// Whether brightness can be read and written for this display.
+    func isControllable(_ display: CGDirectDisplayID) -> Bool
+    func displayUnderPointer() -> CGDirectDisplayID?
+    func name(_ display: CGDirectDisplayID) -> String
+}
+
+/// Defaults keep in-memory test hardware built-in only, exactly as before.
+extension BrightnessHardware {
+    func isControllable(_ display: CGDirectDisplayID) -> Bool { isBuiltIn(display) }
+    func displayUnderPointer() -> CGDirectDisplayID? { nil }
+    func name(_ display: CGDirectDisplayID) -> String { isBuiltIn(display) ? "Built-in display" : "External display" }
 }
 
 /// Cached route and serial hardware work. UI/touch callbacks never wait on IO.
@@ -32,6 +43,7 @@ final class BrightnessController {
         var value: Float = 0
         var available = false
         var externalConnected = false
+        var name = "No active built-in display"
         var identifier: String? { display.map { "display:\($0):\(generation)" } }
     }
     private struct Request {
@@ -49,6 +61,7 @@ final class BrightnessController {
     private var cancellationEpoch: UInt64 = 0
     private var scopeEpochs: [UUID: UInt64] = [:]
     private var scopeUseCounts: [UUID: Int] = [:]
+    private var pointerPolicy = false
 
     init(backend: BrightnessHardware) {
         self.backend = backend
@@ -57,12 +70,21 @@ final class BrightnessController {
     }
 
     private var snapshot: State { lock.lock(); defer { lock.unlock() }; return state }
-    var isBuiltInDisplayActive: Bool { snapshot.display != nil }
+    var isBuiltInDisplayActive: Bool { snapshot.display.map { backend.isBuiltIn($0) } ?? false }
     var targetIdentifier: String? { snapshot.identifier }
     var hasExternalDisplayConnected: Bool { snapshot.externalConnected }
     var isAvailable: Bool { snapshot.available }
-    var deviceName: String { snapshot.display == nil ? "No active built-in display" : "Built-in display" }
+    var deviceName: String { snapshot.name }
+    /// The display that brightness currently targets, for extra dimming.
+    var activeDisplay: CGDirectDisplayID? { snapshot.display }
     func getBrightness() -> Float { snapshot.value }
+
+    /// Target the display under the pointer when it can be controlled.
+    /// Applied on the next refresh, which every gesture performs first.
+    var followsPointer: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return pointerPolicy }
+        set { lock.lock(); pointerPolicy = newValue; lock.unlock(); refresh() }
+    }
 
     /// A completion-bearing refresh is a fresh read barrier, used while gesture
     /// intent is being confirmed. It never returns a reused pre-gesture cache.
@@ -183,7 +205,7 @@ final class BrightnessController {
         guard isCurrent() else { return .cancelled }
         var current = snapshot
         guard current.identifier == target, let display = current.display,
-              backend.isActive(display), backend.isBuiltIn(display) else {
+              backend.isActive(display), backend.isControllable(display) else {
             refreshRoute()
             return .cancelled
         }
@@ -195,7 +217,7 @@ final class BrightnessController {
         // An executing hardware call cannot be retracted. Reconcile readback,
         // but suppress success if the gesture was cancelled while IO finished.
         guard let measured = validBrightness(for: display) else { refreshRoute(); return .failed }
-        guard backend.isActive(display), backend.isBuiltIn(display), snapshot.identifier == target else {
+        guard backend.isActive(display), backend.isControllable(display), snapshot.identifier == target else {
             refreshRoute()
             return .cancelled
         }
@@ -217,12 +239,22 @@ final class BrightnessController {
         }
     }
 
+    /// The pointer's display when allowed and controllable, else the built-in
+    /// display, else (lid closed) the first controllable external display.
+    private func chooseDisplay(among displays: [CGDirectDisplayID]) -> CGDirectDisplayID? {
+        if followsPointer, let pointer = backend.displayUnderPointer(), displays.contains(pointer),
+           backend.isControllable(pointer) { return pointer }
+        if let builtIn = displays.first(where: { backend.isBuiltIn($0) }) { return builtIn }
+        return displays.first { backend.isControllable($0) }
+    }
+
     private func refreshRoute() {
         let displays = backend.activeDisplays()
         var next = snapshot
-        let display = displays.first { backend.isBuiltIn($0) }
+        let display = chooseDisplay(among: displays)
         if next.display != display { next.generation &+= 1 }
         next.display = display
+        next.name = display.map { backend.name($0) } ?? "No active built-in display"
         next.externalConnected = displays.contains { !backend.isBuiltIn($0) }
         let value = display.flatMap { validBrightness(for: $0) }
         next.available = value != nil && backend.canWrite
@@ -255,6 +287,7 @@ private final class SystemBrightnessHardware: BrightnessHardware {
     private var changed: (() -> Void)?
     private static let displayCallback: CGDisplayReconfigurationCallBack = { _, flags, context in
         guard !flags.contains(.beginConfigurationFlag), let context else { return }
+        ExternalDisplayDDC.shared.invalidate()
         Unmanaged<SystemBrightnessHardware>.fromOpaque(context).takeUnretainedValue().changed?()
     }
 
@@ -272,8 +305,30 @@ private final class SystemBrightnessHardware: BrightnessHardware {
         CGDisplayRemoveReconfigurationCallback(Self.displayCallback, Unmanaged.passUnretained(self).toOpaque())
     }
 
-    var canWrite: Bool { writeBrightness != nil }
+    /// Per-display capability is decided by isControllable: DDC monitors can
+    /// be written even if DisplayServices is missing.
+    var canWrite: Bool { true }
     func isBuiltIn(_ display: CGDirectDisplayID) -> Bool { CGDisplayIsBuiltin(display) != 0 }
+
+    /// Apple displays answer DisplayServices; other monitors may speak DDC/CI.
+    private func usesDisplayServices(_ display: CGDirectDisplayID) -> Bool {
+        guard let readBrightness else { return false }
+        var value: Float = 0
+        return readBrightness(display, &value) == 0 && value.isFinite
+    }
+    func isControllable(_ display: CGDirectDisplayID) -> Bool {
+        if isBuiltIn(display) { return writeBrightness != nil && usesDisplayServices(display) }
+        return (writeBrightness != nil && usesDisplayServices(display)) || ExternalDisplayDDC.shared.supports(display)
+    }
+    func displayUnderPointer() -> CGDirectDisplayID? {
+        guard let location = CGEvent(source: nil)?.location else { return nil }
+        var display = CGDirectDisplayID(0)
+        var count: UInt32 = 0
+        guard CGGetDisplaysWithPoint(location, 1, &display, &count) == .success, count > 0 else { return nil }
+        return display
+    }
+    // NSScreen names are main-thread data; the UI resolves friendly names.
+    func name(_ display: CGDirectDisplayID) -> String { isBuiltIn(display) ? "Built-in display" : "External display" }
     func isActive(_ display: CGDirectDisplayID) -> Bool { CGDisplayIsActive(display) != 0 }
     func activeDisplays() -> [CGDirectDisplayID] {
         var count: UInt32 = 0
@@ -283,14 +338,17 @@ private final class SystemBrightnessHardware: BrightnessHardware {
         return Array(displays.prefix(Int(count)))
     }
     func read(_ display: CGDirectDisplayID) -> Float? {
-        guard let readBrightness else { return nil }
-        var value: Float = 0
-        guard readBrightness(display, &value) == 0 else { return nil }
-        return value
+        if let readBrightness {
+            var value: Float = 0
+            if readBrightness(display, &value) == 0 { return value }
+        }
+        return isBuiltIn(display) ? nil : ExternalDisplayDDC.shared.readBrightness(display)
     }
     func write(_ value: Float, to display: CGDirectDisplayID) -> Bool {
-        guard let writeBrightness else { return false }
-        return writeBrightness(display, value) == 0
+        if let writeBrightness, isBuiltIn(display) || usesDisplayServices(display) {
+            return writeBrightness(display, value) == 0
+        }
+        return !isBuiltIn(display) && ExternalDisplayDDC.shared.writeBrightness(value, to: display)
     }
     func observeChanges(_ callback: @escaping () -> Void) {
         changed = callback

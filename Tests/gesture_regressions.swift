@@ -355,6 +355,165 @@ enum GestureRegressionTests {
         _ = feed(&engine, two, 12, [])
         expect(feed(&engine, two, 12.01, [touch(), touch(2)]).phase == .gathering,
                "fast rejected path still resets only at full lift")
+        expansionChecks(one: one, two: two)
         print("PASS: \(checks) gesture regression checks")
+    }
+
+    static func expansionChecks(one: GestureConfiguration, two: GestureConfiguration) {
+        // Bottom edge: horizontal evidence, only when enabled.
+        var bottom = one
+        bottom.bottomEnabled = true
+        var engine = EdgeGestureRecognizer()
+        for i in 0...12 { _ = feed(&engine, bottom, 1 + Double(i) * 0.01, [touch(1, 0.4 + Double(i) * 0.004, 0.06)]) }
+        expect(engine.decision.phase == .accepted && engine.decision.region == .bottom, "bottom strip accepts horizontal swipes")
+        engine = EdgeGestureRecognizer()
+        for i in 0...12 { _ = feed(&engine, bottom, 1 + Double(i) * 0.01, [touch(1, 0.4, 0.04 + Double(i) * 0.004)]) }
+        expect(engine.decision.phase == .rejected, "vertical motion in the bottom strip is rejected")
+        expect(one.region(x: 0.5, y: 0.05) == .none, "bottom strip is inactive unless enabled")
+        expect(bottom.region(x: 0.05, y: 0.05) == .bottom, "bottom strip owns its corners like the top strip")
+        var topAndBottom = bottom
+        topAndBottom.topEnabled = true
+        expect(topAndBottom.region(x: 0.5, y: 0.97) == .topRight && topAndBottom.region(x: 0.5, y: 0.03) == .bottom,
+               "top and bottom strips coexist")
+
+        // Finger layers: the other count only where it has an action.
+        var layered = two
+        layered.fingerLayers = true
+        layered.alternateRegions = [.left]
+        engine = EdgeGestureRecognizer()
+        _ = feed(&engine, layered, 1, [touch(1, 0.1, 0.4)])
+        expect(engine.decision.phase == .gathering, "lone finger waits for a possible second finger")
+        for i in 1...26 { _ = feed(&engine, layered, 1 + Double(i) * 0.01, [touch(1, 0.1, 0.4 + Double(i) * 0.005)]) }
+        expect(engine.decision.phase == .accepted && engine.decision.fingers == 1, "one finger becomes the alternate layer after the window")
+        engine = EdgeGestureRecognizer()
+        for i in 0...16 { _ = feed(&engine, layered, 1 + Double(i) * 0.01, [touch(1, 0.9, 0.4 + Double(i) * 0.005)]) }
+        expect(engine.decision.phase == .rejected, "an edge without an alternate action rejects the other finger count")
+        engine = accepted(layered)
+        expect(engine.decision.fingers == 2, "two fingers still select the primary layer")
+        engine = EdgeGestureRecognizer()
+        _ = feed(&engine, layered, 1, [touch(1, 0.1, 0.4)])
+        _ = feed(&engine, layered, 1.2, [touch(1, 0.1, 0.42)])
+        expect(feed(&engine, layered, 1.21, [touch(1, 0.1, 0.42), touch(2, 0.15, 0.42)]).phase == .rejected,
+               "a second finger after the layer has formed is a changed contact set")
+        expect(feed(&engine, layered, 1.22, [touch(1), touch(2), touch(3)]).phase == .rejected, "three contacts never form a layer")
+        var oneLayered = one
+        oneLayered.fingerLayers = true
+        oneLayered.alternateRegions = [.right]
+        engine = EdgeGestureRecognizer()
+        for i in 0...12 { _ = feed(&engine, oneLayered, 1 + Double(i) * 0.01, [touch(1, 0.88, 0.4 + Double(i) * 0.004), touch(2, 0.93, 0.4 + Double(i) * 0.004)]) }
+        expect(engine.decision.phase == .accepted && engine.decision.fingers == 2, "one-finger setup accepts a two-finger alternate layer")
+        engine = EdgeGestureRecognizer()
+        for i in 0...12 { _ = feed(&engine, one, 1 + Double(i) * 0.01, [touch(1, 0.1, 0.4 + Double(i) * 0.004), touch(2, 0.15, 0.4 + Double(i) * 0.004)]) }
+        expect(engine.decision.phase == .rejected, "without layers an extra finger is still rejected")
+
+        // Precision and speed reported only after acceptance.
+        engine = accepted(one)
+        var decision = feed(&engine, one, 1.13, [touch(1, 0.16, 0.46)])
+        expect(abs(decision.inward - 0.06) < 0.002, "inward travel measured from activation")
+        decision = feed(&engine, one, 1.14, [touch(1, 0.08, 0.47)])
+        expect(decision.inward == 0, "travel back toward the edge is not negative precision")
+        expect(decision.speed > 0, "speed follows axis travel")
+        var right = EdgeGestureRecognizer()
+        for i in 0...12 { _ = feed(&right, one, 1 + Double(i) * 0.01, [touch(1, 0.9, 0.4 + Double(i) * 0.004)]) }
+        decision = feed(&right, one, 1.13, [touch(1, 0.8, 0.45)])
+        expect(abs(decision.inward - 0.1) < 0.002, "right edge inward is leftward travel")
+
+        let feel = GestureFeel()
+        expect(feel.precisionScale(inward: 0.02) == 1, "small perpendicular wobble keeps normal speed")
+        expect(abs(feel.precisionScale(inward: 0.5) - GestureFeel.finestScale) < 0.0001, "deep inward travel reaches finest control")
+        expect(feel.precisionScale(inward: 0.12) < 1 && feel.precisionScale(inward: 0.12) > GestureFeel.finestScale, "precision ramps smoothly")
+        expect(feel.accelerationScale(speed: 0.05) < 1 && feel.accelerationScale(speed: 3) > 2, "slow is finer and a flick is faster")
+        expect(abs(feel.accelerationScale(speed: 0.5) - 1) < 0.0001, "ordinary speed is unchanged")
+        expect(feel.scale(speed: 3, inward: 0.3) <= feel.precisionScale(inward: 0.3), "fast inward slide cannot undo precision")
+        expect(GestureFeel(precision: false, acceleration: false).scale(speed: 3, inward: 0.3) == 1, "feel can be turned off entirely")
+        expect(feel.accelerationScale(speed: .nan) == 1 && feel.precisionScale(inward: .infinity) == 1, "non-finite feel inputs are neutral")
+
+        // Magnetic notches.
+        var level = RelativeGestureValue(value: 0.45)
+        var value = level.apply(delta: 0.03, sensitivity: 1, inverted: false, bounds: 0...1, notches: [0.5], capture: 0.015)
+        expect(abs(value - 0.477) < 0.0005, "outside capture the level moves freely")
+        value = level.apply(delta: 0.01, sensitivity: 1, inverted: false, bounds: 0...1, notches: [0.5], capture: 0.015)
+        expect(value == 0.5, "entering capture rests on the notch")
+        value = level.apply(delta: 0.01, sensitivity: 1, inverted: false, bounds: 0...1, notches: [0.5], capture: 0.015)
+        expect(value == 0.5, "small travel past a notch stays seated")
+        value = level.apply(delta: 0.03, sensitivity: 1, inverted: false, bounds: 0...1, notches: [0.5], capture: 0.015)
+        expect(value > 0.515, "continued travel breaks out of the notch")
+        level = RelativeGestureValue(value: 0.95)
+        _ = level.apply(delta: 0.5, sensitivity: 1, inverted: false, bounds: 0...0.9, notches: [0.95], capture: 0.02)
+        expect(level.value == 0.9, "a notch outside comfort limits is ignored")
+        value = level.apply(delta: -0.01, sensitivity: 1, inverted: false, bounds: 0...0.9, scale: 0.5)
+        expect(abs(value - 0.8955) < 0.0001, "scale shapes each step and reversal from a bound is immediate")
+        expect(level.apply(delta: 0.1, sensitivity: 1, inverted: false, bounds: 0...1, scale: .nan) == value, "non-finite scale is ignored")
+
+        // Taps: short, still contacts in a region that has an action.
+        var taps = TapConfiguration()
+        taps.requiredFingers = 1
+        taps.slots = ["left.doubleTap", "right.tapHold", "topRightCorner.doubleTap"]
+        var tapper = EdgeTapRecognizer()
+        func tap(_ x: Double, _ y: Double, at t: Double, duration: Double = 0.08, fingers: Int = 1) -> TapEvent? {
+            let contacts = (0..<fingers).map { touch(Int32($0 + 1), x + Double($0) * 0.03, y) }
+            _ = tapper.process(contacts: contacts, timestamp: t, configuration: taps)
+            _ = tapper.process(contacts: contacts, timestamp: t + duration / 2, configuration: taps)
+            return tapper.process(contacts: [], timestamp: t + duration, configuration: taps)
+        }
+        expect(tap(0.1, 0.5, at: 1) == nil, "a single tap is only the first half")
+        expect(tapper.claimsClicksUntil > 1.08, "a recognized edge tap claims its tap-to-click")
+        expect(tap(0.1, 0.5, at: 1.25) == TapEvent(region: .left, gesture: .doubleTap), "two quick taps in one region fire")
+        expect(tap(0.1, 0.5, at: 1.5) == nil, "a third tap starts a new pair")
+        tapper = EdgeTapRecognizer()
+        _ = tap(0.1, 0.5, at: 2)
+        expect(tap(0.1, 0.5, at: 2.6) == nil, "taps too far apart do not pair")
+        tapper = EdgeTapRecognizer()
+        _ = tap(0.1, 0.5, at: 3)
+        expect(tap(0.9, 0.5, at: 3.2) == nil, "taps in different regions do not pair")
+        tapper = EdgeTapRecognizer()
+        _ = tap(0.1, 0.5, at: 4, duration: 0.4)
+        expect(tap(0.1, 0.5, at: 4.6, duration: 0.08) == nil, "a long press is not the first tap")
+        tapper = EdgeTapRecognizer()
+        _ = tap(0.5, 0.5, at: 5)
+        expect(tapper.claimsClicksUntil < 5, "taps outside any action region leave clicks alone")
+        tapper = EdgeTapRecognizer()
+        _ = tapper.process(contacts: [touch(1, 0.1, 0.5)], timestamp: 6, configuration: taps)
+        _ = tapper.process(contacts: [touch(1, 0.1, 0.56)], timestamp: 6.04, configuration: taps)
+        _ = tapper.process(contacts: [], timestamp: 6.08, configuration: taps)
+        expect(tap(0.1, 0.5, at: 6.2) == nil, "a moving contact is a swipe, not a tap")
+        tapper = EdgeTapRecognizer()
+        _ = tap(0.1, 0.5, at: 7)
+        tapper.keyDown(at: 7.15)
+        expect(tap(0.1, 0.5, at: 7.2) == nil, "typing between taps cancels the pair")
+        tapper = EdgeTapRecognizer()
+        _ = tap(0.1, 0.5, at: 8)
+        tapper.click()
+        expect(tap(0.1, 0.5, at: 8.2) == nil, "a physical click cancels a pending double-tap")
+        tapper = EdgeTapRecognizer()
+        expect(tap(0.1, 0.5, at: 9, fingers: 2) == nil && tap(0.1, 0.5, at: 9.2, fingers: 2) == nil,
+               "the wrong finger count never taps")
+
+        // Tap-and-hold: a tap, then a still second touch. A resting palm alone never fires.
+        tapper = EdgeTapRecognizer()
+        var held: TapEvent?
+        for i in 0...60 { held = tapper.process(contacts: [touch(1, 0.9, 0.5)], timestamp: 10 + Double(i) * 0.01, configuration: taps) ?? held }
+        expect(held == nil, "a hand resting on an edge never triggers tap-and-hold")
+        _ = tapper.process(contacts: [], timestamp: 10.7, configuration: taps)
+        _ = tap(0.9, 0.5, at: 11)
+        for i in 0...60 { held = tapper.process(contacts: [touch(1, 0.9, 0.5)], timestamp: 11.2 + Double(i) * 0.01, configuration: taps) ?? held }
+        expect(held == TapEvent(region: .right, gesture: .tapHold), "tap then hold fires once")
+        expect(tapper.process(contacts: [], timestamp: 11.9, configuration: taps) == nil, "releasing a hold is not another tap")
+
+        // Corners win only when they have an action; slots gate everything.
+        expect(taps.region(x: 0.95, y: 0.95) == .topRightCorner, "corner tap region inside the side strip")
+        var noCorners = taps
+        noCorners.slots = ["right.doubleTap"]
+        expect(noCorners.region(x: 0.95, y: 0.95) == .right, "without corner actions the side edge keeps its corner")
+        tapper = EdgeTapRecognizer()
+        _ = tap(0.95, 0.95, at: 12)
+        expect(tap(0.95, 0.95, at: 12.2) == TapEvent(region: .topRightCorner, gesture: .doubleTap), "corner double-tap fires")
+        var none = taps
+        none.slots = []
+        tapper = EdgeTapRecognizer()
+        _ = tapper.process(contacts: [touch(1, 0.1, 0.5)], timestamp: 13, configuration: none)
+        expect(tapper.process(contacts: [], timestamp: 13.05, configuration: none) == nil && tapper.claimsClicksUntil < 13,
+               "with no tap actions the recognizer stays inert")
+        expect(TapEvent(region: .left, gesture: .doubleTap).slot == "left.doubleTap", "slot names are stable for settings")
     }
 }

@@ -71,6 +71,9 @@ enum EdgeCommand: Equatable {
             if custom.modifiers & UInt32(shiftKey) != 0 { flags |= shift }
             return .key(UInt16(custom.keyCode), flags, global: true)
         case .brightness, .volume, .microphoneLevel, .outputMute, .microphoneMute, .disabled: return nil
+        // Performed directly (Accessibility, Core Audio, Shortcuts, HUDs), not as keys.
+        case .appVolume, .audioOutput, .seek, .nowPlaying, .tileWindow, .nightShift, .trueTone,
+             .extraDim, .runShortcut, .cheatSheet: return nil
         }
     }
 }

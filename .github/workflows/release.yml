@@ -49,6 +49,9 @@ jobs:
           bash scripts/test-audio.sh
           bash scripts/test-brightness.sh
           bash scripts/test-controls.sh
+          bash scripts/test-ddc.sh
+          bash scripts/test-app-volume.sh
+          bash scripts/test-now-playing.sh
           ruby Tests/runtime_verification_regressions.rb
           python3 Tests/app_archive_regressions.py
           python3 Tests/package_release_regressions.py

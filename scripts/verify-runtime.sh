@@ -10,8 +10,12 @@ entitlements="$(codesign -d --entitlements :- "$bundle" 2>/dev/null)"
 # plutil ships with macOS; package-manager tools are not guaranteed on CI.
 # Compare the complete parsed dictionary, not a blacklist of known exceptions.
 entitlements_json="$(printf '%s' "$entitlements" | /usr/bin/plutil -convert json -o - -)"
-if [[ "$entitlements_json" != '{"com.apple.security.cs.disable-library-validation":true}' ]]; then
-    printf 'Expected only the documented library-validation entitlement, with boolean true.\n' >&2
+# plutil keeps dictionary order, so sort the top-level pairs before comparing.
+# Keys contain no commas; a nested or non-boolean value cannot match a pair.
+canonical="$(printf '%s' "$entitlements_json" | /usr/bin/sed -e 's/^{//' -e 's/}$//' | /usr/bin/tr ',' '\n' | LC_ALL=C /usr/bin/sort | /usr/bin/tr '\n' ',')"
+expected='"com.apple.security.automation.apple-events":true,"com.apple.security.cs.disable-library-validation":true,"com.apple.security.device.audio-input":true,'
+if [[ "$canonical" != "$expected" ]]; then
+    printf 'Expected only the documented library-validation, Apple Events and audio-input entitlements, each with boolean true.\n' >&2
     exit 1
 fi
-printf 'Hardened Runtime verified; only the documented cross-signer library-validation exception is present.\n'
+printf 'Hardened Runtime verified; only the documented library-validation, Apple Events and audio-input entitlements are present.\n'

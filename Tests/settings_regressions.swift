@@ -254,7 +254,143 @@ enum SettingsRegressionTests {
                 try expect(reopened.swipeUpShortcut == settings.swipeUpShortcut && reopened.swipeDownShortcut == settings.swipeDownShortcut, "custom pairs persist without global registration")
             }
         }
+        try expansionCases()
         print("\(checks) settings assertions passed across \(cases) isolated cases. No monitor, hardware writes, shortcuts, or login registrations ran.")
+    }
+
+    private static func expansionCases() throws {
+        try isolated("expanded defaults keep upgrades unchanged") { defaults, _ in
+            let settings = TrackpadSettings(defaults: defaults)
+            try expect(!settings.bottomEdgeEnabled && settings.bindings.isEmpty && settings.appProfiles.isEmpty, "no new zones, layers, taps or profiles are implied")
+            try expect(!settings.dockedProfileEnabled && settings.dockedProfile.bindings.isEmpty, "docked profile starts off and empty")
+            try expect(settings.precisionEnabled && settings.accelerationEnabled && settings.notchesEnabled, "feel improvements start on")
+            try expect(settings.volumeFavorite < 0 && settings.brightnessFavorite < 0, "no favorite level is assumed")
+            try expect(settings.brightnessFollowsPointer && !settings.extraDimBelowMinimum, "brightness follows the pointer; extra dim is opt-in")
+            try expect(settings.volumeFeedbackSound == "system" && settings.nowPlayingHUD && settings.menuBarScroll, "feedback follows macOS and the menu bar scrolls")
+            try expect(settings.cheatSheetHotkey.isEmpty && settings.urlCommandsEnabled, "no global cheat-sheet hotkey is registered by default")
+            try expect(settings.notches(for: .volume) == [0.5], "the middle notch is the only default notch")
+        }
+
+        try isolated("bindings, profiles and resolution order", seed: ["leftZoneAction": "volume"]) { defaults, _ in
+            let settings = TrackpadSettings(defaults: defaults)
+            try expect(settings.baseBinding("left").action == .volume, "base slot reads the original key")
+            settings.setBaseBinding(EdgeBinding(.customShortcut, up: HotkeyCombo(keyCode: 1, modifiers: UInt32(cmdKey))), for: "left")
+            try expect(settings.leftZoneAction == .customShortcut, "setting a base slot writes the original key")
+            settings.setBaseBinding(EdgeBinding(.playPause), for: "left.doubleTap")
+            settings.setBaseBinding(EdgeBinding(.brightness), for: "left.option")
+            settings.bottomEdgeAction = .seek
+            settings.appProfiles["com.example.editor"] = ActionProfile(name: "Editor", bindings: ["left": EdgeBinding(.tabs)])
+            settings.dockedProfileEnabled = true
+            settings.dockedProfile.bindings["left"] = EdgeBinding(.zoom)
+            settings.dockedProfile.bindings["right"] = EdgeBinding(.audioOutput)
+            let reopened = TrackpadSettings(defaults: defaults)
+            try expect(reopened.leftZoneAction == .customShortcut && reopened.bindings["left"]?.up.keyCode == 1, "per-edge recording persists")
+            try expect(reopened.baseBinding("left.doubleTap").action == .playPause && reopened.baseBinding("left.option").action == .brightness, "tap and layer slots persist")
+            try expect(reopened.baseBinding("bottom").action == .seek, "bottom slot reads its own key")
+            try expect(reopened.binding("left", appBundleID: "com.example.editor", docked: true).action == .tabs, "an app profile wins over docked")
+            try expect(reopened.resolvedBinding("left", appBundleID: "com.example.other", docked: true).source == .docked, "docked wins over everyday when connected")
+            try expect(reopened.binding("left", appBundleID: nil, docked: false).action == .customShortcut, "undocked without an app profile uses everyday")
+            try expect(reopened.binding("right", appBundleID: "com.example.editor", docked: true).action == .audioOutput, "a profile that omits a slot falls through")
+            reopened.dockedProfileEnabled = false
+            try expect(reopened.binding("right", appBundleID: nil, docked: true).action == .volume, "a disabled docked profile is ignored")
+            try expect(reopened.slotIsAssigned("left.doubleTap") && !reopened.slotIsAssigned("right.tapHold"), "assignment checks follow bindings")
+            reopened.appProfiles["com.example.editor"]?.bindings["right.tapHold"] = EdgeBinding(.missionControl)
+            try expect(reopened.slotIsAssigned("right.tapHold"), "a slot assigned only in an app profile still counts")
+            reopened.setBaseBinding(EdgeBinding(.disabled), for: "left.doubleTap")
+            try expect(reopened.bindings["left.doubleTap"] == nil, "turning a slot off removes its stored binding")
+        }
+
+        try isolated("custom shortcuts fall back to the shared pair") { defaults, _ in
+            let settings = TrackpadSettings(defaults: defaults)
+            settings.swipeUpShortcut = HotkeyCombo(keyCode: 24, modifiers: UInt32(cmdKey))
+            settings.swipeDownShortcut = HotkeyCombo(keyCode: 27, modifiers: UInt32(cmdKey))
+            let legacy = EdgeBinding(.customShortcut)
+            try expect(settings.customShortcut(for: legacy, increasing: true).keyCode == 24, "an edge without its own pair uses the original shared pair")
+            let own = EdgeBinding(.customShortcut, up: HotkeyCombo(keyCode: 30, modifiers: UInt32(cmdKey)))
+            try expect(settings.customShortcut(for: own, increasing: true).keyCode == 30, "an edge's own recording wins")
+            try expect(settings.customShortcut(for: own, increasing: false).isEmpty, "a half-recorded pair never borrows the other half")
+        }
+
+        try isolated("notches and favorites") { defaults, _ in
+            let settings = TrackpadSettings(defaults: defaults)
+            settings.volumeFavorite = 0.3
+            try expect(settings.notches(for: .volume) == [0.5, 0.3] && settings.notches(for: .brightness) == [0.5], "favorites add a notch to their own level only")
+            settings.brightnessFavorite = 0.51
+            try expect(settings.notches(for: .brightness) == [0.5], "a favorite on top of the middle notch is not doubled")
+            settings.notchesEnabled = false
+            try expect(settings.notches(for: .volume).isEmpty, "notches can be turned off")
+        }
+
+        try isolated("corrupt and out-of-range expansion data", seed: [
+            "edgeBindings": Data("not json".utf8), "appProfiles": Data("[]".utf8), "tapCornerSize": 9.0,
+            "volumeFavorite": Double.nan, "brightnessFavorite": 4.0, "volumeFeedbackSound": "loud",
+            "bottomEdgeAction": "teleport", "bottomEdgeEnabled": true, "minimumFingers": 2,
+            "dockedProfile": Data(#"{"bindings":{"left":{"action":"warp"}}}"#.utf8),
+        ]) { defaults, _ in
+            let settings = TrackpadSettings(defaults: defaults)
+            try expect(settings.bindings.isEmpty && settings.appProfiles.isEmpty, "unreadable binding data is ignored")
+            try expect(near(settings.tapCornerSize, TrackpadSettings.cornerSizeRange.upperBound), "corner size is clamped")
+            try expect(settings.volumeFavorite < 0 && settings.brightnessFavorite < 0, "invalid favorites mean none")
+            try expect(settings.volumeFeedbackSound == "system" && settings.bottomEdgeAction == .mediaTracks, "unknown choices fall back")
+            try expect(!settings.bottomEdgeEnabled, "bottom edge requires one-finger mode like the top edge")
+            try expect(settings.dockedProfile.bindings["left"]?.action == .disabled && settings.dockedProfile.name == "Profile", "unknown actions decode as Off")
+        }
+
+        try isolated("per-device volume limits") { defaults, _ in
+            let settings = TrackpadSettings(defaults: defaults)
+            settings.volumeMax = 0.9
+            settings.deviceVolumeLimits["airpods-uid"] = DeviceLimit(name: "AirPods", min: 0.1, max: 0.6)
+            settings.deviceVolumeLimits["odd"] = DeviceLimit(name: "Odd", min: 0.99, max: .nan)
+            let reopened = TrackpadSettings(defaults: defaults)
+            try expect(reopened.volumeLimits(forDevice: "airpods-uid") == 0.1...0.6, "a device's own limits apply")
+            try expect(near(reopened.volumeLimits(forDevice: "speakers").upperBound, 0.9) && near(reopened.volumeLimits(forDevice: nil).upperBound, 0.9), "other devices use the global limits")
+            let odd = reopened.volumeLimits(forDevice: "odd")
+            try expect(near(odd.lowerBound, 0.95) && near(odd.upperBound, 1), "invalid stored limits still form a valid range")
+        }
+
+        try isolated("reset keeps recordings and profiles") { defaults, _ in
+            let settings = TrackpadSettings(defaults: defaults)
+            settings.minimumFingers = 1
+            settings.bottomEdgeEnabled = true
+            settings.setBaseBinding(EdgeBinding(.customShortcut, up: HotkeyCombo(keyCode: 5, modifiers: UInt32(cmdKey))), for: "right")
+            settings.setBaseBinding(EdgeBinding(.playPause), for: "right.doubleTap")
+            settings.appProfiles["com.example.editor"] = ActionProfile(name: "Editor", bindings: ["left": EdgeBinding(.tabs)])
+            settings.precisionEnabled = false; settings.notchesEnabled = false
+            settings.resetGestureSettings()
+            try expect(!settings.bottomEdgeEnabled && settings.precisionEnabled && settings.notchesEnabled, "reset restores zones and feel")
+            try expect(settings.bindings["right.doubleTap"] == nil && settings.bindings["right"]?.up.keyCode == 5, "reset turns taps off but keeps a recorded shortcut")
+            try expect(settings.appProfiles["com.example.editor"] != nil, "app profiles survive a gesture reset")
+        }
+
+        try isolated("export and import round trip") { defaults, _ in
+            let settings = TrackpadSettings(defaults: defaults)
+            settings.leftZoneAction = .nightShift
+            settings.setBaseBinding(EdgeBinding(.runShortcut, shortcut: "Lights On", downShortcut: "Lights Off"), for: "right")
+            settings.appProfiles["com.example.editor"] = ActionProfile(name: "Editor", bindings: ["left": EdgeBinding(.tabs)])
+            settings.volumeFavorite = 0.25
+            let exported = try settings.exportData()
+            try isolated("import target") { target, _ in
+                let other = TrackpadSettings(defaults: target)
+                try other.importData(exported)
+                try expect(other.leftZoneAction == .nightShift && other.baseBinding("right").shortcut == "Lights On", "actions and Shortcut names import")
+                try expect(other.appProfiles["com.example.editor"]?.bindings["left"]?.action == .tabs && near(other.volumeFavorite, 0.25), "profiles and favorites import")
+                try expect(TrackpadSettings(defaults: target).baseBinding("right").downShortcut == "Lights Off", "imported values persist")
+            }
+            let tampered = try PropertyListSerialization.data(fromPropertyList: [
+                "format": TrackpadSettings.exportFormat, "version": 1, "leftZoneWidth": 7.0,
+                "leftZoneAction": "selfDestruct", "launchAtLogin": true, "hasFinishedSwaySetup": true,
+            ] as [String: Any], format: .xml, options: 0)
+            try settings.importData(tampered)
+            try expect(near(settings.leftZoneWidth, TrackpadSettings.sideZoneWidthRange.upperBound) && settings.leftZoneAction == .brightness, "imported values pass normal validation")
+            try expect(!settings.launchAtLogin && defaults.object(forKey: "hasFinishedSwaySetup") == nil, "login and setup state are never imported")
+            var rejected = 0
+            for data in [Data("garbage".utf8),
+                         try PropertyListSerialization.data(fromPropertyList: ["format": "other"], format: .xml, options: 0),
+                         try PropertyListSerialization.data(fromPropertyList: ["format": TrackpadSettings.exportFormat, "version": 9], format: .xml, options: 0)] {
+                do { try settings.importData(data) } catch { rejected += 1 }
+            }
+            try expect(rejected == 3, "unreadable, foreign and newer files are refused")
+        }
     }
 
     private static func preservedPreferences(_ settings: TrackpadSettings, shortcut: HotkeyCombo) throws {

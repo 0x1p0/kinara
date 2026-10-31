@@ -114,7 +114,64 @@ private final class ModelFixture {
         testVisibilityAndPreview()
         testActionLibrary()
         testMicrophoneSafety()
+        testExpandedActions()
         print("\(checks) control model regression checks passed (fake audio/display hardware only).")
+    }
+
+    /// Pure helpers behind the new actions. Nothing here moves a window,
+    /// switches audio, runs a Shortcut, or changes a display.
+    static func testExpandedActions() {
+        let visible = CGRect(x: 0, y: 40, width: 1440, height: 860)
+        let left = WindowTiler.frame(for: .leftHalf, visibleFrame: visible, primaryHeight: 900)
+        let right = WindowTiler.frame(for: .rightHalf, visibleFrame: visible, primaryHeight: 900)
+        let fill = WindowTiler.frame(for: .fill, visibleFrame: visible, primaryHeight: 900)
+        expect(left == CGRect(x: 0, y: 0, width: 720, height: 860), "left half starts below the menu bar in top-left coordinates")
+        expect(right.minX == 720 && right.width == 720 && right.minY == 0, "right half meets the left half exactly")
+        expect(fill == CGRect(x: 0, y: 0, width: 1440, height: 860), "fill uses the whole visible frame")
+        let secondary = WindowTiler.frame(for: .rightHalf, visibleFrame: CGRect(x: 1440, y: -200, width: 1001, height: 1000), primaryHeight: 900)
+        expect(secondary.minX == 1940 && secondary.width == 501 && secondary.minY == 100, "odd widths and lower secondary displays are covered")
+        expect(WindowTiler.appKitPoint(CGPoint(x: 10, y: 100), primaryHeight: 900) == CGPoint(x: 10, y: 800), "coordinate conversion round-trips")
+
+        let outputs = [AudioOutputDevice(id: 3, uid: "a", name: "AirPods"), AudioOutputDevice(id: 7, uid: "b", name: "Speakers"),
+                       AudioOutputDevice(id: 9, uid: "c", name: "Studio Display")]
+        expect(AudioOutputSwitcher.next(after: 3, in: outputs, forward: true)?.id == 7, "next output")
+        expect(AudioOutputSwitcher.next(after: 9, in: outputs, forward: true)?.id == 3, "output order wraps forward")
+        expect(AudioOutputSwitcher.next(after: 3, in: outputs, forward: false)?.id == 9, "output order wraps backward")
+        expect(AudioOutputSwitcher.next(after: 42, in: outputs, forward: true)?.id == 3, "an unlisted current output starts at the first")
+        expect(AudioOutputSwitcher.next(after: 3, in: [], forward: true) == nil, "no outputs means nothing to switch to")
+
+        expect(ShortcutsRunner.parseList("Lights On\nFocus\n\nLights On\n  Arrive Home \n") == ["Arrive Home", "Focus", "Lights On"],
+               "Shortcut names are trimmed, deduplicated and sorted")
+        expect(!ShortcutsRunner.run("   "), "a blank Shortcut name never launches anything")
+
+        func command(_ text: String) -> SwayURLCommand? { URL(string: text).flatMap(SwayURLCommand.parse) }
+        expect(command("sway://pause") == .pause(minutes: nil) && command("sway://pause?minutes=15") == .pause(minutes: 15), "pause commands")
+        expect(command("sway://pause?minutes=0") == nil && command("sway://pause?minutes=99999") == nil, "absurd pause lengths are refused")
+        expect(command("sway://volume?level=40") == .volume(0.4) && command("SWAY://Brightness?level=100") == .brightness(1), "levels are percentages")
+        expect(command("sway://volume?level=140") == nil && command("sway://volume?level=nan") == nil && command("sway://volume") == nil, "invalid levels are refused")
+        expect(command("sway://resume") == .resume && command("sway://toggle") == .toggle && command("sway://edge-map") == .edgeMap, "simple commands")
+        expect(command("sway://run-shortcut?name=x") == nil && command("https://example.com/pause") == nil, "unknown commands and other schemes do nothing")
+
+        expect(GammaDimmer.scale(for: 0) == 1 && abs(GammaDimmer.scale(for: 1) - GammaDimmer.darkestScale) < 0.0001, "extra dim spans normal to the darkest safe level")
+        expect(GammaDimmer.scale(for: .nan) == 1 && abs(GammaDimmer.scale(for: 7) - GammaDimmer.darkestScale) < 0.0001, "invalid dim levels stay safe")
+        expect(GammaDimmer.darkestScale >= 0.2, "extra dim never goes fully black")
+
+        expect(VolumeFeedbackSound.shouldPlay(setting: "system", systemPreference: true) && !VolumeFeedbackSound.shouldPlay(setting: "system", systemPreference: false),
+               "system setting follows the Sound preference")
+        expect(VolumeFeedbackSound.shouldPlay(setting: "on", systemPreference: false) && !VolumeFeedbackSound.shouldPlay(setting: "off", systemPreference: true),
+               "explicit choices override the system")
+
+        let suite = "com.sway.control-edgemap.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = TrackpadSettings(defaults: defaults)
+        settings.setBaseBinding(EdgeBinding(.playPause), for: "left.doubleTap")
+        settings.appProfiles["com.example.editor"] = ActionProfile(name: "Editor", bindings: ["right": EdgeBinding(.tabs)])
+        let map = EdgeMapEntry.resolve(settings: settings, appBundleID: "com.example.editor", docked: false)
+        expect(map.map(\.slot) == ["left", "right", "left.doubleTap"], "the edge map lists swipe edges and only assigned extras")
+        expect(map[1].action == .tabs && map[1].source == .app && map[0].source == .everyday, "the edge map explains where each action comes from")
+        for action in ZoneAction.allCases where action.worksAsTap { expect(!action.isContinuous, "\(action.rawValue) tap fires once") }
+        expect(!ZoneAction.volume.worksAsTap && ZoneAction.outputMute.togglesOnTap, "levels cannot be taps; mute toggles")
     }
 
     static func testActionLibrary() {
@@ -129,11 +186,15 @@ private final class ModelFixture {
         expect(events.allSatisfy { $0.getIntegerValueField(.eventSourceUserData) == EdgeActionController.eventMarker }, "own events never count as typing")
         let held = EdgeActionController.keyboardEvents(code: 48, flags: CGEventFlags.maskCommand.rawValue, physicalFlags: .maskCommand)!
         expect(held.count == 2, "physically held modifiers are not synthetically released")
-        expect(ZoneAction.allCases.count == 27, "26 assignable actions plus Off")
+        expect(ZoneAction.allCases.count == 37, "36 assignable actions plus Off")
         for action in ZoneAction.allCases {
             expect(!action.label.isEmpty && !action.icon.isEmpty && !action.guidance.isEmpty, "every action has usable metadata")
             expect(ZoneAction.categories.contains(action.category), "all actions appear in a category")
-            if !action.isContinuous && ![.outputMute, .microphoneMute, .customShortcut, .disabled].contains(action) {
+            let performedDirectly: [ZoneAction] = [.outputMute, .microphoneMute, .customShortcut, .disabled, .audioOutput,
+                                                   .nowPlaying, .tileWindow, .trueTone, .runShortcut, .cheatSheet]
+            if action.isContinuous || performedDirectly.contains(action) {
+                expect(EdgeCommand.resolve(action, increasing: true) == nil, "\(action.rawValue) never becomes a keystroke")
+            } else {
                 expect(EdgeCommand.resolve(action, increasing: true) != nil && EdgeCommand.resolve(action, increasing: false) != nil,
                        "both directions resolve for \(action.rawValue)")
             }
