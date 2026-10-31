@@ -156,8 +156,9 @@ async function film() {
 if (args.includes("--serve")) {
   const server = await serve(4173);
   console.log(`http://127.0.0.1:${server.address().port}/?scrub`);
-} else if (args.includes("--stills")) {
-  await stills(option("stills", "1").split(",").map(Number));
 } else {
-  await film();
+  if (args.includes("--stills")) await stills(option("stills", "1").split(",").map(Number));
+  else await film();
+  // Don't let a lingering browser or socket keep the process alive.
+  process.exit(0);
 }
