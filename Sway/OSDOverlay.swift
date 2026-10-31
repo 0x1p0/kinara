@@ -9,8 +9,10 @@ final class OSDOverlay {
     private var window: OSDWindow?
     private var surface: OSDSurfaceView?
     private var hideTimer: Timer?
-    private var fadeTimer: Timer?
     private var updateTimer: Timer?
+    /// An exit animation is running; a newer one supersedes it by generation.
+    private var exiting = false
+    private var exitGeneration: UInt64 = 0
     private var hideDeadline: TimeInterval = 0
     private var lastDisplayTime: TimeInterval = 0
     private var pendingValue: (OSDType, Double, Bool)?
@@ -62,15 +64,14 @@ final class OSDOverlay {
             self.window = window
             configureWindow()
         }
-        // Cancel the sole owned fade. No old completion can hide a new request.
-        if fadeTimer != nil {
-            fadeTimer?.invalidate()
-            fadeTimer = nil
-            window?.alphaValue = 1
+        // A request during the exit glides back; no old completion can hide it.
+        if exiting, let window, let origin = targetOrigin() {
+            exiting = false
+            exitGeneration &+= 1
+            HUDMotion.restore(window, to: origin)
         }
         if isStarting {
             repositionWindow()
-            window?.alphaValue = 1
             lastDisplayTime = 0
         }
         pendingValue = (type, value, fine)
@@ -85,8 +86,9 @@ final class OSDOverlay {
                 self?.displayPendingValue()
             }
         }
-        // Commit the first value before the compositor can display the window.
-        if isStarting { window?.orderFrontRegardless() }
+        // Commit the first value before the compositor can display the window,
+        // then rise into place. Follow finger only fades: it moves with you.
+        if isStarting, let window { HUDMotion.enter(window, offset: entranceOffset, fadeOnly: configuration.edge != nil) }
         if hideTimer == nil { scheduleHideCheck(after: 1.35) }
     }
 
@@ -110,25 +112,33 @@ final class OSDOverlay {
     }
 
     private func beginFade() {
-        guard window?.isVisible == true else { return }
-        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { dismiss(); return }
-        let started = ProcessInfo.processInfo.systemUptime
-        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            let progress = (ProcessInfo.processInfo.systemUptime - started) / 0.16
-            if progress >= 1 { self.dismiss() }
-            else { self.window?.alphaValue = 1 - progress }
+        guard let window, window.isVisible else { return }
+        exiting = true
+        let generation = exitGeneration
+        HUDMotion.exit(window, offset: entranceOffset, fadeOnly: configuration.edge != nil) { [weak self] in
+            guard let self, self.exiting, self.exitGeneration == generation else { return }
+            self.dismiss()
         }
-        fadeTimer = timer
-        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    /// Where the indicator rises from: below for the pill, its own edge
+    /// for a side indicator.
+    private var entranceOffset: CGVector {
+        if configuration.edge != nil { return .zero }
+        if configuration.isHorizontal { return CGVector(dx: 0, dy: -12) }
+        switch configuration.position {
+        case .left: return CGVector(dx: -14, dy: 0)
+        case .right: return CGVector(dx: 14, dy: 0)
+        case .center: return CGVector(dx: 0, dy: -12)
+        }
     }
 
     private func dismiss() {
+        exiting = false
+        exitGeneration &+= 1
         hideTimer?.invalidate()
-        fadeTimer?.invalidate()
         updateTimer?.invalidate()
         hideTimer = nil
-        fadeTimer = nil
         updateTimer = nil
         pendingValue = nil
         window?.orderOut(nil)
@@ -152,9 +162,15 @@ final class OSDOverlay {
     }
 
     private func repositionWindow() {
-        guard let window else { return }
+        guard let window, let origin = targetOrigin() else { return }
+        if window.frame.origin != origin { window.setFrameOrigin(origin) }
+    }
+
+    /// The resting origin for the current configuration and screen.
+    private func targetOrigin() -> NSPoint? {
+        guard let window else { return nil }
         let point = NSEvent.mouseLocation
-        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }) ?? NSScreen.main else { return }
+        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }) ?? NSScreen.main else { return nil }
         let frame = screen.visibleFrame
         let size = window.frame.size
         let margin: CGFloat = 24
@@ -172,10 +188,8 @@ final class OSDOverlay {
             case "top": x = alongX; y = frame.maxY - size.height - inset
             default: x = alongX; y = frame.minY + inset
             }
-            let origin = NSPoint(x: min(max(x, frame.minX + inset), frame.maxX - size.width - inset),
-                                 y: min(max(y, frame.minY + inset), frame.maxY - size.height - inset))
-            if window.frame.origin != origin { window.setFrameOrigin(origin) }
-            return
+            return NSPoint(x: min(max(x, frame.minX + inset), frame.maxX - size.width - inset),
+                           y: min(max(y, frame.minY + inset), frame.maxY - size.height - inset))
         }
         if configuration.isHorizontal {
             x = frame.midX - size.width / 2
@@ -188,8 +202,7 @@ final class OSDOverlay {
             case .right: x = frame.maxX - size.width - margin
             }
         }
-        let origin = NSPoint(x: x, y: y)
-        if window.frame.origin != origin { window.setFrameOrigin(origin) }
+        return NSPoint(x: x, y: y)
     }
 
     private func scheduledTimer(after delay: TimeInterval, tolerance: TimeInterval = 0,

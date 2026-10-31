@@ -948,7 +948,8 @@ final class NowPlayingHUD {
     private var window: NowPlayingWindow?
     private var surface: NowPlayingSurfaceView?
     private var hideTimer: Timer?
-    private var fadeTimer: Timer?
+    private var exiting = false
+    private var exitGeneration: UInt64 = 0
     private var updateTimer: Timer?
     private var tickTimer: Timer?
     private var hideDeadline: TimeInterval = 0
@@ -988,18 +989,17 @@ final class NowPlayingHUD {
             self.surface = surface
             self.window = window
         }
-        // Cancel the sole owned fade. No old completion can hide a new request.
-        if fadeTimer != nil {
-            fadeTimer?.invalidate()
-            fadeTimer = nil
-            window?.alphaValue = 1
+        // A request during the exit glides back; no old completion can hide it.
+        if exiting, let window, let origin = restingOrigin() {
+            exiting = false
+            exitGeneration &+= 1
+            HUDMotion.restore(window, to: origin)
         }
         self.info = info
         self.scrubPosition = scrubPosition.flatMap { $0.isFinite ? max(0, $0) : nil }
         if isStarting {
             window?.appearance = Self.preferredAppearance()
             repositionWindow()
-            window?.alphaValue = 1
             lastDisplayTime = 0
         }
         // Scrubbing can call this every input frame; draw at most once per display frame.
@@ -1014,8 +1014,9 @@ final class NowPlayingHUD {
                 self?.displayCurrent()
             }
         }
-        // Commit the first frame before the compositor can display the window.
-        if isStarting { window?.orderFrontRegardless() }
+        // Commit the first frame before the compositor can display the window,
+        // then rise into place like the volume indicator.
+        if isStarting, let window { HUDMotion.enter(window, offset: CGVector(dx: 0, dy: -12)) }
         if hideTimer == nil { scheduleHideCheck(after: Self.visibleDuration) }
         refreshTicker()
     }
@@ -1054,26 +1055,22 @@ final class NowPlayingHUD {
     }
 
     private func beginFade() {
-        guard window?.isVisible == true else { return }
-        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { dismiss(); return }
-        let started = ProcessInfo.processInfo.systemUptime
-        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            let progress = (ProcessInfo.processInfo.systemUptime - started) / Self.fadeDuration
-            if progress >= 1 { self.dismiss() }
-            else { self.window?.alphaValue = 1 - progress }
+        guard let window, window.isVisible else { return }
+        exiting = true
+        let generation = exitGeneration
+        HUDMotion.exit(window, offset: CGVector(dx: 0, dy: -12)) { [weak self] in
+            guard let self, self.exiting, self.exitGeneration == generation else { return }
+            self.dismiss()
         }
-        fadeTimer = timer
-        RunLoop.main.add(timer, forMode: .common)
     }
 
     private func dismiss() {
+        exiting = false
+        exitGeneration &+= 1
         hideTimer?.invalidate()
-        fadeTimer?.invalidate()
         updateTimer?.invalidate()
         tickTimer?.invalidate()
         hideTimer = nil
-        fadeTimer = nil
         updateTimer = nil
         tickTimer = nil
         info = nil
@@ -1083,13 +1080,16 @@ final class NowPlayingHUD {
     }
 
     private func repositionWindow() {
-        guard let window else { return }
-        let point = NSEvent.mouseLocation
-        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }) ?? NSScreen.main else { return }
-        let frame = screen.visibleFrame
-        let size = window.frame.size
-        let origin = NSPoint(x: (frame.midX - size.width / 2).rounded(), y: frame.minY + Self.bottomInset)
+        guard let window, let origin = restingOrigin() else { return }
         if window.frame.origin != origin { window.setFrameOrigin(origin) }
+    }
+
+    private func restingOrigin() -> NSPoint? {
+        guard let window else { return nil }
+        let point = NSEvent.mouseLocation
+        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }) ?? NSScreen.main else { return nil }
+        let frame = screen.visibleFrame
+        return NSPoint(x: (frame.midX - window.frame.width / 2).rounded(), y: frame.minY + Self.bottomInset)
     }
 
     /// Follows Sway's stored appearance preference without depending on its settings type.

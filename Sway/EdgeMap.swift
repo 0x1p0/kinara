@@ -29,6 +29,8 @@ final class EdgeMapHUD {
     private var panel: NSPanel?
     private var observer: NSObjectProtocol?
     private var hideTimer: Timer?
+    private var hiding = false
+    private var hideGeneration: UInt64 = 0
 
     private init() {
         observer = NotificationCenter.default.addObserver(forName: .swayCheatSheetHotkey, object: nil, queue: .main) { [weak self] note in
@@ -36,7 +38,7 @@ final class EdgeMapHUD {
         }
     }
 
-    var isVisible: Bool { panel?.isVisible == true }
+    var isVisible: Bool { panel?.isVisible == true && !hiding }
 
     func toggle() { isVisible ? hide() : show(autoHide: true) }
 
@@ -59,7 +61,10 @@ final class EdgeMapHUD {
         if let frame = screen?.visibleFrame {
             panel.setFrameOrigin(NSPoint(x: frame.midX - size.width / 2, y: frame.midY - size.height / 2))
         }
-        panel.orderFrontRegardless()
+        let wasVisible = panel.isVisible && !hiding
+        hiding = false
+        hideGeneration &+= 1
+        if wasVisible { panel.alphaValue = 1 } else { HUDMotion.enter(panel, offset: CGVector(dx: 0, dy: -10)) }
         self.panel = panel
         hideTimer?.invalidate()
         hideTimer = nil
@@ -73,9 +78,17 @@ final class EdgeMapHUD {
     func hide() {
         hideTimer?.invalidate()
         hideTimer = nil
-        panel?.orderOut(nil)
-        // Release the view tree; the next show builds a fresh, current one.
-        panel?.contentView = nil
+        guard let panel, panel.isVisible, !hiding else { return }
+        hiding = true
+        let generation = hideGeneration
+        HUDMotion.exit(panel, offset: CGVector(dx: 0, dy: -10)) { [weak self] in
+            guard let self, self.hiding, self.hideGeneration == generation else { return }
+            self.hiding = false
+            panel.orderOut(nil)
+            panel.alphaValue = 1
+            // Release the view tree; the next show builds a fresh, current one.
+            panel.contentView = nil
+        }
     }
 
     private func makePanel() -> NSPanel {

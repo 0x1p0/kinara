@@ -218,6 +218,9 @@ private final class ModelFixture {
         position = ClipboardPicker.advance(position, by: -step * 1, count: 5)
         expect(ClipboardPicker.selection(at: position) == 0, "one row back down from Cancel is the newest copy")
         expect(ClipboardPicker.advance(2, by: .nan, count: 5) == 2 && ClipboardPicker.advance(2, by: step, count: 0) == 2, "invalid travel changes nothing")
+        let rest = NSPoint(x: 400, y: 80)
+        expect(HUDMotion.displaced(rest, by: CGVector(dx: 0, dy: -12)) == NSPoint(x: 400, y: 68), "an entrance starts below its resting place")
+        expect(HUDMotion.displaced(rest, by: CGVector(dx: 14, dy: 0), scale: 0.6) == NSPoint(x: 408.4, y: 80), "an exit drifts back, but less far")
         let picker = ClipboardPicker.shared
         expect(!picker.isOpen && !picker.handleKey(code: 53, characters: nil), "a closed picker never swallows keys")
         ClipboardHistory.shared.noteCopy()

@@ -513,7 +513,7 @@ private struct MenuTile: View {
             .frame(maxWidth: .infinity).padding(.vertical, 9)
             .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .contentShape(RoundedRectangle(cornerRadius: 10))
-        }.buttonStyle(.plain).accessibilityLabel(title)
+        }.buttonStyle(PressableButtonStyle()).accessibilityLabel(title)
     }
 }
 
@@ -574,6 +574,8 @@ struct ContentView: View {
     @State private var presetMessage: String?
     @State private var selectedZone = "left"
     @State private var editingProfile: ProfileTarget?
+    @Namespace private var sidebarSelection
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var transferMessage: String?
     private let preview: Bool
 
@@ -647,6 +649,7 @@ struct ContentView: View {
                         Button("Clear search") { search = "" }.buttonStyle(.bordered)
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
+                VStack(alignment: .leading, spacing: 0) {
                 PageTitle(pane.title, subtitle: pane.detail, icon: pane.icon).padding(.horizontal, 28).padding(.top, 24).padding(.bottom, 16)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
@@ -672,11 +675,17 @@ struct ContentView: View {
                         case .about: aboutPage
                         }
                     }.padding(.horizontal, 28).padding(.bottom, 28).frame(maxWidth: .infinity, alignment: .leading)
-                }.id(pane)
+                }
+                }
+                .id(pane)
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 8)))
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(width: 820, height: 660)
+        // One gentle transaction for page changes: the content settles in and
+        // the sidebar highlight glides, wherever the change came from.
+        .animation(reduceMotion ? .easeInOut(duration: 0.12) : .spring(response: 0.34, dampingFraction: 0.88), value: pane)
         .background(Color(nsColor: .windowBackgroundColor))
         .preferredColorScheme(settings.resolvedColorScheme)
         .tint(SwayTheme.accent)
@@ -710,7 +719,12 @@ struct ContentView: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 6).padding(.vertical, 5)
-            .background(pane == item ? Color.primary.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background {
+                if pane == item {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.08))
+                        .matchedGeometryEffect(id: "sidebar", in: sidebarSelection)
+                }
+            }
             .contentShape(RoundedRectangle(cornerRadius: 8))
         }.buttonStyle(.plain).accessibilityAddTraits(pane == item ? [.isSelected] : [])
     }
@@ -2285,8 +2299,9 @@ private struct QuickTile: View {
             .padding(13)
             .modifier(CardSurface())
             .contentShape(RoundedRectangle(cornerRadius: 13))
+            .animation(.easeInOut(duration: 0.2), value: isOn)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle())
         .accessibilityLabel(title).accessibilityValue(value).accessibilityAddTraits(isOn ? [.isSelected] : [])
     }
 }

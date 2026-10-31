@@ -204,14 +204,28 @@ struct MoreOptionsButton: NSViewRepresentable {
 /// never disagree (white on white) while a window's appearance settles.
 struct MonochromePrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(Color(nsColor: .windowBackgroundColor))
             .padding(.horizontal, 16).padding(.vertical, 8)
             .background(Color(nsColor: .labelColor), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-            .opacity(!enabled ? 0.4 : configuration.isPressed ? 0.75 : 1)
+            .opacity(!enabled ? 0.4 : configuration.isPressed ? 0.82 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .animation(.spring(response: 0.22, dampingFraction: 0.7), value: configuration.isPressed)
             .contentShape(RoundedRectangle(cornerRadius: 9))
+    }
+}
+
+/// A soft, springy press for tiles and other custom buttons.
+struct PressableButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)
+            .opacity(configuration.isPressed ? 0.86 : 1)
+            .animation(.spring(response: 0.24, dampingFraction: 0.68), value: configuration.isPressed)
     }
 }
 

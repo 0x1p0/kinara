@@ -11,6 +11,6 @@ cd "$project_directory"
 xcrun swiftc -target "$test_arch-apple-macos13.0" -sdk "$sdk_path" \
     -swift-version 5 -warnings-as-errors -parse-as-library \
     -module-cache-path "$test_directory/ModuleCache" \
-    Sway/NowPlaying.swift Tests/now_playing_regressions.swift \
+    Sway/NowPlaying.swift Sway/HUDMotion.swift Tests/now_playing_regressions.swift \
     -framework AppKit -o "$test_directory/now-playing-regressions"
 "$test_directory/now-playing-regressions"
