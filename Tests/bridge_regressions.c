@@ -33,9 +33,13 @@ int main(void) {
     contacts[0].pathIndex = 17;
     contacts[0].state = 4;
     contacts[0].normalized.position = (MTPoint){0.1f, 0.2f};
+    contacts[0].majorAxis = 9.5f;
+    contacts[0].minorAxis = 8.0f;
     contacts[1].pathIndex = 81;
     contacts[1].state = 4;
     contacts[1].normalized.position = (MTPoint){0.15f, 0.75f};
+    contacts[1].majorAxis = 24.0f;
+    contacts[1].minorAxis = 15.5f;
 
     mt_callback(firstDevice, contacts, 2, 1, 1);
     assert(deliveries == 0); // Already-resting contacts at start cannot activate.
@@ -44,6 +48,9 @@ int main(void) {
     assert(deliveries == 1 && lastCount == 2 && lastGeneration == 42);
     assert(lastContacts[0].identifier == 17 && lastContacts[1].identifier == 81);
     assert(lastContacts[1].x == 0.15f && lastContacts[1].y == 0.75f); // Full96-byte stride.
+    // Palm rejection reads each contact's own ellipse, at the right offset.
+    assert(lastContacts[0].majorAxis == 9.5f && lastContacts[0].minorAxis == 8.0f);
+    assert(lastContacts[1].majorAxis == 24.0f && lastContacts[1].minorAxis == 15.5f);
 
     mt_callback(secondDevice, NULL, 0, 1.21, 1);
     assert(deliveries == 1); // Idle second trackpad cannot end the gesture.
@@ -59,6 +66,12 @@ int main(void) {
     mt_callback(secondDevice, contacts, 1, 1.5, 5);
     assert(deliveries == 3 && lastCount == 1);
 
+    contacts[0].majorAxis = NAN;
+    contacts[0].minorAxis = -3;
+    mt_callback(secondDevice, contacts, 1, 1.505, 5);
+    assert(lastCount == 1 && lastContacts[0].majorAxis == 0 && lastContacts[0].minorAxis == 0); // No shape, never garbage.
+    contacts[0].majorAxis = 9.5f;
+    contacts[0].minorAxis = 8.0f;
     contacts[1].state = 2;
     mt_callback(secondDevice, contacts, 2, 1.51, 6);
     assert(lastCount == 1); // Hover is not a finger down.
@@ -74,6 +87,6 @@ int main(void) {
     MTBridge_Stop();
     mt_callback(secondDevice, contacts, 1, 1.7, 10);
     assert(deliveries == beforeStop && g_frameCallback == NULL && !g_running);
-    puts("PASS: native bridge stride, state, identity, device ownership and stop barrier");
+    puts("PASS: native bridge stride, state, identity, contact shape, device ownership and stop barrier");
     return 0;
 }

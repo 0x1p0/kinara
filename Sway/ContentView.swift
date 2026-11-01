@@ -980,7 +980,7 @@ struct ContentView: View {
 
     private var tapsPage: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Tap twice quickly for a double-tap. Tap once, then touch again and hold still for tap-and-hold. Both start with a short, still tap, so a resting palm never triggers them. Edge taps use \(settings.minimumFingers == 1 ? "one finger" : "two fingers"), like your swipes\(settings.minimumFingers == 2 && settings.cornerTapFingers == 1 ? "; corners use one finger" : "").")
+            Text("Tap twice quickly for a double-tap. Tap once, then touch again and hold still for tap-and-hold. Palms are ignored, and both start with a short, still tap, so a resting hand never triggers them. Edge taps use \(settings.minimumFingers == 1 ? "one finger" : "two fingers"), like your swipes\(settings.minimumFingers == 2 && settings.cornerTapFingers == 1 ? "; corners use one finger" : "").")
                 .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             TrackpadMap(settings: settings, selectedZone: nil, telemetry: telemetry,
                         showsTouches: telemetry.isLiveViewing, onSelect: nil, showsCorners: true)
@@ -1108,7 +1108,7 @@ struct ContentView: View {
                         LabeledSlider("Start distance", detail: "Minimum travel across the trackpad before a swipe can activate.", value: $settings.activationThreshold, range: 0...12, display: String(format: "%.1f%%", max(settings.palmRejectionMode == "strict" ? 1.4 : 0.8, settings.activationThreshold / 5 * (settings.palmRejectionMode == "strict" ? 1.3 : 1))))
                     }.font(.system(size: 12)).padding(14)
                 }
-                Text("These are measured intent checks, not a claim that macOS identifies every palm. Straightness is net travel divided by total travel. No touch data is saved.")
+                Text("Palms are always ignored, typing or not: Sway reads each contact's size and shape from the trackpad, and anything larger or longer than a fingertip, like a palm, the side of your hand or a thumb lying flat, never triggers an edge or a tap. Fingertips beside a resting palm still work. The checks above add intent on top. No touch data is saved.")
                     .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             DisclosureGroup("Test gestures safely", isExpanded: $showsSafeTest) {
@@ -2642,7 +2642,7 @@ private struct SafeTestPanel: View {
                     Label(telemetry.isTesting ? telemetry.phase : "Ready to test", systemImage: telemetry.phase == "Accepted" && telemetry.isTesting ? "checkmark.circle.fill" : "waveform.path")
                         .font(.system(size: 15, weight: .semibold)).foregroundStyle(SwayTheme.accent)
                     Spacer()
-                    Text("\(telemetry.acceptedCount) accepted · \(telemetry.rejectedCount) stopped")
+                    Text("\(telemetry.acceptedCount) accepted · \(telemetry.rejectedCount) stopped" + (telemetry.palmsIgnored > 0 ? " · \(telemetry.palmsIgnored) palms ignored" : ""))
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 Text(telemetry.isTesting ? telemetry.reason : "Start a test, then begin a deliberate swipe inside an edge zone.")

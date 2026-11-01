@@ -100,7 +100,7 @@ be turned off in Gestures and Haptics.
 
 **More gestures.** A **bottom edge** (one finger, left/right). **Double-tap** and
 **tap-and-hold** on edges and on four **corners**: both begin with a short,
-still tap, which a resting palm doesn’t produce. Where a tap action exists,
+still tap, and palms are ignored outright. Where a tap action exists,
 tap-to-click there no longer clicks what’s under the pointer; pressing the
 trackpad always clicks. **Layers** give each side edge more actions: hold ⌥
 while swiping, or use the other finger count (1 instead of 2, or 2 instead of 1).
@@ -296,7 +296,9 @@ Comfort limits apply to both gesture adjustments and direct sliders. On outputs 
 
 ## Palm protection: evidence you can inspect
 
-Sway does not claim that macOS labels every contact as a finger or a palm. It accepts a gesture only after checking observable touch data:
+**Palms are ignored, typing or not.** The trackpad measures every contact as an ellipse, and Sway removes anything that isn’t fingertip-shaped before any gesture logic sees it, the way macOS does for the pointer. On a MacBook Air, fingertips measured at most 8.5 mm wide (a fast swipe can smear one to 14 mm long), while a palm measured 15–17 mm wide and 25–28 mm long, and even a palm grazing a corner was 10 mm wide from its first report. So a contact 10 mm or wider is a palm, and so is one 17 mm or longer while nearly still (the side of a hand, or a thumb lying flat). A contact judged a palm stays one until it lifts; one that grows into a palm mid-touch stops whatever it began and is never read as a tap. Fingertips beside a resting palm still swipe and tap normally. Trackpads that report no contact shape keep the motion checks below.
+
+On top of that, Sway accepts a fingertip gesture only after checking observable touch data:
 
 - Stable contact identities and the required number of contacts.
 - Touchdown inside one enabled edge, with both fingers in the same zone.
@@ -307,7 +309,7 @@ Sway does not claim that macOS labels every contact as a finger or a palm. It ac
 
 A rejected contact stays rejected until every finger lifts. Settings changes and interruptions cancel the current gesture. Reversing direction at a limit responds immediately without having to retrace movement beyond that limit.
 
-The **Palm protection → Test gestures safely** section reports these checks directly. Its counts are accepted/stopped gestures, not a claimed palm-classification accuracy. Try deliberate swipes, resting a hand at the edge, typing with a hand on the trackpad, entering an edge from the center, and adding or lifting a finger mid-swipe. Behavior still needs checking on the actual trackpad you use; automated traces cannot prove palm-rejection accuracy for every hand and device. Touch data is processed locally and is not saved by Sway.
+The **Palm protection → Test gestures safely** section reports these checks directly, and counts each palm it ignored. Try deliberate swipes, resting a hand at the edge, typing with a hand on the trackpad, entering an edge from the center, and adding or lifting a finger mid-swipe. Behavior still needs checking on the actual trackpad you use; automated traces cannot prove palm-rejection accuracy for every hand and device. Touch data is processed locally and is not saved by Sway.
 
 ## Requirements and device support
 
@@ -516,6 +518,7 @@ Run the deterministic gesture, native bridge, settings, and controller regressio
 
 ```bash
 bash scripts/test-gestures.sh
+bash scripts/test-palm-rejection.sh
 bash scripts/test-settings.sh
 bash scripts/test-haptics.sh
 bash scripts/test-updates.sh

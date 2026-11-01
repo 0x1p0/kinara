@@ -84,7 +84,10 @@ static void mt_callback(MTDeviceRef device, MTContact *contacts, int32_t count,
                 valid = 0;
                 break;
             }
-            copied[touching++] = (MTBridgeContact){contacts[i].pathIndex, position.x, position.y};
+            const float major = contacts[i].majorAxis, minor = contacts[i].minorAxis;
+            const int shaped = isfinite(major) && isfinite(minor) && major > 0 && minor > 0 && major < 200 && minor < 200;
+            copied[touching++] = (MTBridgeContact){contacts[i].pathIndex, position.x, position.y,
+                                                   shaped ? major : 0, shaped ? minor : 0};
             if (contacts[i].state != 3) allMaking = 0;
         }
     }
@@ -92,7 +95,7 @@ static void mt_callback(MTDeviceRef device, MTContact *contacts, int32_t count,
         g_needsLift[deviceIndex] = 1;
         if (g_activeDevice == device) {
             // A malformed record cancels, rather than masquerading as a lift.
-            MTBridgeContact invalid = {-1, NAN, NAN};
+            MTBridgeContact invalid = {-1, NAN, NAN, 0, 0};
             g_frameCallback(1, &invalid, timestamp, g_generation);
         }
         pthread_mutex_unlock(&g_lock);

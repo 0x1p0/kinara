@@ -12,6 +12,7 @@ final class TrackpadMonitor: ObservableObject {
     private let settings = TrackpadSettings.shared
     private var recognizer = EdgeGestureRecognizer()
     private var taps = EdgeTapRecognizer()
+    private var palmFilter = PalmFilter()
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     /// Exists only while a one-finger gesture holds the pointer, so ordinary
@@ -86,6 +87,7 @@ final class TrackpadMonitor: ObservableObject {
         generation &+= 1
         recognizer.reset()
         taps = EdgeTapRecognizer()
+        palmFilter = PalmFilter()
         trackpadFrames.clear()
         MTBridge_SetFrameCallback { count, contacts, _, token in
             // The native array lives only until callback return. Copy every
@@ -93,7 +95,8 @@ final class TrackpadMonitor: ObservableObject {
             let copied: [GestureContact]
             if let contacts, count > 0 {
                 copied = UnsafeBufferPointer(start: contacts, count: Int(count)).map {
-                    GestureContact(id: $0.identifier, x: Double($0.x), y: Double($0.y))
+                    GestureContact(id: $0.identifier, x: Double($0.x), y: Double($0.y),
+                                   major: Double($0.majorAxis), minor: Double($0.minorAxis))
                 }
             } else { copied = [] }
             let receivedAt = ProcessInfo.processInfo.systemUptime
@@ -123,6 +126,7 @@ final class TrackpadMonitor: ObservableObject {
         finishAdjustment()
         recognizer.reset()
         taps = EdgeTapRecognizer()
+        palmFilter = PalmFilter()
         gestureBinding = nil
         claimedButtons.removeAll()
         scrollCapture = GestureScrollCapture()
@@ -262,9 +266,21 @@ final class TrackpadMonitor: ObservableObject {
         RunLoop.main.add(timer, forMode: .common)
     }
 
-    private func handleFrame(_ contacts: [GestureContact], at timestamp: Double, generation token: UInt64) {
+    private func handleFrame(_ touches: [GestureContact], at timestamp: Double, generation token: UInt64) {
         guard isRunning, generation == token else { return }
         guard settings.isEnabled else { stop(); return }
+        // Palms are not fingers: nothing below ever sees them, as in macOS.
+        let palms = palmFilter.filter(touches)
+        let contacts = palms.fingers
+        if palms.newPalms > 0 { GestureTelemetry.shared.publishPalm(size: palms.palmSize, at: timestamp) }
+        if palms.withdrewFinger {
+            // A touch that grew into a palm stops whatever it began, and its
+            // disappearance from the fingers is never read as a tap's lift.
+            taps.cancel()
+            cancelCurrentGesture(reason: "Palm detected. Nothing was triggered.")
+        }
+        // A palm resting alone repeats empty frames; there is nothing to do.
+        if contacts.isEmpty && lastContactCount == 0 && !palms.withdrewFinger { return }
         defer {
             updateWatchdog()
             if contacts.isEmpty { gestureBinding = nil }

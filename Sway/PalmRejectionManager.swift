@@ -12,6 +12,79 @@ struct GestureContact {
     let id: Int32
     let x: Double
     let y: Double
+    /// The sensor's ellipse in millimetres; zero when the device reports none.
+    var major = 0.0
+    var minor = 0.0
+}
+
+/// Apple-style palm rejection: a palm, the side of a hand or a thumb lying
+/// flat is not a finger, so it is removed before any gesture logic sees the
+/// frame, typing or not. It judges the footprint the sensor measured, not
+/// timing, and a contact judged a palm stays one until it lifts, because a
+/// palm lands edge-first and spreads. Fingers beside a resting palm still work.
+struct PalmFilter {
+    /// Measured on a MacBook Air: fingertips stay at most 8.5 mm wide, though
+    /// a fast swipe smears one up to 14 mm long. A palm is 15–17 mm wide and
+    /// 25–28 mm long, and even a passing brush of one is 10 mm wide at once.
+    /// Width is the honest signal; length catches the side of a hand, but only
+    /// while the contact is nearly still, because speed smears a fingertip.
+    static let palmWidth = 10.0
+    static let palmLength = 17.0
+    /// Movement per report (about 8 ms) below which a contact counts as still.
+    static let stillStep = 0.012
+
+    struct Result {
+        var fingers: [GestureContact] = []
+        /// A contact that already counted as a finger turned out to be a palm.
+        /// Whatever it started must stop; it is not a lift.
+        var withdrewFinger = false
+        /// Contacts first judged palms in this frame, and the largest one's length.
+        var newPalms = 0
+        var palmSize = 0.0
+    }
+
+    private var palms: Set<Int32> = []
+    private var fingers: [Int32: GestureContact] = [:]
+
+    /// `still` is false only for a finger already seen moving quickly.
+    static func isPalm(_ contact: GestureContact, still: Bool = true) -> Bool {
+        let major = max(contact.major, contact.minor), minor = min(contact.major, contact.minor)
+        guard major.isFinite, minor.isFinite, minor > 0 else { return false }
+        return minor >= palmWidth || (still && major >= palmLength)
+    }
+
+    mutating func filter(_ contacts: [GestureContact]) -> Result {
+        var result = Result()
+        guard !contacts.isEmpty else {
+            palms.removeAll(keepingCapacity: true)
+            fingers.removeAll(keepingCapacity: true)
+            return result
+        }
+        // Identifiers are reused after a lift: forget any that are gone. This
+        // runs on every touch frame, and the counts match on almost all of
+        // them, so ordinary pointing builds no sets or dictionaries.
+        if palms.count + fingers.count != contacts.count {
+            let present = Set(contacts.map(\.id))
+            palms = palms.filter(present.contains)
+            fingers = fingers.filter { present.contains($0.key) }
+        }
+        var palmInFrame = false
+        for contact in contacts {
+            if palms.contains(contact.id) { palmInFrame = true; continue }
+            let still = fingers[contact.id].map { hypot(contact.x - $0.x, contact.y - $0.y) <= Self.stillStep } ?? true
+            if Self.isPalm(contact, still: still) {
+                palms.insert(contact.id)
+                palmInFrame = true
+                if fingers.removeValue(forKey: contact.id) != nil { result.withdrewFinger = true }
+                result.newPalms += 1
+                result.palmSize = max(result.palmSize, contact.major, contact.minor)
+            } else {
+                fingers[contact.id] = contact
+            }
+        }
+        result.fingers = palmInFrame ? contacts.filter { !palms.contains($0.id) } : contacts
+        return result
+    }
 }
 
 struct GestureInputFrame {
@@ -734,6 +807,7 @@ final class GestureTelemetry: ObservableObject {
         var acceptedCount = 0
         var rejectedCount = 0
         var lastTap: String?
+        var palmsIgnored = 0
     }
     // A single coherent publication per rendered sample. Publishing each field
     // separately invalidated every observing view up to 13 times per sample.
@@ -750,6 +824,7 @@ final class GestureTelemetry: ObservableObject {
     var activeZone: String { snapshot.decision.region.rawValue }
     var acceptedCount: Int { snapshot.acceptedCount }
     var rejectedCount: Int { snapshot.rejectedCount }
+    var palmsIgnored: Int { snapshot.palmsIgnored }
     @Published var isTesting = false {
         didSet {
             if isTesting != oldValue {
@@ -782,6 +857,16 @@ final class GestureTelemetry: ObservableObject {
         var next = snapshot
         next.lastTap = "\(title) recognized. Nothing was sent during the test."
         next.decision.reason = next.lastTap ?? next.decision.reason
+        snapshot = next
+    }
+
+    /// A palm never reaches the recognizers; this only explains it.
+    func publishPalm(size: Double, at time: Double) {
+        guard isTesting else { return }
+        lastPublish = time
+        var next = snapshot
+        next.palmsIgnored += 1
+        next.decision.reason = "Palm ignored (\(Int(size.rounded())) mm contact). Nothing was triggered."
         snapshot = next
     }
 

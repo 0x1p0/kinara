@@ -30,6 +30,7 @@ jobs:
       - name: Test without release secrets
         run: |
           bash scripts/test-gestures.sh
+          bash scripts/test-palm-rejection.sh
           bash scripts/test-settings.sh
           bash scripts/test-haptics.sh
           bash scripts/test-updates.sh
