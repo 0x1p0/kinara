@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case overview, gestures, taps, profiles, protection, levels, feedback, appearance, general, updates, about
+    case overview, gestures, taps, profiles, protection, levels, mixer, feedback, appearance, general, updates, about
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -12,6 +12,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .profiles: return "Profiles"
         case .protection: return "Palm protection"
         case .levels: return "Volume & brightness"
+        case .mixer: return "Mixer"
         case .feedback: return "Haptics"
         case .appearance: return "Appearance"
         case .general: return "General"
@@ -27,6 +28,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .profiles: return "square.stack"
         case .protection: return "hand.raised"
         case .levels: return "slider.horizontal.3"
+        case .mixer: return "slider.vertical.3"
         case .feedback: return "waveform.path"
         case .appearance: return "paintbrush"
         case .general: return "gearshape"
@@ -42,6 +44,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .profiles: return "Change edges for specific apps or when docked."
         case .protection: return "Tune intent checks and try gestures safely."
         case .levels: return "Limits, favorite levels, devices, and displays."
+        case .mixer: return "Every app’s volume, solo, call ducking, and speakers."
         case .feedback: return "Choose the taps you feel on your trackpad."
         case .appearance: return "Customize the menu bar and on-screen indicator."
         case .general: return "Startup, shortcuts, automation, and your settings file."
@@ -57,6 +60,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .profiles: return "app apps profile profiles per-app docked dock external monitor display override"
         case .protection: return "palm rejection strict balanced typing cooldown activation distance test diagnostics permission accessibility"
         case .levels: return "volume brightness audio display minimum maximum limit mute zero favorite notch device airpods headphones external monitor ddc pointer extra dim"
+        case .mixer: return "mixer app apps per-app volume mute solo call calls ducking duck lower meeting zoom facetime speakers output airpods headphones route boost faders"
         case .feedback: return "haptic feedback soft standard crisp tap vibration strength spacing steps preview notch notches detent sound click"
         case .appearance: return "theme dark light system liquid glass indicator osd pill vertical horizontal position width menu bar icon follow finger edge now playing artwork scroll"
         case .general: return "login launch startup dock spotlight shortcut hotkey pause exclude excluded apps cheat sheet edge map url automation export import backup settings file"
@@ -69,7 +73,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .overview: return ""
         case .gestures, .taps, .profiles, .protection: return "Edges"
-        case .levels, .feedback, .appearance: return "Feel & look"
+        case .levels, .mixer, .feedback, .appearance: return "Feel & look"
         case .general, .updates, .about: return "Sway"
         }
     }

@@ -154,7 +154,7 @@ enum PresentationRegressionTests {
         expect(expanded, "one click expands inline options")
         button.performClick(nil)
         expect(!expanded, "second click collapses inline options")
-        expect(SettingsPane.allCases.count == 11, "settings are separated into an overview and ten categories")
+        expect(SettingsPane.allCases.count == 12, "settings are separated into an overview and eleven categories")
         expect(SettingsPane.allCases.first == .overview && SettingsPane.groups.allSatisfy { group in SettingsPane.allCases.contains { $0.group == group } }, "the overview leads and every sidebar group has a page")
         expect(SettingsPane.taps.matches("corner") && SettingsPane.profiles.matches("docked"), "new categories are searchable")
         expect(SettingsPane.levels.matches("airpods") && SettingsPane.general.matches("export"), "new options are searchable")

@@ -82,7 +82,7 @@ enum EdgeCommand: Equatable {
             return .key(UInt16(custom.keyCode), flags, global: true)
         case .brightness, .volume, .microphoneLevel, .outputMute, .microphoneMute, .disabled: return nil
         // Performed directly (Accessibility, Core Audio, Shortcuts, HUDs), not as keys.
-        case .appVolume, .audioOutput, .seek, .nowPlaying, .tileWindow, .nightShift, .trueTone,
+        case .appVolume, .muteApp, .soloApp, .audioOutput, .seek, .nowPlaying, .tileWindow, .nightShift, .trueTone,
              .extraDim, .runShortcut, .cheatSheet, .pastePrevious, .clipboardHistory, .sleepDisplay: return nil
         }
     }

@@ -298,6 +298,7 @@ struct MenuBarView: View {
     private let telemetry = GestureTelemetry.shared
     @ObservedObject private var exclusions = ExcludedAppsManager.shared
     @ObservedObject private var updates = UpdateChecker.shared
+    @ObservedObject private var mixer: MixerModel
     @StateObject private var controls: ControlCenterModel
     @State private var showsMoreOptions = false
     private let preview: Bool
@@ -313,6 +314,7 @@ struct MenuBarView: View {
         self.openSettings = openSettings
         _showsMoreOptions = State(initialValue: preview && previewExpandedOptions)
         _controls = StateObject(wrappedValue: preview ? ControlCenterModel(settings: settings, preview: true) : .shared)
+        mixer = preview ? .preview : .shared
     }
 
     /// Light chosen in Sway on a dark Mac, or the reverse. The popover's
@@ -360,6 +362,11 @@ struct MenuBarView: View {
                     muted: controls.isMuted,
                     muteAvailable: preview || settings.volumeMin == 0 || VolumeController.shared.supportsMute,
                     onBegin: { controls.captureUndo(.volume) }, onMute: { controls.toggleMute() })
+            }
+
+            if (MixerModel.isSupported || preview) && mixer.showInMenu {
+                Divider()
+                MixerMenuSection(mixer: mixer)
             }
 
             if !controls.hasAccess {
@@ -565,6 +572,7 @@ struct ContentView: View {
     @ObservedObject private var exclusions = ExcludedAppsManager.shared
     @ObservedObject private var login = LoginItemManager.shared
     @ObservedObject private var updates: UpdateChecker
+    @ObservedObject private var mixer: MixerModel
     @StateObject private var controls: ControlCenterModel
     @State private var pane: SettingsPane
     @State private var search = ""
@@ -585,6 +593,7 @@ struct ContentView: View {
         self.updates = updates
         _pane = State(initialValue: initialPane)
         _controls = StateObject(wrappedValue: preview ? ControlCenterModel(settings: settings, preview: true) : .shared)
+        mixer = preview ? .preview : .shared
     }
 
     private var visiblePanes: [SettingsPane] { SettingsPane.allCases.filter { $0.matches(search) } }
@@ -668,6 +677,7 @@ struct ContentView: View {
                         case .profiles: profilesPage
                         case .protection: protectionPage
                         case .levels: levelsPage
+                        case .mixer: mixerPage
                         case .feedback: feedbackPage
                         case .appearance: appearancePage
                         case .general: generalPage
@@ -1156,6 +1166,50 @@ struct ContentView: View {
                 Text("Now adjusting: \(controls.brightnessDevice)").font(.system(size: 12)).foregroundStyle(.secondary).padding([.horizontal, .bottom], 14)
                 Divider()
                 ToggleRow("Extra dim below minimum", detail: "Keep swiping down past the lowest brightness to dim further, for late nights. Quitting Sway restores normal brightness.", value: $settings.extraDimBelowMinimum)
+            }
+        }
+    }
+
+    private var mixerPage: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            if !MixerModel.isSupported && !preview {
+                Notice("The mixer needs macOS 14.2 or later.", icon: "info.circle", tint: .primary)
+            } else {
+                if mixer.permission != .authorized {
+                    SettingsSection("Access") { MixerPermissionRow(mixer: mixer).padding(16) }
+                }
+                SettingsSection("Apps") {
+                    let list = mixer.playingChannels + (mixer.showOtherApps ? mixer.otherChannels : [])
+                    if list.isEmpty {
+                        Text("Apps appear here when they play sound. Play something to try it.")
+                            .font(.system(size: 12)).foregroundStyle(.secondary).padding(16)
+                    } else {
+                        VStack(alignment: .leading, spacing: 16) {
+                            MixerBanners(mixer: mixer)
+                            ForEach(list) { MixerChannelRow(channel: $0, mixer: mixer, large: true) }
+                        }.padding(16)
+                    }
+                }
+                SettingsSection("Calls") {
+                    ToggleRow("Lower other apps during calls", detail: "When an app uses your microphone, everything else fades down, and comes back when the call ends.", value: $mixer.duckDuringCalls)
+                    Divider()
+                    LabeledSlider("Keep other apps at", detail: "How loud other apps stay while you’re on a call.", value: $mixer.duckLevel,
+                                  range: 0.05...0.8, display: "\(Int((mixer.duckLevel * 100).rounded()))%")
+                        .disabled(!mixer.duckDuringCalls)
+                }
+                SettingsSection("Options") {
+                    ToggleRow("Show the mixer in the menu bar", detail: "Every app that plays sound gets a fader in Sway’s menu.", value: $mixer.showInMenu)
+                    Divider()
+                    ToggleRow("Allow boost to 150%", detail: "Faders can go past full level, with a soft limiter so loud parts don’t crackle.", value: $mixer.allowBoost)
+                    Divider()
+                    ToggleRow("List apps that haven’t played yet", detail: "Mute an app before its next sound, such as a chat app’s pings.", value: $mixer.showOtherApps)
+                    Divider()
+                    SettingRow("Forget every app’s settings", detail: "Puts every app back at 100%, unmuted, on the default output.") {
+                        Button("Reset") { mixer.resetAllChannels() }
+                    }
+                }
+                Text("Sway reroutes an app only while you’ve changed it: a level other than 100%, muted, solo, lowered for a call, or another output. Every other app plays untouched. Audio is never recorded or saved.")
+                    .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -2241,7 +2295,11 @@ struct EdgeActionLibrary: View {
         if !VolumeController.microphone.supportsMute { next[.microphoneMute] = "The current input has no verified hardware mute control. Sway never substitutes gain zero or claims to mute other microphones." }
         if !VolumeController.shared.supportsMute { next[.outputMute] = "The current output has no hardware mute control. Volume remains available on compatible outputs." }
         if !KeyboardBacklightCapability.shared.isAvailable { next[.keyboardBrightness] = KeyboardBacklightCapability.shared.checked ? "No supported backlit keyboard detected. This uses a private read-only capability API that can change with macOS." : "Checking keyboard support…" }
-        if !AppVolumeController.isSupported { next[.appVolume] = "App volume needs macOS 14.2 or later." }
+        if !AppVolumeController.isSupported {
+            next[.appVolume] = "App volume needs macOS 14.2 or later."
+            next[.muteApp] = "Muting one app needs macOS 14.2 or later."
+            next[.soloApp] = "Solo needs macOS 14.2 or later."
+        }
         if !NightShiftController.shared.isAvailable { next[.nightShift] = "Night Shift isn’t available on this Mac, or macOS changed its private interface." }
         if !TrueToneController.shared.isAvailable { next[.trueTone] = "No display with True Tone is connected." }
         if !ShortcutsRunner.isAvailable { next[.runShortcut] = "The Shortcuts command-line tool isn’t available on this Mac." }

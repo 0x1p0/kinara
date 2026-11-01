@@ -110,8 +110,19 @@ front; a **docked profile** applies while an external display is connected.
 Order: app, then docked, then everyday. **Per-device volume limits** are
 remembered by Core Audio device UID, so headphones can stay quieter.
 
-**Actions (49 in total).** Beyond volume and brightness: app volume (the front app only, macOS 14.2+),
-switch audio output, seek in track, show now playing, tile window, Night Shift
+**Mixer (macOS 14.2+).** Every app that plays sound gets a fader in the menu
+bar panel and in **Settings → Mixer**, with mute, **solo** (hear only one app),
+**per-app speakers** (send one app to another output), optional **boost** to
+150% through a soft limiter, and **call ducking**: while an app uses your
+microphone, other apps fade down and come back when the call ends. Settings
+are remembered per app, and you can mute an app before it makes a sound. Sway
+reroutes an app only while it needs to (a level other than 100%, muted,
+silenced by solo, lowered for a call, or on another output); every other app
+plays untouched. It shares one tap engine with the App volume action, so an
+app is never tapped twice. Ported from Faders.
+
+**Actions (51 in total).** Beyond volume and brightness: app volume, mute app
+in front and solo app in front (macOS 14.2+), switch audio output, seek in track, show now playing, tile window, Night Shift
 warmth, True Tone, extra dim, Run a Shortcut, and show edge map. **Editing:**
 copy, cut, paste, paste as plain text, paste previous item, clipboard history,
 undo/redo, select all, and find. Plus new/close tab, reopen closed tab, lock
@@ -168,7 +179,7 @@ CoreBrightness clients, checked by method signature before every use.
 
 ### Edge actions
 
-Sway has **49 assignable actions, plus Off**. Open **Settings → Gestures** (or
+Sway has **51 assignable actions, plus Off**. Open **Settings → Gestures** (or
 **Taps & corners**), then click any action button to browse or search the
 categorized library. Side, top and bottom edges, layers, taps and corners all
 use the same library; taps offer only actions that fire once.
@@ -176,7 +187,7 @@ use the same library; taps offer only actions that fire once.
 | Category | Actions |
 | --- | --- |
 | Display & keyboard | Display brightness; keyboard backlight; Night Shift warmth; True Tone; extra dim |
-| Audio & microphone | Output volume; app volume; switch audio output; input gain; speaker mute; microphone hardware mute |
+| Audio & microphone | Output volume; app volume; mute app in front; solo app in front; switch audio output; input gain; speaker mute; microphone hardware mute |
 | Media | Previous/next track; play/pause; seek in track; show now playing |
 | Editing | Copy; cut; paste; paste as plain text; paste previous item; clipboard history; undo/redo; select all; find |
 | Navigation | Tabs; back/forward; app zoom; page up/down; document start/end; new/close tab; reopen closed tab |
@@ -194,7 +205,7 @@ mode never executes an action, changes hardware, or sends a shortcut.
 **Microphone controls are not a universal privacy switch.** Gain and hardware
 mute affect only macOS’s current default input, not other devices or an app’s
 own mute state. These controls never open a recording stream. (The separate
-App volume action routes one app’s sound through a Core Audio process tap,
+App volume action and the mixer route an app’s sound through a Core Audio process tap,
 after macOS’s System Audio Recording permission; it is never recorded, saved,
 or sent.) Raising or lowering input
 gain never unmutes the device. Hardware mute is offered only if the driver
@@ -300,7 +311,7 @@ The **Palm protection → Test gestures safely** section reports these checks di
 
 ## Requirements and device support
 
-- macOS 13 Ventura or later. App volume needs macOS 14.2 or later.
+- macOS 13 Ventura or later. App volume and the mixer need macOS 14.2 or later.
 - A compatible Apple Multi-Touch trackpad for edge gestures.
 - Accessibility access for gesture monitoring and interception.
 - A software-controllable audio output for volume, and a supported display for brightness: the built-in display, an Apple display, or (on Apple silicon) a monitor that accepts DDC/CI brightness commands.

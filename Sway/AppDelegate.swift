@@ -62,6 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         controls.refresh()
         setupMenuBar()
         ExcludedAppsManager.shared.start()
+        MixerModel.shared.start()
         HotkeyManager.shared.startWithSavedHotkey()
         _ = EdgeMapHUD.shared // Listens for the hold-to-show hotkey.
         // Waveform 6 is the actuator's firmest click; unknown2 follows HapticKey.
@@ -437,6 +438,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         }
         ControlCenterModel.shared.setVisible("popover", true)
         ControlCenterModel.shared.refresh()
+        MixerModel.shared.setPanelVisible(true)
         popover.appearance = themeAppearance
         popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         WindowFocusCoordinator.activateApplication()
@@ -476,6 +478,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         dismissal.stop()
         statusItem?.button?.highlight(false)
         ControlCenterModel.shared.setVisible("popover", false)
+        MixerModel.shared.setPanelVisible(false)
         popover?.contentViewController = nil
         NotificationCenter.default.post(name: Notification.Name("swayPopoverClosed"), object: nil)
         guard settingsWindow?.isVisible != true || settingsWindow?.isMiniaturized == true else { return }
@@ -575,6 +578,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     func applicationWillTerminate(_ notification: Notification) {
         // Never leave a display dimmed or an app's audio rerouted after quitting.
         GammaDimmer.shared.restoreAll()
+        MixerModel.shared.shutdown()
         AppVolumeController.shared.resetAll()
         if let menuScrollMonitor { NSEvent.removeMonitor(menuScrollMonitor) }
         dismissal.stop()

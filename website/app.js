@@ -25,7 +25,7 @@ function filterActions() {
   }
   document.getElementById("action-count").textContent = filtering
     ? `${total} matching ${total === 1 ? "action" : "actions"}`
-    : "49 actions · plus Off for any edge";
+    : "51 actions · plus Off for any edge";
   document.getElementById("action-empty").hidden = total !== 0;
   for (const button of categoryButtons)
     button.setAttribute("aria-pressed", String(button.dataset.category === selectedCategory));

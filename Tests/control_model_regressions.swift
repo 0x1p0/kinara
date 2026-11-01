@@ -239,13 +239,13 @@ private final class ModelFixture {
         expect(events.allSatisfy { $0.getIntegerValueField(.eventSourceUserData) == EdgeActionController.eventMarker }, "own events never count as typing")
         let held = EdgeActionController.keyboardEvents(code: 48, flags: CGEventFlags.maskCommand.rawValue, physicalFlags: .maskCommand)!
         expect(held.count == 2, "physically held modifiers are not synthetically released")
-        expect(ZoneAction.allCases.count == 50, "49 assignable actions plus Off")
+        expect(ZoneAction.allCases.count == 52, "51 assignable actions plus Off")
         for action in ZoneAction.allCases {
             expect(!action.label.isEmpty && !action.icon.isEmpty && !action.guidance.isEmpty, "every action has usable metadata")
             expect(ZoneAction.categories.contains(action.category), "all actions appear in a category")
             let performedDirectly: [ZoneAction] = [.outputMute, .microphoneMute, .customShortcut, .disabled, .audioOutput,
                                                    .nowPlaying, .tileWindow, .trueTone, .runShortcut, .cheatSheet,
-                                                   .pastePrevious, .clipboardHistory, .sleepDisplay]
+                                                   .pastePrevious, .clipboardHistory, .sleepDisplay, .muteApp, .soloApp]
             if action.isContinuous || performedDirectly.contains(action) {
                 expect(EdgeCommand.resolve(action, increasing: true) == nil, "\(action.rawValue) never becomes a keystroke")
             } else {

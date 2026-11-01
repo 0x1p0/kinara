@@ -9,12 +9,12 @@
     <meta property="og:url" content="https://sway-application.vercel.app/">
     <meta
       name="description"
-      content="49 ways to control your Mac from your trackpad’s edges. Volume, brightness, microphone, media, windows, and custom shortcuts. Free for macOS, by 0x1p0."
+      content="51 ways to control your Mac from your trackpad’s edges. Volume, brightness, microphone, media, windows, and custom shortcuts. Free for macOS, by 0x1p0."
     />
     <meta property="og:title" content="Sway — A lighter touch for your Mac." />
     <meta
       property="og:description"
-      content="A lighter touch. More possibilities. Explore 49 edge actions in Sway, the macOS menu bar app by 0x1p0."
+      content="A lighter touch. More possibilities. Explore 51 edge actions in Sway, the macOS menu bar app by 0x1p0."
     />
     <meta property="og:type" content="website" />
     <link rel="icon" type="image/png" href="/assets/sway-icon.png" />
@@ -52,7 +52,7 @@
           Your sound. Your windows. Your next move.<br
             class="desktop-break"
           />
-          49 ways to make the edges of your trackpad yours.
+          51 ways to make the edges of your trackpad yours.
         </p>
         <div class="hero-actions">
           <a
@@ -78,7 +78,7 @@
           Free · macOS 13+ · Apple silicon & Intel ·
           <span class="release-version">v1.0.0</span>
         </p>
-        <a class="release-highlight" href="#actions">Introducing Sway 1.0 <span>Meet all 49 actions</span><span aria-hidden="true">↗</span></a>
+        <a class="release-highlight" href="#actions">Introducing Sway 1.0 <span>Meet all 51 actions</span><span aria-hidden="true">↗</span></a>
         <div class="hero-demo" id="experience">
           <div class="demo-toolbar">
             <span class="demo-label"
@@ -191,7 +191,7 @@
       </section>
       <section class="intro wrap section-space" id="actions" aria-labelledby="actions-title">
         <p class="eyebrow">THE ACTION LIBRARY</p>
-        <h2 id="actions-title">One small gesture.<br /><span>49 possibilities.</span></h2>
+        <h2 id="actions-title">One small gesture.<br /><span>51 possibilities.</span></h2>
         <p>
           Keep brightness on the left. Put your next track on the right.<br class="desktop-break" />
           Or start with something entirely your own.
@@ -210,7 +210,7 @@
             <button type="button" data-category="windows" aria-pressed="false">Windows</button>
             <button type="button" data-category="tools" aria-pressed="false">Tools</button>
           </div>
-          <p class="action-count" id="action-count" role="status" aria-live="polite" aria-atomic="true">49 actions · plus Off for any edge</p>
+          <p class="action-count" id="action-count" role="status" aria-live="polite" aria-atomic="true">51 actions · plus Off for any edge</p>
         </div>
         <div class="action-groups" id="action-groups">
           <details class="action-group" data-category="display" open>
@@ -224,10 +224,12 @@
             </dl>
           </details>
           <details class="action-group" data-category="audio">
-            <summary><span class="category-mark" aria-hidden="true">♪</span><span class="category-title">Audio & microphone<small>A little more control over your sound.</small></span><span class="category-count">06</span><span class="detail-plus" aria-hidden="true"></span></summary>
+            <summary><span class="category-mark" aria-hidden="true">♪</span><span class="category-title">Audio & microphone<small>A little more control over your sound.</small></span><span class="category-count">08</span><span class="detail-plus" aria-hidden="true"></span></summary>
             <dl class="action-list">
               <div data-action-id="volume"><dt>Output volume</dt><dd>Up raises; down lowers the default audio output. Requires a device with software volume control.</dd></div>
               <div data-action-id="appVolume" data-keywords="mixer per-app"><dt>App volume</dt><dd>Change only the sound of the app in front. macOS asks once for System Audio Recording; Sway never records or saves audio. macOS 14.2+.</dd></div>
+              <div data-action-id="muteApp" data-keywords="mixer per-app silence"><dt>Mute app in front</dt><dd>Down mutes only the app in front; up unmutes it. A tap toggles. It stays muted until you unmute it. macOS 14.2+.</dd></div>
+              <div data-action-id="soloApp" data-keywords="mixer per-app focus only"><dt>Solo app in front</dt><dd>Up plays only the app in front and silences the rest; down ends solo. A tap toggles. macOS 14.2+.</dd></div>
               <div data-action-id="audioOutput" data-keywords="airpods speakers device switch"><dt>Switch audio output</dt><dd>Up picks the next output, down the previous one. The indicator names the new device.</dd></div>
               <div data-action-id="microphoneLevel" data-keywords="mic input gain"><dt>Microphone level</dt><dd>Adjust the default input’s gain without recording audio. Changing gain never unmutes the device.</dd></div>
               <div data-action-id="outputMute"><dt>Speaker mute</dt><dd>Down mutes; up unmutes the default output. Available when the device provides a hardware mute control.</dd></div>

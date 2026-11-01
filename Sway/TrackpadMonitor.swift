@@ -609,7 +609,8 @@ final class TrackpadMonitor: ObservableObject {
             }
         case .appVolume:
             guard let bundle = activeAppBundleID else { return }
-            AppVolumeController.shared.requestGain(Float(requested), for: bundle) { [weak self] result in
+            // Through the mixer, so the level is remembered and plays nicely with solo and ducking.
+            MixerModel.shared.adjustVolume(Float(requested), forApp: bundle) { [weak self] result in
                 guard let self, self.outputRevision == revision else { return }
                 switch result {
                 case let .applied(gain): self.publishAdjustment(gain, action: .appVolume, region: region, placement: placement, fine: fine)
@@ -724,6 +725,17 @@ final class TrackpadMonitor: ObservableObject {
                 OSDOverlay.shared.show(type: .message(state ? "True Tone on" : "True Tone off", icon: "circle.lefthalf.fill"), value: 1)
             }
             return true
+        case .muteApp, .soloApp:
+            guard let bundle = NSRunningApplication(processIdentifier: application)?.bundleIdentifier, AppVolumeController.isSupported else { return false }
+            let mixer = MixerModel.shared, name = mixer.displayName(forApp: bundle)
+            if binding.action == .muteApp {
+                let muted = mixer.setMuted(tap ? nil : !increasing, forApp: bundle)
+                OSDOverlay.shared.show(type: .message(muted ? "\(name) muted" : "\(name) unmuted", icon: muted ? "speaker.slash.fill" : "speaker.wave.2.fill"), value: 1)
+            } else {
+                let soloed = mixer.setSoloed(tap ? nil : increasing, forApp: bundle)
+                OSDOverlay.shared.show(type: .message(soloed ? "Only \(name) is playing" : "Solo off", icon: "headphones"), value: 1)
+            }
+            return true
         case .audioOutput:
             AudioOutputSwitcher.cycle(forward: increasing) { device in
                 OSDOverlay.shared.show(type: .message(device?.name ?? "No other audio output", icon: "airplayaudio"), value: 1)
@@ -817,7 +829,7 @@ final class TrackpadMonitor: ObservableObject {
         case .customShortcut:
             return !settings.customShortcut(for: binding, increasing: true).isEmpty
                 || !settings.customShortcut(for: binding, increasing: false).isEmpty
-        case .appVolume: return AppVolumeController.isSupported && currentAppBundleID != nil
+        case .appVolume, .muteApp, .soloApp: return AppVolumeController.isSupported && currentAppBundleID != nil
         case .nightShift: return NightShiftController.shared.isAvailable
         case .trueTone: return TrueToneController.shared.isAvailable
         case .runShortcut:
@@ -832,7 +844,7 @@ final class TrackpadMonitor: ObservableObject {
         switch action {
         case .volume: return Double(VolumeController.shared.getVolume())
         case .microphoneLevel: return Double(VolumeController.microphone.getVolume())
-        case .appVolume: return currentAppBundleID.map { Double(AppVolumeController.shared.gain(for: $0)) }
+        case .appVolume: return currentAppBundleID.map { Double(min(1, MixerModel.shared.volume(forApp: $0))) }
         case .nightShift: return NightShiftController.shared.level().map(Double.init)
         case .extraDim: return dimTargetDisplay().map { 1 - Double(GammaDimmer.shared.level(for: $0)) }
         default: return 0.5

@@ -68,7 +68,9 @@ enum AppVolumeRegressionTests {
         stagingTests()
         ownershipTests()
         clampingTests()
+        glideAndBoostTests()
         queueTests()
+        mixQueueTests()
         print("\(checks) app volume assertions passed. Hand-built buffers and full-level requests only; no tap, aggregate device, routing change, or permission prompt was created.")
     }
 
@@ -242,6 +244,36 @@ enum AppVolumeRegressionTests {
         expect(AppVolumeMixer.clamp(.nan) == 0 && AppVolumeMixer.clamp(0.25) == 0.25, "the IO path clamps NaN to silence")
     }
 
+    private static func glideAndBoostTests() {
+        let step = AppVolumeController.maximumGainStepPerSample
+        expect(close(AppVolumeMixer.glide(from: 1, toward: 0, frames: 512, maximumStep: step), 1 - 512 * step), "a fade to silence glides, never jumps")
+        expect(AppVolumeMixer.glide(from: 0.5, toward: 0.52, frames: 512, maximumStep: step) == 0.52, "small gesture steps land within one cycle")
+        expect(AppVolumeMixer.glide(from: 0.4, toward: 0.4, frames: 512, maximumStep: step) == 0.4, "a settled gain stays put")
+        expect(close(AppVolumeMixer.glide(from: 0, toward: 1.5, frames: 12_000, maximumStep: step), 1), "a full-scale fade takes about a quarter second")
+        expect(AppVolumeMixer.glide(from: .nan, toward: 0.5, frames: 64, maximumStep: step) <= 0.5
+               && !AppVolumeMixer.glide(from: 0.5, toward: .nan, frames: 64, maximumStep: step).isNaN, "NaN never escapes the glide")
+        expect(AppVolumeMixer.glide(from: 0.3, toward: 0.9, frames: 0, maximumStep: step) > 0.3, "an empty cycle still makes progress")
+
+        let quiet = TestBuffers(channels: [2], frames: 8, fill: { _, _, _ in 0.5 })
+        AppVolumeMixer.boost(quiet.pointer, from: 1, to: 1)
+        expect(quiet.sample(0, 0, 3) == 0.5, "boost at full level leaves audio untouched")
+        AppVolumeMixer.boost(quiet.pointer, from: 1.4, to: 1.4)
+        expect(close(quiet.sample(0, 1, 5), 0.7), "boost scales quiet audio linearly")
+        let loud = TestBuffers(channels: [1, 1], frames: 16, fill: { _, _, frame in frame % 2 == 0 ? 0.95 : -0.95 })
+        AppVolumeMixer.boost(loud.pointer, from: 1.5, to: 1.5)
+        expect((0..<16).allSatisfy { abs(loud.sample(0, 0, $0)) < 1 && abs(loud.sample(1, 0, $0)) < 1 }, "the limiter keeps boosted peaks below full scale")
+        expect(loud.sample(0, 0, 0) > 0.85 && loud.sample(0, 0, 1) < -0.85, "the limiter keeps polarity and loudness")
+        expect(loud.sentinelsIntact && quiet.sentinelsIntact, "boost never writes past a buffer")
+        expect(AppVolumeMixer.softLimit(0.5) == 0.5 && AppVolumeMixer.softLimit(10) <= 1 && AppVolumeMixer.softLimit(-10) >= -1, "soft limiting is transparent below its knee")
+        expect(AppVolumeMixer.frames(in: loud.pointer) == 16, "cycle length comes from the output buffers")
+
+        expect(AppVolumeController.clampedGain(1.3, maximum: AppVolumeController.boostLimit) == 1.3, "boost passes up to its limit")
+        expect(AppVolumeController.clampedGain(3, maximum: 9) == AppVolumeController.boostLimit, "boost never exceeds 150%")
+        expect(AppVolumeController.clampedGain(1.3) == 1, "without boost, gain stops at full level")
+        expect(AppMix(gain: 1).isNeutral && !AppMix(gain: 1, route: "speakers").isNeutral && !AppMix(gain: 0.5).isNeutral,
+               "only full level on the default output leaves an app untapped")
+    }
+
     /// Only NaN, empty-ID and full-level requests: none of these can reach Core
     /// Audio, and the controller traps if one ever tried while under test.
     private static func queueTests() {
@@ -285,5 +317,26 @@ enum AppVolumeRegressionTests {
         controller.flushWorkerForTesting()
         expect(controller.gain(for: app) == 1, "full-level requests never create a tap")
         expect(allOnMain, "every completion arrives on main")
+    }
+
+    /// The mixer moves several apps at once (solo, ducking): one app's request
+    /// must never cancel another's. Full-level requests only.
+    private static func mixQueueTests() {
+        let controller = AppVolumeController.shared
+        var results: [String: [AppVolumeResult]] = [:]
+        let apps = (0..<6).map { "com.example.app\($0)" }
+        for app in apps { controller.requestMix(AppMix(gain: 1), for: app) { results[app, default: []].append($0) } }
+        controller.requestMix(AppMix(gain: 1), for: apps[0]) { results["again", default: []].append($0) }
+        let deadline = Date().addingTimeInterval(5)
+        while results.count < apps.count + 1, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.005)) }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        expect(apps.dropFirst().allSatisfy { results[$0] == [.applied(1)] }, "requests for different apps all run")
+        expect((results[apps[0]] == [.cancelled] || results[apps[0]] == [.applied(1)]) && results["again"] == [.applied(1)],
+               "only the same app's newer request can supersede it, and the newest always runs")
+        controller.requestMix(AppMix(gain: .nan), for: apps[1], maximumGain: AppVolumeController.boostLimit) { results["nan", default: []].append($0) }
+        while results["nan"] == nil, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.005)) }
+        expect(results["nan"] == [.failed("That volume level isn't valid.")], "NaN mixes fail like NaN gains")
+        controller.flushWorkerForTesting()
+        expect(apps.allSatisfy { controller.gain(for: $0) == 1 && controller.route(for: $0) == nil }, "neutral mixes never create taps")
     }
 }

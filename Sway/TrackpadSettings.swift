@@ -12,7 +12,7 @@ enum ZoneAction: String, CaseIterable, Identifiable, Codable {
     case workspaces, missionControl, appWindows, showDesktop, switchApps, cycleWindows
     case fullScreen, minimizeWindow, hideApp, spotlight, screenshotTools, emojiPicker
     case customShortcut
-    case appVolume, audioOutput, seek, nowPlaying, tileWindow
+    case appVolume, muteApp, soloApp, audioOutput, seek, nowPlaying, tileWindow
     case nightShift, trueTone, extraDim, runShortcut, cheatSheet
     case copy, cut, paste, pastePlain, pastePrevious, clipboardHistory, undoRedo, selectAll, find
     case newCloseTab, reopenTab, lockScreen, sleepDisplay
@@ -54,6 +54,8 @@ enum ZoneAction: String, CaseIterable, Identifiable, Codable {
         case .emojiPicker: return "Emoji & symbols"
         case .customShortcut: return "Custom shortcuts"
         case .appVolume: return "App volume"
+        case .muteApp: return "Mute app in front"
+        case .soloApp: return "Solo app in front"
         case .audioOutput: return "Switch audio output"
         case .seek: return "Seek in track"
         case .nowPlaying: return "Show now playing"
@@ -109,6 +111,8 @@ enum ZoneAction: String, CaseIterable, Identifiable, Codable {
         case .emojiPicker: return "face.smiling"
         case .customShortcut: return "keyboard"
         case .appVolume: return "dial.medium"
+        case .muteApp: return "speaker.slash.circle"
+        case .soloApp: return "headphones"
         case .audioOutput: return "airplayaudio"
         case .seek: return "goforward"
         case .nowPlaying: return "music.note"
@@ -138,7 +142,7 @@ enum ZoneAction: String, CaseIterable, Identifiable, Codable {
     var category: String {
         switch self {
         case .brightness, .keyboardBrightness, .nightShift, .trueTone, .extraDim: return "Display & keyboard"
-        case .volume, .appVolume, .audioOutput, .microphoneLevel, .outputMute, .microphoneMute: return "Audio & microphone"
+        case .volume, .appVolume, .muteApp, .soloApp, .audioOutput, .microphoneLevel, .outputMute, .microphoneMute: return "Audio & microphone"
         case .mediaTracks, .playPause, .seek, .nowPlaying: return "Media"
         case .tabs, .history, .zoom, .pages, .documentEnds: return "Navigation"
         case .workspaces, .missionControl, .appWindows, .showDesktop, .switchApps, .cycleWindows,
@@ -159,7 +163,7 @@ enum ZoneAction: String, CaseIterable, Identifiable, Codable {
     /// Taps fire once with no direction, so only commands and toggles fit.
     var worksAsTap: Bool { !isContinuous }
     /// A tap flips these instead of sending their "up" command.
-    var togglesOnTap: Bool { [.outputMute, .microphoneMute, .trueTone].contains(self) }
+    var togglesOnTap: Bool { [.outputMute, .microphoneMute, .trueTone, .muteApp, .soloApp].contains(self) }
     var guidance: String {
         switch self {
         case .brightness: return "Up brightens; down dims the built-in display."
@@ -189,6 +193,8 @@ enum ZoneAction: String, CaseIterable, Identifiable, Codable {
         case .emojiPicker: return "Either direction opens Emoji & Symbols using Control-Command-Space."
         case .customShortcut: return "Record an up/right and down/left shortcut for this edge. Each runs once per swipe, in the app where the gesture started."
         case .appVolume: return "Up raises; down lowers only the frontmost app’s sound, like a per-app mixer. macOS asks once for System Audio Recording permission; Sway never records or saves audio. macOS 14.2 or later."
+        case .muteApp: return "Down mutes only the app in front; up unmutes it. A tap toggles. Uses the mixer, so the app stays muted until you unmute it. macOS 14.2 or later."
+        case .soloApp: return "Up plays only the app in front and silences the rest; down ends solo. A tap toggles. macOS 14.2 or later."
         case .audioOutput: return "Up switches to the next audio output; down to the previous one. The indicator names the new device."
         case .seek: return "Up moves forward; down moves back within the current track. Works with Music and Spotify, and other players macOS exposes."
         case .nowPlaying: return "Shows the current track with artwork and progress. Changes nothing."
