@@ -59,6 +59,8 @@ function launch() {
   return puppeteer.launch({
     executablePath: chrome,
     headless: true,
+    // A stalled frame should fail fast so the worker can recover.
+    protocolTimeout: 45000,
     args: ["--hide-scrollbars", "--force-color-profile=srgb", "--disable-background-timer-throttling",
       "--disable-renderer-backgrounding", "--enable-gpu-rasterization", "--ignore-gpu-blocklist", "--use-angle=metal"],
   });
@@ -126,11 +128,25 @@ async function film() {
     if (start >= end) return;
     const file = join(output, "parts", `part-${String(worker).padStart(2, "0")}.mp4`);
     parts[worker] = file;
-    const browser = await launch();
-    const page = await openPage(browser, origin);
+    let browser = await launch();
+    let page = await openPage(browser, origin);
     const sink = encoder(file);
     for (let index = start; index < end; index++) {
-      await sink.write(await frame(page, index / fps));
+      let png;
+      // Headless Chrome occasionally stalls a capture; restart it and retry
+      // the same frame. Frames are pure functions of time, so nothing is lost.
+      for (let attempt = 1; !png; attempt++) {
+        try {
+          png = await frame(page, index / fps);
+        } catch (error) {
+          if (attempt >= 4) throw error;
+          console.error(`\nworker ${worker}: frame ${index} failed (${error.message.split("\n")[0]}); restarting its browser`);
+          await browser.close().catch(() => {});
+          browser = await launch();
+          page = await openPage(browser, origin);
+        }
+      }
+      await sink.write(png);
       done++;
       if (done % fps === 0) {
         const elapsed = (performance.now() - started) / 1000;
