@@ -1,44 +1,15 @@
-// 67.5–75 s. Sound, exactly how you want it: turn down only the app in
-// front, cap headphones at a safe level, and seek with Now Playing.
-import { h, at, tf, words, reveal, fade, glyph, indicator } from "../ui.js";
+// After the mixer: cap headphones at a safe level, then seek with Now Playing.
+import { h, at, tf, words, reveal, fade, glyph } from "../ui.js";
 import { prog, ease, lerp, spring, ep, clamp, SCENES, SOUND, levelAt, BAR } from "../timeline.js";
 
 const S = SCENES.find((s) => s.id === "sound");
-const A = S.start, B = S.start + BAR, C = S.start + BAR * 2;
-
-function appRow(icon, name, status) {
-  const wave = h("svg", { width: 420, height: 80, viewBox: "0 0 420 80" });
-  const level = h("div", { style: { width: "110px", textAlign: "right", font: "650 40px/1 var(--font)", fontVariantNumeric: "tabular-nums", letterSpacing: "-0.02em" } }, "0%");
-  const el = h("div", { class: "glass", style: { width: "1040px", height: "138px", borderRadius: "30px", display: "flex", alignItems: "center", gap: "28px", padding: "0 40px" } },
-    h("div", { style: { width: "78px", height: "78px", borderRadius: "19px", background: "linear-gradient(180deg,#46474c,#2a2b2f)", display: "grid", placeItems: "center", color: "#f1f2f5", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.12)" } }, glyph(icon, 38)),
-    h("div", { style: { width: "230px" } }, h("div", { style: { font: "650 36px/1.15 var(--font)", letterSpacing: "-0.02em" } }, name), h("div", { class: "small", style: { fontSize: "22px" } }, status)),
-    wave, level);
-  el.__wave = wave;
-  el.__level = level;
-  return el;
-}
-
-function drawWave(svg, t, amount, seed) {
-  let bars = "";
-  for (let j = 0; j < 38; j++) {
-    const v = Math.abs(Math.sin(t * 5.3 + j * 0.62 + seed) * Math.sin(t * 2.1 + j * 1.31 + seed * 2)) * 0.75 + 0.25 * Math.abs(Math.sin(j * 0.9 + t * 9));
-    const hh = Math.max(5, v * 74 * amount);
-    bars += `<rect x="${j * 11}" y="${40 - hh / 2}" width="6" height="${hh}" rx="3" fill="#fff" opacity="${0.35 + amount * 0.6}"/>`;
-  }
-  svg.innerHTML = bars;
-}
+const B = S.start, C = S.start + BAR;
 
 export default {
   id: "sound",
   pre: 0.5,
   post: 0.5,
   mount(root) {
-    this.t1 = at(words("Turn down just one app.", "h2 grad center"), 960, 150);
-    this.s1 = at(h("div", { class: "sub center" }, "Per-app volume, right on an edge."), 960, 228);
-    this.music = at(appRow("note", "Music", "Playing"), 880, 500);
-    this.call = at(appRow("display", "Video call", "On a call"), 880, 668);
-    this.ind = at(indicator("speaker", 1.3), 1655, 585);
-    this.indLabel = at(h("div", { class: "pill dark", style: { fontSize: "20px", padding: "8px 16px" } }, "Music"), 1655, 840);
 
     this.t2 = at(words("Headphones never get too loud.", "h2 grad center"), 960, 150);
     this.s2 = at(h("div", { class: "sub center" }, "Set a volume limit for each device."), 960, 228);
@@ -66,7 +37,7 @@ export default {
         h("div", { class: "sub", style: { fontSize: "30px", marginTop: "6px" } }, "Lumen · Afterglow"),
         h("div", { style: { position: "relative", height: "10px", borderRadius: "5px", background: "rgba(255,255,255,0.15)", marginTop: "38px" } }, this.progressFill),
         h("div", { style: { display: "flex", justifyContent: "space-between", font: "600 21px var(--font)", color: "#8d8f96", marginTop: "12px", fontVariantNumeric: "tabular-nums" } }, this.elapsed, this.remaining))), 960, 590);
-    root.append(this.music, this.call, this.ind, this.indLabel, this.head, this.speakers, this.now, this.t1, this.s1, this.t2, this.s2, this.t3, this.s3);
+    root.append(this.head, this.speakers, this.now, this.t2, this.s2, this.t3, this.s3);
   },
   update(t, { bg }) {
     const part = (a, b) => {
@@ -74,23 +45,6 @@ export default {
       const pout = ease.leave(prog(t, b - 0.4, b - 0.05));
       return { o: pin * (1 - pout), y: (1 - pin) * 50 - pout * 30, blur: (1 - pin) * 12 + pout * 10 };
     };
-    // A · per-app volume.
-    const pa = part(A, B);
-    const v = levelAt(SOUND.appSwipe, t);
-    tf(this.music, { ...pa });
-    tf(this.call, { ...pa, y: pa.y * 1.2, o: pa.o * ep(t, A - 0.05, A + 0.65) });
-    drawWave(this.music.__wave, t, v / 100, 0.3);
-    drawWave(this.call.__wave, t, 0.72, 1.7);
-    this.music.__level.textContent = `${Math.round(v)}%`;
-    this.call.__level.textContent = "72%";
-    const g = SOUND.appSwipe;
-    const hin = ease.settle(prog(t, g.down, g.down + 0.3)), hout = ease.leave(prog(t, g.lift + 0.45, g.lift + 0.67));
-    tf(this.ind, { x: (1 - hin) * 40, o: hin * (1 - hout) * pa.o });
-    this.ind.__set(v);
-    tf(this.indLabel, { x: (1 - hin) * 40, o: hin * (1 - hout) * pa.o });
-    reveal(this.t1, t, A - 0.05, B - 0.4, { rise: 0.3 });
-    fade(this.s1, t, A + 0.25, B - 0.4);
-
     // B · device limits: the level stops at 60% with a nudge.
     const pb = part(B, C);
     const raw = levelAt(SOUND.limitSwipe, t);

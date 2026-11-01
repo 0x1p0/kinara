@@ -1,6 +1,6 @@
 # Sway demo film
 
-An 86-second, 1080p60 demo of Sway, rendered frame by frame from HTML, CSS and
+A 96-second, 1080p60 demo of Sway, rendered frame by frame from HTML, CSS and
 WebGL (three.js) in headless Chrome, with an original soundtrack synthesised in
 code. Nothing is screen-recorded and no stock music is used, so the film can be
 re-rendered identically after any edit.
@@ -44,12 +44,13 @@ It opens on what only Sway does, and saves the basics every edge app has
 | 0:10 | Logo |
 | 0:15 | Corner taps, tap and hold, palm rejection |
 | 0:22 | App profiles, docked profile, brightness follows the pointer |
-| 0:30 | Per-app volume, device limits, Now Playing seek |
-| 0:37 | 49 actions |
-| 0:45 | The basics, perfected: volume and brightness on the 3D trackpad |
-| 0:55 | Fine control, speed-sensitive levels, notches, haptics |
-| 1:05 | Edge map, Night Shift, extra dim, tiling, and more |
-| 1:12 | Idle cost and privacy |
-| 1:17 | End card |
+| 0:30 | The mixer: a fader per app, mute, solo, AirPods, and a call that lowers the rest (the score ducks too) |
+| 0:42 | Device volume limits, Now Playing seek |
+| 0:47 | 51 actions |
+| 0:55 | The basics, perfected: volume and brightness on the 3D trackpad |
+| 1:05 | Fine control, speed-sensitive levels, notches, haptics |
+| 1:15 | Edge map, Night Shift, extra dim, tiling, and more |
+| 1:22 | Idle cost and privacy |
+| 1:27 | End card |
 
 To change wording, edit the scene file; to retime, edit `src/timeline.js`.

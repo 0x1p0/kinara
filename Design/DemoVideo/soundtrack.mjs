@@ -5,7 +5,7 @@
 // Music: a warm pad over D major (Dmaj9 · Bm9 · Gmaj9 · A add9) at 96 BPM,
 // a plucked arpeggio, sub bass, soft kick, hats and claps, with sidechain
 // pumping. Sound design: haptic ticks, taps, pops, whooshes, risers, impacts.
-import { FILM, BEAT, SCENES, MIX, cues, seeded, clamp } from "./src/timeline.js";
+import { FILM, BEAT, SCENES, MIX, DUCK, cues, seeded, clamp } from "./src/timeline.js";
 
 const SR = 48000;
 const TAU = Math.PI * 2;
@@ -245,7 +245,15 @@ export function renderSoundtrack({ from = 0, to = FILM.duration } = {}) {
       }
     }
   }
-  for (let i = 0; i < N; i++) { music[0][i] *= duck[i]; music[1][i] *= duck[i]; }
+  // Sidechain pumping, and the film's own call ducking: while the mixer scene's
+  // video call is on, the music really does drop, like every other app would.
+  for (let i = 0; i < N; i++) {
+    const t = i / SR;
+    const call = clamp((t - DUCK.from) / 0.3) * clamp((DUCK.to - t) / 0.35);
+    const gain = duck[i] * (1 - (1 - DUCK.level) * call);
+    music[0][i] *= gain;
+    music[1][i] *= gain;
+  }
   // A share of the music goes to the reverb too.
   for (let i = 0; i < N; i++) { send[0][i] += music[0][i] * 0.18; send[1][i] += music[1][i] * 0.18; }
 

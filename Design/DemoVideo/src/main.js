@@ -10,6 +10,7 @@ import actions from "./scenes/actions.js";
 import taps from "./scenes/taps.js";
 import clipboard from "./scenes/clipboard.js";
 import aware from "./scenes/aware.js";
+import mixer from "./scenes/mixer.js";
 import sound from "./scenes/sound.js";
 import details from "./scenes/details.js";
 import light from "./scenes/light.js";
@@ -24,7 +25,7 @@ const grain = grainCanvas.getContext("2d");
 const gl = await createGL(document.getElementById("gl"));
 const ctx = { gl, stage, tint: document.getElementById("tint"), bg };
 
-const modules = [clipboard, intro, logo, taps, aware, sound, actions, slide, feel, details, light, end];
+const modules = [clipboard, intro, logo, taps, aware, mixer, sound, actions, slide, feel, details, light, end];
 const timing = Object.fromEntries(SCENES.map((s) => [s.id, s]));
 for (const m of modules) {
   m.root = document.createElement("div");

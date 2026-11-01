@@ -2,7 +2,7 @@
 // here, so the picture (src/main.js) and the soundtrack (soundtrack.mjs) are
 // driven by the same numbers and can never drift apart. Times are seconds.
 
-export const FILM = { fps: 60, width: 1920, height: 1080, bpm: 96, duration: 86 };
+export const FILM = { fps: 60, width: 1920, height: 1080, bpm: 96, duration: 96 };
 export const BEAT = 60 / FILM.bpm; // 0.625 s
 export const BAR = BEAT * 4; // 2.5 s
 const bar = (n) => n * BAR;
@@ -15,13 +15,14 @@ export const SCENES = [
   { id: "logo", start: bar(4), end: bar(6) },
   { id: "taps", start: bar(6), end: bar(9) },
   { id: "aware", start: bar(9), end: bar(12) },
-  { id: "sound", start: bar(12), end: bar(15) },
-  { id: "actions", start: bar(15), end: bar(18) },
-  { id: "slide", start: bar(18), end: bar(22) },
-  { id: "feel", start: bar(22), end: bar(26) },
-  { id: "details", start: bar(26), end: bar(29) },
-  { id: "light", start: bar(29), end: bar(31) },
-  { id: "end", start: bar(31), end: FILM.duration },
+  { id: "mixer", start: bar(12), end: bar(17) },
+  { id: "sound", start: bar(17), end: bar(19) },
+  { id: "actions", start: bar(19), end: bar(22) },
+  { id: "slide", start: bar(22), end: bar(26) },
+  { id: "feel", start: bar(26), end: bar(30) },
+  { id: "details", start: bar(30), end: bar(33) },
+  { id: "light", start: bar(33), end: bar(35) },
+  { id: "end", start: bar(35), end: FILM.duration },
 ];
 
 // ---------------------------------------------------------------- easing
@@ -174,11 +175,26 @@ export const AWARE = {
   pointer: S.aware.start + 5.75,
 };
 
+// The mixer: one fader per app. Drag one down, mute one, solo one, send one
+// to AirPods, then a call lowers everything else (the score ducks too).
+const mx = S.mixer.start;
+export const MIXER = {
+  drag: [mx + 1.3, mx + 2.3],
+  mute: mx + 2.85,
+  solo: mx + 4.65,
+  stop: mx + 6.25,
+  menu: mx + 6.85,
+  pick: mx + 7.45,
+  call: mx + 8.45,
+  captions: [mx + 0.1, mx + 2.5, mx + 4.35, mx + 6.5, mx + 8.2],
+};
+/** Music layers duck to this level while the film's call is on. */
+export const DUCK = { from: MIXER.call + 0.05, to: S.mixer.end - 0.15, level: 0.42 };
+
 export const SOUND = {
-  appSwipe: swipe(S.sound.start + 0.75, S.sound.start + 0.9, S.sound.start + 1.9, S.sound.start + 2.1, 80, 22),
-  limitSwipe: swipe(S.sound.start + 2.95, S.sound.start + 3.1, S.sound.start + 4.1, S.sound.start + 4.3, 30, 92),
+  limitSwipe: swipe(S.sound.start + 0.45, S.sound.start + 0.6, S.sound.start + 1.6, S.sound.start + 1.8, 30, 92),
   limit: 60,
-  seekSwipe: swipe(S.sound.start + 5.45, S.sound.start + 5.6, S.sound.start + 6.7, S.sound.start + 6.9, 0.3, 0.68),
+  seekSwipe: swipe(S.sound.start + BAR + 0.45, S.sound.start + BAR + 0.6, S.sound.start + BAR + 1.7, S.sound.start + BAR + 1.9, 0.3, 0.68),
 };
 
 // The edge map gets a longer shot; the rest are quick cuts on the beat.
@@ -257,10 +273,18 @@ export function cues() {
   add(AWARE.pointer + 0.7, "glint", 0.4);
 
   // Sound.
-  for (const g of [SOUND.appSwipe, SOUND.limitSwipe]) {
-    add(g.down, "touch", 0.5);
-    for (const c of crossings(g, 100 / 16)) if (g !== SOUND.limitSwipe || c.value <= SOUND.limit) add(c.t, "tick", 0.7);
-  }
+  // Mixer: clicks, the banner and menu popping in, and the call arriving.
+  add(S.mixer.start, "swish", 0.5);
+  add(MIXER.drag[0], "touch", 0.4);
+  for (const t of [MIXER.mute, MIXER.solo, MIXER.stop, MIXER.menu, MIXER.pick]) add(t, "tap", 0.65);
+  add(MIXER.solo + 0.12, "pop", 0.5);
+  add(MIXER.menu + 0.1, "pop", 0.45);
+  add(MIXER.call, "thud", 0.6);
+  add(MIXER.call + 0.1, "pop", 0.5);
+  add(S.sound.start - 0.5, "whoosh", 0.55, { length: 0.6 });
+
+  add(SOUND.limitSwipe.down, "touch", 0.5);
+  for (const c of crossings(SOUND.limitSwipe, 100 / 16)) if (c.value <= SOUND.limit) add(c.t, "tick", 0.7);
   add(SOUND.limitSwipe.start + 0.43, "notch", 1);
   add(SOUND.seekSwipe.down, "touch", 0.5);
 
@@ -283,6 +307,7 @@ export const MIX = {
   logo: { pad: 0.9, arp: 0.2, kick: 0, hats: 0, bass: 0.6, clap: 0 },
   taps: { pad: 0.85, arp: 0.75, kick: 0.6, hats: 0.5, bass: 0.85, clap: 0.3 },
   aware: { pad: 0.9, arp: 0.9, kick: 0.9, hats: 0.75, bass: 1, clap: 0.5 },
+  mixer: { pad: 0.9, arp: 0.9, kick: 0.95, hats: 0.8, bass: 1, clap: 0.55 },
   actions: { pad: 0.9, arp: 0.9, kick: 1, hats: 0.9, bass: 1, clap: 0.6 },
   slide: { pad: 0.9, arp: 0.8, kick: 0.7, hats: 0.6, bass: 0.9, clap: 0.4 },
   feel: { pad: 0.85, arp: 0.85, kick: 0.55, hats: 0.55, bass: 0.85, clap: 0.3 },

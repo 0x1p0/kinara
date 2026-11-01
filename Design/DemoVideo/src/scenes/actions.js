@@ -1,12 +1,12 @@
-// 32.5–40 s. "49" counts up, then every action Sway can put on an edge or a
-// tap arrives as a curved wall of chips the camera drifts across.
+// "51" counts up, then every action Sway can put on an edge or a tap arrives
+// as a curved wall of chips the camera drifts across.
 import { h, at, tf, words, reveal } from "../ui.js";
 import { prog, ease, lerp, spring, ep, clamp, seeded, SCENES, ACTIONS } from "../timeline.js";
 
 const S = SCENES.find((s) => s.id === "actions");
 const GROUPS = [
   ["Display", ["Display brightness", "Keyboard backlight", "Night Shift warmth", "True Tone", "Extra dim"]],
-  ["Audio", ["Output volume", "App volume", "Audio output", "Input gain", "Speaker mute", "Microphone mute"]],
+  ["Audio", ["Output volume", "App volume", "Mute app", "Solo app", "Audio output", "Input gain", "Speaker mute", "Microphone mute"]],
   ["Media", ["Previous / next track", "Play / pause", "Seek in track", "Now playing"]],
   ["Editing", ["Copy", "Cut", "Paste", "Paste as plain text", "Paste previous", "Clipboard history", "Undo / redo", "Select all", "Find"]],
   ["Navigation", ["Tabs", "Back / forward", "App zoom", "Page up / down", "Start / end", "New / close tab", "Reopen closed tab"]],
@@ -15,7 +15,14 @@ const GROUPS = [
 ];
 const ALL = GROUPS.flatMap(([group, items]) => items.map((label) => ({ label, group })));
 // The camera sits on the cylinder's axis, so the wall curves around it.
-const COLS = 7, ROWS = 7, RADIUS = 1760, COL_DEG = 14, ROW_H = 100, EYE = 1500;
+// Seven rows; the middle one is a little longer, so all 51 fit.
+const ROWS = [7, 7, 7, 9, 7, 7, 7], RADIUS = 1760, COL_DEG = 14, ROW_H = 100, EYE = 1500;
+const TOTAL = ROWS.reduce((a, b) => a + b, 0);
+const place = (i) => {
+  let row = 0, index = i;
+  while (index >= ROWS[row]) index -= ROWS[row++];
+  return { row, col: index - (ROWS[row] - 1) / 2 };
+};
 
 export default {
   id: "actions",
@@ -31,10 +38,10 @@ export default {
     // Shuffle so neighbours come from different categories, like a real library.
     const order = ALL.map((a, i) => ({ a, k: random() + (i % 7) * 0.01 })).sort((x, y) => x.k - y.k).map((x) => x.a);
     this.chips = order.map((a, i) => {
-      const col = i % COLS, row = Math.floor(i / COLS);
+      const { col, row } = place(i);
       const el = h("div", { class: "pill dark chip", style: { position: "absolute", left: "0", top: "0", fontSize: "29px", padding: "18px 30px", backfaceVisibility: "hidden", transformOrigin: "50% 50%" } },
         h("span", { style: { width: "10px", height: "10px", borderRadius: "50%", background: "#eef3ff", opacity: "0.5" } }), a.label);
-      el.__pos = { col, row, delay: (Math.abs(col - 3) + Math.abs(row - 3)) * 0.06 + random() * 0.12, twinkle: random() };
+      el.__pos = { col, row, delay: (Math.abs(col) + Math.abs(row - 3)) * 0.06 + random() * 0.12, twinkle: random() };
       this.cylinder.append(el);
       return el;
     });
@@ -43,8 +50,8 @@ export default {
   },
   update(t, { bg }) {
     const p = prog(t, ACTIONS.countStart, ACTIONS.countEnd);
-    const n = Math.floor(49 * ease.expoOut(p) + 0.0001);
-    this.count.textContent = String(p >= 1 ? 49 : n);
+    const n = Math.floor(TOTAL * ease.expoOut(p) + 0.0001);
+    this.count.textContent = String(p >= 1 ? TOTAL : n);
     // The number punches in, then rises and recedes behind the wall.
     const punch = lerp(0.82, 1, spring(t - S.start, 0.5, 0.65));
     const up = ease.inOut(prog(t, ACTIONS.wallStart - 0.1, ACTIONS.wallStart + 0.9));
@@ -60,12 +67,12 @@ export default {
     const scatter = ease.in(prog(t, ACTIONS.scatter, S.end - 0.15));
     for (const el of this.chips) {
       const { col, row, delay, twinkle } = el.__pos;
-      const angle = (col - 3) * COL_DEG;
+      const angle = col * COL_DEG;
       const arrive = ease.settle(prog(t, ACTIONS.wallStart + delay, ACTIONS.wallStart + delay + 0.9));
       const z = -RADIUS + lerp(-900, 0, arrive) + scatter * (900 + twinkle * 900);
       const y = (row - 3) * ROW_H * (1 + scatter * 0.6);
       el.style.transform = `rotateY(${angle}deg) translateZ(${z}px) translateY(${y}px) translate(-50%, -50%)`;
-      const wave = Math.max(0, Math.sin((t - ACTIONS.wallStart) * 2.2 - col * 0.55 - row * 0.3 - twinkle * 2));
+      const wave = Math.max(0, Math.sin((t - ACTIONS.wallStart) * 2.2 - (col + 4) * 0.55 - row * 0.3 - twinkle * 2));
       const lit = Math.pow(wave, 12);
       el.style.opacity = String(arrive * (1 - scatter));
       el.style.background = `rgba(${lerp(30, 242, lit)}, ${lerp(31, 242, lit)}, ${lerp(35, 244, lit)}, 0.94)`;

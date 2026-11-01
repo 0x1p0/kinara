@@ -109,6 +109,10 @@ const G = {
   mission: '<rect x="3" y="4" width="8" height="6.5" rx="1.4"/><rect x="13" y="4" width="8" height="6.5" rx="1.4"/><rect x="3" y="13.5" width="8" height="6.5" rx="1.4"/><rect x="13" y="13.5" width="8" height="6.5" rx="1.4"/>',
   shortcut: '<rect x="4" y="4" width="16" height="16" rx="4.5"/><path d="M9.5 8.5l5 3.5-5 3.5" fill="currentColor"/>',
   keyboard: '<rect x="2.5" y="6" width="19" height="12" rx="2.2"/><path d="M6 10h.01M9 10h.01M12 10h.01M15 10h.01M18 10h.01M7.5 14h9"/>',
+  hifi: '<rect x="6" y="3" width="12" height="18" rx="2.5"/><circle cx="12" cy="14.5" r="3.2"/><circle cx="12" cy="7.5" r="1.2" fill="currentColor" stroke="none"/>',
+  airpods: '<path d="M8.2 4A3.2 3.2 0 0 0 5 7.2v1.3a3.2 3.2 0 0 0 3.2 3.2h.3v8.3a1.6 1.6 0 0 0 3.2 0V7.4A3.4 3.4 0 0 0 8.2 4zM15.8 4A3.2 3.2 0 0 1 19 7.2v1.3a3.2 3.2 0 0 1-3.2 3.2h-.3v8.3a1.6 1.6 0 0 1-3.2 0V7.4A3.4 3.4 0 0 1 15.8 4z" fill="currentColor" stroke="none"/>',
+  bubble: '<path d="M4 11.5c0-4 3.6-7 8-7s8 3 8 7-3.6 7-8 7c-1 0-2-.1-2.9-.4L5 19.5l1.2-3.4C4.8 14.9 4 13.3 4 11.5z" fill="currentColor" stroke="none"/>',
+  phone: '<path d="M6.6 3.6l3 .6 1.4 3.9-2 1.6a12 12 0 0 0 5.4 5.4l1.6-2 3.9 1.4.6 3c0 1.1-1 2-2.1 2C10 19.5 4.5 14 4.5 5.7c0-1.1.9-2.1 2.1-2.1z" fill="currentColor" stroke="none"/>',
   battery: '<rect x="2.5" y="7.5" width="16.5" height="9" rx="2.2"/><path d="M21.5 10.5v3"/><rect x="4.6" y="9.6" width="3.2" height="4.8" rx="0.8" fill="currentColor" stroke="none"/>',
 };
 export function glyph(name, size = 24, style = {}) {
