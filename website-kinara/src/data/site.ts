@@ -3,7 +3,7 @@
 
 export const site = {
   name: 'Kinara',
-  url: process.env.NEXT_PUBLIC_SITE_URL ?? 'https://kinara.vercel.app', // placeholder: true (production domain)
+  url: process.env.NEXT_PUBLIC_SITE_URL ?? 'https://kinara-app.pages.dev',
   maker: '0x1p0',
   tagline: 'The edges of your trackpad, as controls.',
   description:

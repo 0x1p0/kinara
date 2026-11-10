@@ -1,0 +1,11 @@
+# Cloudflare Pages response headers. Files under /_next/static/ carry a content hash in
+# their names, so they never change; everything else may, so it is cached for a day at most.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/media/*
+  Cache-Control: public, max-age=86400

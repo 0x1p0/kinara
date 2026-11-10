@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "preview": "wrangler pages dev out",
+    "deploy": "next build && wrangler pages deploy out --project-name kinara-app --branch main",
     "lint": "eslint",
     "check:theme": "node scripts/check-theme.mjs"
   },

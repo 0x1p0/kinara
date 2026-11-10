@@ -6,8 +6,14 @@ master="$root/build/DemoVideo/kinara-film-4k.mp4"
 media="$root/website-kinara/public/media"
 q="-loglevel error -y"
 x264="-c:v libx264 -preset slow -pix_fmt yuv420p -profile:v high -colorspace bt709 -color_primaries bt709 -color_trc bt709 -movflags +faststart"
-# The film: 1440p60 with sound.
-ffmpeg $q -i "$master" -vf "scale=2560:1440:flags=lanczos" $x264 -crf "${FILM_CRF:-20}" -g 120 -c:a aac -b:a 192k "$media/kinara-film.mp4"
+# The film: 1440p60 with sound. Cloudflare Pages serves files up to 25 MiB, so it must stay
+# under that; CRF 21 leaves about 2 MiB to spare and looks the same as 20 (SSIM 0.998).
+ffmpeg $q -i "$master" -vf "scale=2560:1440:flags=lanczos" $x264 -crf "${FILM_CRF:-21}" -g 120 -c:a aac -b:a 192k "$media/kinara-film.mp4"
+film_bytes="$(stat -f %z "$media/kinara-film.mp4")"
+if (( film_bytes >= 25 * 1048576 )); then
+    printf 'The film is %s bytes, over Cloudflare Pages'"'"' 25 MiB limit. Run again with a higher FILM_CRF.\n' "$film_bytes" >&2
+    exit 1
+fi
 # A clip: start, duration, name, size, fps, crf.
 clip() { ffmpeg $q -ss "$1" -t "$2" -i "$master" -an -vf "fps=$5,scale=${4}:flags=lanczos" $x264 -crf "$6" "$media/$3"; }
 clip 14.45 7.1 clips/corners.mp4 1280:720 30 24

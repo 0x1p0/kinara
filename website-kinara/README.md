@@ -1,36 +1,24 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Kinara website
 
-## Getting Started
-
-First, run the development server:
+Kinara's product page, built with Next.js as plain static files and served by Cloudflare
+Pages at https://kinara-app.pages.dev. No server runs: `next build` writes the whole site to
+`out/`. Design notes are in `DESIGN.md`; every word on the site is in `src/data/site.ts`.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev                          # work on it at http://localhost:3000
+npm run build                        # the static site → out/
+npm run preview -- --port 4400       # serve out/ the way Cloudflare Pages does
+npm run check:theme                  # light, dark and Reduced Motion, against the preview
+npm run deploy                       # build, then publish to Cloudflare Pages
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`preview` and `deploy` use Cloudflare's `wrangler` (`npm install -g wrangler`), and `deploy`
+needs `wrangler login` once. Response headers, such as
+caching, are set in `public/_headers`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Cloudflare Pages takes files up to 25 MiB, so the film in `public/media/` must stay under it;
+`Design/DemoVideo/tools/site-media.sh` checks this when it cuts the site's media.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+To use another address, set `NEXT_PUBLIC_SITE_URL` when building; links, the sitemap and
+social previews follow it.

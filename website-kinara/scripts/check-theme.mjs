@@ -1,6 +1,6 @@
 // Light and dark, checked the way a visitor meets them. Run against a production build:
 //
-//   npm run build && npx next start -p 4400        (in another terminal)
+//   npm run build && npm run preview -- --port 4400   (in another terminal)
 //   npm run check:theme                            (or: node scripts/check-theme.mjs <url>)
 //
 // Four states: the system in light, the system in dark, and the header toggle flipped from each;
