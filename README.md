@@ -20,6 +20,8 @@ behind palm rejection that measures every contact.
 [Verifying](docs/VERIFYING.md) ·
 [Releasing](docs/RELEASING.md)
 
+<img src="docs/media/kinara.gif" width="720" alt="A double-tap in the trackpad corner pauses the music and the same tap undoes it; then a double-tap opens clipboard history: slide to choose, lift to paste.">
+
 </div>
 
 ---
