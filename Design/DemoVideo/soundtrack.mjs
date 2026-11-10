@@ -9,7 +9,7 @@
 // The score follows the film's own gestures (musicLevel and musicTone in the
 // timeline): it rises with the first volume slide, brightens with the first
 // brightness slide, stops when the film's music is paused, and ducks for its call.
-import { FILM, BEAT, SCENES, MIX, musicLevel, musicTone, cues, seeded, clamp } from "./src/timeline.js";
+import { FILM, BEAT, SCENES, MIX, HOOK, SILENCE, musicLevel, musicTone, musicGate, cues, seeded, clamp } from "./src/timeline.js";
 
 const SR = 48000;
 const TAU = Math.PI * 2;
@@ -152,7 +152,7 @@ export function renderSoundtrack({ from = 0, to = FILM.duration } = {}) {
         const a = Math.sin(TAU * v.ph[3]) * (0.6 + 0.4 * Math.sin(t * (0.9 + k * 0.37) + k));
         if (k % 2) airR += a; else airL += a;
       }
-      const air = env * 0.012 * (0.4 + layerGain("pad", t));
+      const air = env * 0.012 * (0.4 + layerGain("pad", t)) * musicGate(t);
       send[0][i] += airL * air * 1.4; send[1][i] += airR * air * 1.4;
       fx[0][i] += (airL * 0.8 + airR * 0.2) * air; fx[1][i] += (airR * 0.8 + airL * 0.2) * air;
       const g = env * 0.045;
@@ -246,6 +246,23 @@ export function renderSoundtrack({ from = 0, to = FILM.duration } = {}) {
         const v = (Math.sin(TAU * f * t) + 0.28 * Math.sin(TAU * 2 * f * t) * Math.exp(-t * 8) + 0.1 * Math.sin(TAU * 3 * f * t) * Math.exp(-t * 14)) * e * 0.055 * arp * accent;
         add(music, i0 + j, v * (1 - pan), v * (1 + pan));
         add(send, i0 + j, v * 0.7, v * 0.7);
+      }
+    }
+  }
+  // The tape stop: from HOOK.stop the score slows to a halt, as a record does
+  // when its power is cut. The playhead's speed falls evenly from 1 to 0, so
+  // pitch and tempo sink together; musicLevel keeps the score silent after it.
+  {
+    const s0 = Math.floor(HOOK.stop * SR), len = Math.floor(HOOK.stopLength * SR);
+    for (let c = 0; c < 2; c++) {
+      const source = music[c].slice(s0, s0 + len);
+      let position = 0;
+      for (let j = 0; j < len && s0 + j < N; j++) {
+        const left = 1 - j / len;
+        const k = Math.floor(position), f = position - k;
+        const v = k + 1 < len ? source[k] * (1 - f) + source[k + 1] * f : 0;
+        music[c][s0 + j] = v * Math.min(1, left * 8);
+        position += left;
       }
     }
   }
@@ -383,8 +400,10 @@ export function renderSoundtrack({ from = 0, to = FILM.duration } = {}) {
     const t = i / SR;
     const wetL = reverb.process(send[0][i] * 0.5, 0), wetR = reverb.process(send[1][i] * 0.5, 1);
     const fade = Math.min(1, t / 0.4) * clamp((FILM.duration - 0.15 - t) / 2.2);
+    // In the hook's silence the room goes dead too, so the taps are heard dry and close.
+    const room = 1 - Math.min(clamp((t - (SILENCE.from - 0.2)) / 0.3), clamp((SILENCE.to - t) / 0.02));
     for (const [c, wet] of [[0, wetL], [1, wetR]]) {
-      let x = (music[c][i] + fx[c][i] + wet * 0.32) * fade;
+      let x = (music[c][i] + fx[c][i] + wet * 0.32 * room) * fade;
       for (const f of eq[c]) x = f(x);
       const y = Math.tanh(x * 1.25) / Math.tanh(1.25);
       out[c][i] = y;

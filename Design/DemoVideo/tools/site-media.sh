@@ -16,23 +16,23 @@ if (( film_bytes >= 25 * 1048576 )); then
 fi
 # A clip: start, duration, name, size, fps, crf.
 clip() { ffmpeg $q -ss "$1" -t "$2" -i "$master" -an -vf "fps=$5,scale=${4}:flags=lanczos" $x264 -crf "$6" "$media/$3"; }
-clip 14.45 7.1 clips/corners.mp4 1280:720 30 24
-clip 21.65 9.5 clips/clipboard.mp4 1280:720 30 24
-clip 32.42 8.3 clips/glow.mp4 1280:720 30 24
-clip 40.85 9.5 clips/mixer.mp4 1280:720 30 24
-clip 57.65 9.5 clips/feel.mp4 1280:720 30 24
+clip 19.25 7.1 clips/corners.mp4 1280:720 30 24
+clip 26.45 9.5 clips/clipboard.mp4 1280:720 30 24
+clip 37.22 8.3 clips/glow.mp4 1280:720 30 24
+clip 45.65 9.5 clips/mixer.mp4 1280:720 30 24
+clip 62.45 9.5 clips/feel.mp4 1280:720 30 24
 # "It knows a palm from a finger": every app's own edges, then the palm.
-ffmpeg $q -ss 50.45 -t 7.1 -i "$master" -ss 75.62 -t 1.15 -i "$master" -an -filter_complex "[0:v]fps=30,scale=1280:720:flags=lanczos[a];[1:v]fps=30,scale=1280:720:flags=lanczos[b];[a][b]concat=n=2:v=1[v]" -map "[v]" $x264 -crf 24 "$media/clips/aware.mp4"
+ffmpeg $q -ss 55.25 -t 7.1 -i "$master" -ss 80.42 -t 1.15 -i "$master" -an -filter_complex "[0:v]fps=30,scale=1280:720:flags=lanczos[a];[1:v]fps=30,scale=1280:720:flags=lanczos[b];[a][b]concat=n=2:v=1[v]" -map "[v]" $x264 -crf 24 "$media/clips/aware.mp4"
 # The cinema section's silent loop: the light scene.
-clip 32.42 8.3 film-preview.mp4 1600:900 30 23
+clip 37.22 8.3 film-preview.mp4 1600:900 30 23
 # Posters.
 still() { ffmpeg $q -ss "$1" -i "$master" -frames:v 1 -vf "scale=${3}:flags=lanczos" -q:v 3 "$media/$2"; }
 still 8.9 film-poster.jpg 2560:1440
-still 32.43 film-preview.jpg 1600:900
-still 18.3 clips/corners.jpg 1280:720
-still 27.0 clips/clipboard.jpg 1280:720
-still 34.9 clips/glow.jpg 1280:720
-still 46.0 clips/mixer.jpg 1280:720
-still 62.7 clips/feel.jpg 1280:720
-still 54.4 clips/aware.jpg 1280:720
+still 37.23 film-preview.jpg 1600:900
+still 23.1 clips/corners.jpg 1280:720
+still 31.8 clips/clipboard.jpg 1280:720
+still 39.7 clips/glow.jpg 1280:720
+still 50.8 clips/mixer.jpg 1280:720
+still 67.5 clips/feel.jpg 1280:720
+still 59.2 clips/aware.jpg 1280:720
 ls -la "$media"/*.mp4 "$media"/clips/*.mp4 | awk '{printf "%8.2f MB  %s\n", $5/1048576, $9}'

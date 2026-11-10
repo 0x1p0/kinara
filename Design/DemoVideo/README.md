@@ -1,6 +1,6 @@
 # Kinara demo film
 
-A 77-second demo of Kinara at 60 fps, rendered frame by frame from HTML, CSS and
+A 96-second demo of Kinara at 60 fps, rendered frame by frame from HTML, CSS and
 WebGL (three.js) in headless Chrome, with an original soundtrack synthesised in
 code. Nothing is screen-recorded and no stock music is used, so the film can be
 re-rendered identically after any edit. The master is 4K: the same 1920 × 1080
@@ -42,22 +42,27 @@ Requires Google Chrome (or set `CHROME_PATH`) and `ffmpeg` with libx264.
 One studio, one trackpad, one screen. The film opens without a word: a finger
 slides the trackpad's right edge in the dark, the screen's edge lights beside
 it, and the film's own score rises with the volume. The left edge is
-brightness, and the studio lights up with the screen. From there every scene
-is cut on a downbeat, and the film keeps hearing itself: the score stops when
-a corner tap pauses the music, and ducks when the mixer's call comes in.
+brightness, and the studio lights up with the screen. Then the hook: a groove
+lands and the film admits that every app does that much. The tape stops (the
+score itself slows to a halt), the lights drain with it, and in the dark and
+the silence it asks what's different. A double-tap in the corner answers, and
+the name lands on the next downbeat. From there every scene is cut on a
+downbeat, and the film keeps hearing itself: the score stops when a corner tap
+pauses the music, and ducks when the mixer's call comes in.
 
 | Time | Scene |
 | --- | --- |
 | 0:00 | Open: the right edge is volume, the left edge is brightness |
-| 0:09 | The name, on the trackpad seen from above, which is the logo |
-| 0:14 | Corners: a double-tap blooms a glass pill, the same tap undoes it, a resting finger previews |
-| 0:21 | Clipboard history: double-tap, slide to choose, lift to paste |
-| 0:28 | The screen answers in light: the edge light in every colour, then the ambient light's lap |
-| 0:38 | The mixer: a fader per app, mute, solo, AirPods, and a call that lowers the rest |
-| 0:48 | Every app gets its own edges |
-| 0:52 | It feels built in: a tick for every 1%, notches, finer steps, haptics |
-| 1:00 | 53 actions, then Night Shift, extra dim, tiling and palm rejection on the beat |
-| 1:07 | Almost no battery, private by design, and the end card |
+| 0:09 | Hook: "Every app does that." The tape stops, the lights go out, "So what's different?" |
+| 0:14 | The name, on the trackpad seen from above, which is the logo |
+| 0:19 | Corners: a double-tap blooms a glass pill, the same tap undoes it, a resting finger previews |
+| 0:26 | Clipboard history: double-tap, slide to choose, lift to paste |
+| 0:36 | The screen answers in light: the edge light in every colour, then the ambient light's lap |
+| 0:45 | The mixer: a fader per app, mute, solo, AirPods, and a call that lowers the rest |
+| 0:55 | Every app gets its own edges |
+| 1:02 | It feels built in: a tick for every 1%, notches, finer steps, haptics |
+| 1:12 | 53 actions, then Night Shift, extra dim, tiling and palm rejection on the beat |
+| 1:21 | Almost no battery, private by design, free and open source, and the end card with the links |
 
 ## How it fits together
 
@@ -73,11 +78,13 @@ a corner tap pauses the music, and ducks when the mixer's call comes in.
   up, the whole screen is laid out larger (CSS zoom) so Chrome draws it at
   the size it is seen.
 - `src/camera.js` holds the named shots and the track that moves between them.
-- `src/scenes/*.js` are the ten scenes. Each `update(t)` is a pure function of
+- `src/scenes/*.js` are the eleven scenes. Each `update(t)` is a pure function of
   time; `window.__seek(t)` in `src/main.js` draws any frame on demand.
 - `soundtrack.mjs` synthesises the music (pad, arpeggio, sub bass, drums with
   sidechain) and the sound design (haptic ticks, taps, whooshes, the four-note
-  sonic logo), then reverb, EQ and a soft limiter. About −14 LUFS.
+  sonic logo), then reverb, EQ and a soft limiter. About −14 LUFS. The hook's
+  tape stop is done to the rendered score itself: its playhead slows evenly to
+  a halt, so pitch and tempo fall together.
 
 ## Capturing every frame whole
 

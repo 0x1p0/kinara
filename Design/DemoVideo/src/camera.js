@@ -5,7 +5,7 @@
 // A shot is where the camera looks (q), from how far (d), how high (el, in
 // degrees above the floor) and from which side (az), through what lens (fov),
 // and what it holds in focus.
-import { ease, prog, lerp, scene, OPEN, CORNERS, CLIP, LIGHT, MORE, END } from "./timeline.js";
+import { ease, prog, lerp, scene, OPEN, HOOK, CORNERS, CLIP, LIGHT, MORE, END } from "./timeline.js";
 import { padPoint, screenPoint, edgePoint, SCREEN, DISPLAY, TEX } from "./world.js";
 
 const right = (p) => { const e = edgePoint("right", p); return padPoint(e.x, e.y); };
@@ -26,6 +26,8 @@ export const SHOTS = {
   edgeRup: { q: mid(right(0.6), [3, 3, -6], 0.35), d: 24, el: 14, az: 22, fov: 30, focus: right(0.5), dof: 0.7, range: 0.34 },
   top: { q: [0, 0.4, 3.9], d: 62, el: 89.9, az: 0, fov: 28, focus: [0, 0.4, 0], dof: 0 },
   cornerTR: { q: pad(0.7, 0.36), d: 18, el: 36, az: -26, fov: 30, focus: pad(0.9, 0.14), dof: 0.22, range: 0.55 },
+  // The top-left corner in the dark, for the hook's double-tap.
+  cornerTL: { q: pad(0.3, 0.4), d: 19, el: 30, az: 28, fov: 30, focus: pad(0.1, 0.14), dof: 0.24, range: 0.55 },
   cornerTRb: { q: pad(0.74, 0.34), d: 17, el: 30, az: 20, fov: 30, focus: pad(0.9, 0.14), dof: 0.22, range: 0.55 },
   apps: { q: [-2.4, 6.2, -6.5], d: 42, el: 13, az: 0, fov: 31, focus: centre, dof: 0 },
   padHero: { q: [0, 2.6, -2.5], d: 30, el: 26, az: 0, fov: 30, focus: [0, 0.4, 0], dof: 0.55, range: 0.5 },
@@ -50,6 +52,9 @@ export const TRACK = [
   // Open: on the edge in the dark, then up and back as the screen answers.
   { t: 0, shot: "edgeR", drift: { d: -0.012, az: -0.5, el: 0.2 } },
   { t: OPEN.volume.start + 0.35, shot: "desk", dur: 2.7, drift: { d: -0.006, az: 0, el: 0 } },
+  // Hook: in a little as the groove lands, then the dark corner.
+  { t: S("hook").start, shot: "deskIn", dur: 2.2, drift: { d: -0.006, az: 0, el: 0 } },
+  { t: HOOK.cut, shot: "cornerTL", drift: { d: -0.016, az: 0.6, el: 0 } },
   // Title: straight down on the trackpad, which is the logo.
   { t: S("title").start, shot: "top", drift: { d: -0.008, az: 0, el: 0 } },
   // Corners: the tap, then the screen's corner; the rest, then its corner.

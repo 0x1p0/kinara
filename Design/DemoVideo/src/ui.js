@@ -129,6 +129,8 @@ const G = {
   light: '<path d="M4 8.5c2.5-3 5.5-3 8 0s5.5 3 8 0"/><path d="M4 15.5c2.5-3 5.5-3 8 0s5.5 3 8 0"/>',
   tabs: '<rect x="3" y="7" width="18" height="12.5" rx="2.2"/><path d="M3 7.5V6a1.5 1.5 0 0 1 1.5-1.5h5L11 7"/>',
   battery: '<rect x="2.5" y="7.5" width="16.5" height="9" rx="2.2"/><path d="M21.5 10.5v3"/><rect x="4.6" y="9.6" width="3.2" height="4.8" rx="0.8" fill="currentColor" stroke="none"/>',
+  code: '<path d="M8.5 7L3.5 12l5 5M15.5 7l5 5-5 5"/>',
+  globe: '<circle cx="12" cy="12" r="8.6"/><path d="M3.4 12h17.2M12 3.4c2.6 2.4 3.9 5.3 3.9 8.6s-1.3 6.2-3.9 8.6c-2.6-2.4-3.9-5.3-3.9-8.6s1.3-6.2 3.9-8.6z"/>',
 };
 export function glyph(name, size = 24, style = {}) {
   return h("span", { class: "glyph", style: { width: `${size}px`, height: `${size}px`, ...style }, html: `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${G[name] || ""}</svg>` });

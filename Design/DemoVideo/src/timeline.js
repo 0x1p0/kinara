@@ -2,25 +2,27 @@
 // here, so the picture (src/main.js) and the soundtrack (soundtrack.mjs) are
 // driven by the same numbers and can never drift apart. Times are seconds.
 
-export const FILM = { fps: 60, width: 1920, height: 1080, bpm: 100, duration: 86.4 };
+export const FILM = { fps: 60, width: 1920, height: 1080, bpm: 100, duration: 96 };
 export const BEAT = 60 / FILM.bpm; // 0.6 s, 36 frames
 export const BAR = BEAT * 4; // 2.4 s
 const bar = (n) => n * BAR;
 
 // One studio, one trackpad, one screen. It opens without a word: a finger on
-// the edge, and the film's own sound and light follow it. Then the name, then
-// what only Kinara does, each scene cut on a downbeat.
+// the edge, and the film's own sound and light follow it. Then the hook: every
+// app does that much, the tape stops, and in the dark a question. A tap brings
+// back the name, then what only Kinara does, each scene cut on a downbeat.
 export const SCENES = [
   { id: "open", start: 0, end: bar(4) },
-  { id: "title", start: bar(4), end: bar(6) },
-  { id: "corners", start: bar(6), end: bar(9) },
-  { id: "clip", start: bar(9), end: bar(13) },
-  { id: "light", start: bar(13), end: bar(17) },
-  { id: "mixer", start: bar(17), end: bar(21) },
-  { id: "apps", start: bar(21), end: bar(24) },
-  { id: "feel", start: bar(24), end: bar(28) },
-  { id: "more", start: bar(28), end: bar(32) },
-  { id: "end", start: bar(32), end: FILM.duration },
+  { id: "hook", start: bar(4), end: bar(6) },
+  { id: "title", start: bar(6), end: bar(8) },
+  { id: "corners", start: bar(8), end: bar(11) },
+  { id: "clip", start: bar(11), end: bar(15) },
+  { id: "light", start: bar(15), end: bar(19) },
+  { id: "mixer", start: bar(19), end: bar(23) },
+  { id: "apps", start: bar(23), end: bar(26) },
+  { id: "feel", start: bar(26), end: bar(30) },
+  { id: "more", start: bar(30), end: bar(34) },
+  { id: "end", start: bar(34), end: FILM.duration },
 ];
 
 // ---------------------------------------------------------------- easing
@@ -146,6 +148,26 @@ export const OPEN = {
   dim: 0.14, // the screen's backlight before the brightness slide
 };
 
+// The hook. A groove arrives on the downbeat and the film says it plainly:
+// volume and brightness are what every app does. Then the tape stops (the
+// score slows to a halt as a record does when its power is cut) and the
+// studio's lights drain away with it. In the silence, a question; a double-tap
+// in the dark answers it, and the name lands on the next downbeat.
+const hk = S.hook.start;
+export const HOOK = {
+  ask: hk + 0.1, // "Volume and brightness?"
+  claim: hk + 0.55, // "Every app does that."
+  out: hk + 2.1,
+  stop: hk + 2.4, // the tape stops on the downbeat
+  stopLength: 0.8,
+  cut: hk + 3.0, // into the dark, on the beat
+  question: hk + 3.1, // "So what's different?"
+  taps: [hk + 4.02, hk + 4.2], // the second on the beat before the title
+};
+/** The score is silent from the end of the tape stop until the title lands. */
+export const SILENCE = { from: HOOK.stop + HOOK.stopLength, to: S.title.start };
+export const musicGate = (t) => Math.min(clamp((SILENCE.from + 0.02 - t) / 0.02), 1) + clamp((t - SILENCE.to + 0.01) / 0.01);
+
 const ti = S.title.start;
 export const TITLE = { draw: [ti + 0.05, ti + 1.1], word: ti + 0.55, line: ti + 1.25, out: S.title.end - 0.5 };
 
@@ -254,26 +276,30 @@ const en = S.end.start;
 export const END = {
   battery: [en + 0.1, en + 2.15],
   private: [en + 2.5, en + 4.5],
-  card: en + 4.8,
-  word: en + 5.4,
-  line: en + 6.0,
+  open: [en + 4.9, en + 6.9],
+  card: en + 7.2,
+  word: en + 7.8,
+  line: en + 8.4,
+  // Where to get it, held long enough to read or to pause on.
+  links: en + 9.3,
   fade: FILM.duration - 1.5,
 };
 
 // ---------------------------------------------------------------- the film hears itself
 
-/** The score's level: it rises with the first volume slide, stops for the pause, ducks for the call. */
+/** The score's level: it rises with the first volume slide, falls silent after the tape stop, stops for the pause, ducks for the call. */
 export function musicLevel(t) {
   const open = t < OPEN.volume.lift + 0.4 ? lerp(0.16, 1, clamp((levelAt(OPEN.volume, t) - OPEN.volume.from) / (OPEN.volume.to - OPEN.volume.from))) : 1;
   const pause = 1 - (1 - PAUSE.level) * Math.min(clamp((t - PAUSE.from) / 0.22), clamp((PAUSE.to + 0.12 - t) / 0.12));
   const call = 1 - (1 - DUCK.level) * Math.min(clamp((t - DUCK.from) / 0.3), clamp((DUCK.to - t) / 0.35));
-  return open * pause * call;
+  return open * musicGate(t) * pause * call;
 }
-/** How open the score's filter is: it brightens with the first brightness slide, and closes for the pause. */
+/** How open the score's filter is: it brightens with the first brightness slide, darkens as the tape stops, and closes for the pause. */
 export function musicTone(t) {
   const open = t < OPEN.brightness.lift ? lerp(0.25, 1, clamp((levelAt(OPEN.brightness, t) - OPEN.brightness.from) / (OPEN.brightness.to - OPEN.brightness.from))) : 1;
+  const stop = t >= HOOK.stop && t < SILENCE.to ? 1 - 0.75 * ease.in(prog(t, HOOK.stop, SILENCE.from)) : 1;
   const pause = 1 - 0.85 * Math.min(clamp((t - PAUSE.from) / 0.22), clamp((PAUSE.to + 0.12 - t) / 0.12));
-  return open * pause;
+  return open * stop * pause;
 }
 
 // ---------------------------------------------------------------- cues
@@ -288,7 +314,15 @@ export function cues() {
   slide(OPEN.volume, 100 / 16, 0.75);
   slide(OPEN.brightness, 100 / 16, 0.75);
   add(OPEN.brightness.end - 0.05, "glint", 0.4);
-  add(S.title.start - 1.9, "riser", 0.8, { length: 1.9 });
+  add(S.hook.start - 1.2, "riser", 0.6, { length: 1.2 });
+
+  // Hook: the groove lands, the tape stops (in the score itself, see
+  // soundtrack.mjs), and in the silence only the double-tap is heard.
+  add(S.hook.start, "impact", 0.7);
+  for (const t of HOOK.taps) add(t, "tap", 1);
+  add(HOOK.taps[1] + 0.01, "haptic", 0.7);
+  add(HOOK.taps[1] + 0.1, "haptic", 0.7);
+  add(HOOK.taps[1] + 0.02, "riser", 0.9, { length: S.title.start - HOOK.taps[1] - 0.02 });
 
   // Title.
   add(S.title.start, "impact", 1);
@@ -369,6 +403,7 @@ export function cues() {
   // End.
   add(S.end.start, "impact", 0.55);
   add(END.private[0], "glint", 0.4);
+  add(END.open[0], "glint", 0.45);
   add(END.card - 1.7, "riser", 0.7, { length: 1.7 });
   add(END.card, "impact", 1);
   add(END.card, "bloom", 0.6);
@@ -379,6 +414,7 @@ export function cues() {
 /** Musical sections: how much of each layer plays (0..1) per scene. */
 export const MIX = {
   open: { pad: 0.85, arp: 0.25, kick: 0, hats: 0, bass: 0.55, clap: 0 },
+  hook: { pad: 0.95, arp: 0.75, kick: 0.9, hats: 0.65, bass: 1, clap: 0.5 },
   title: { pad: 0.95, arp: 0.6, kick: 0.5, hats: 0.2, bass: 0.8, clap: 0 },
   corners: { pad: 0.85, arp: 0.8, kick: 0.75, hats: 0.55, bass: 0.9, clap: 0.35 },
   clip: { pad: 0.9, arp: 0.9, kick: 0.85, hats: 0.7, bass: 0.95, clap: 0.45 },

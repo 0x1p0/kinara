@@ -7,7 +7,7 @@ import { shotAt, SHOTS, TRACK } from "./camera.js";
 
 const params = new URLSearchParams(location.search);
 const only = params.get("scenes");
-const names = ["open", "title", "corners", "clip", "light", "mixer", "apps", "feel", "more", "end"].filter((n) => !only || only.split(",").includes(n));
+const names = ["open", "hook", "title", "corners", "clip", "light", "mixer", "apps", "feel", "more", "end"].filter((n) => !only || only.split(",").includes(n));
 const modules = (await Promise.all(names.map((n) => import(`./scenes/${n}.js`)))).map((m) => m.default);
 
 const stage = document.getElementById("stage");
