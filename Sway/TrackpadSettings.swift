@@ -176,7 +176,8 @@ enum ZoneAction: String, CaseIterable, Identifiable, Codable {
     var togglesOnTap: Bool { [.outputMute, .microphoneMute, .trueTone, .muteApp, .soloApp].contains(self) }
     /// Doing it again puts things back, so repeating the tap soon after is "undo".
     var undoesByRepeating: Bool {
-        [.outputMute, .microphoneMute, .trueTone, .muteApp, .soloApp, .playPause, .missionControl, .appWindows, .showDesktop, .fullScreen].contains(self)
+        [.outputMute, .microphoneMute, .trueTone, .muteApp, .soloApp, .playPause, .missionControl, .appWindows, .showDesktop, .fullScreen,
+         .tileWindow].contains(self)
     }
     /// Undone with ⌘Z in the app it changed.
     var undoesWithCommandZ: Bool { [.paste, .pastePlain, .pastePrevious, .cut].contains(self) }
@@ -217,7 +218,7 @@ enum ZoneAction: String, CaseIterable, Identifiable, Codable {
         case .audioOutput: return "Up switches to the next audio output; down to the previous one. The indicator names the new device."
         case .seek: return "Up moves forward; down moves back within the current track. Works with Music and Spotify, and other players macOS exposes."
         case .nowPlaying: return "Shows the current track with artwork and progress. Changes nothing."
-        case .tileWindow: return "Up fills the screen with the front window; down moves it to this edge’s half (left or right). Uses Accessibility, so it works in most apps."
+        case .tileWindow: return "A tap moves the front window to that side’s half, or fills the screen if it’s already there; the same tap again soon puts it back. Up fills the screen; down moves it to this edge’s half. Uses Accessibility, so it works in most apps."
         case .nightShift: return "Up warms the display; down cools it. Swiping to zero turns Night Shift off. Uses a private macOS interface that can change."
         case .trueTone: return "Up turns True Tone on; down turns it off. A tap toggles it. Only on displays that support True Tone."
         case .extraDim: return "Down dims below the display’s lowest backlight level; up restores it. Quitting Kinara always restores normal brightness."

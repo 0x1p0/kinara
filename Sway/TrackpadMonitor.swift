@@ -574,7 +574,8 @@ final class TrackpadMonitor: ObservableObject {
                                     icon: undoing ? "arrow.uturn.backward" : binding.action.icon,
                                     detail: bloomDetail(event, action: binding.action, undoing: undoing))
         }
-        guard perform(binding, increasing: true, tap: true, region: nil, application: application) else {
+        guard perform(binding, increasing: true, tap: true, region: nil, application: application,
+                      tapRegion: event.region, undoing: undoing) else {
             _ = CornerBloom.shared.absorb("Not available here", icon: "exclamationmark.circle", placement: placement)
             return
         }
@@ -1097,7 +1098,8 @@ final class TrackpadMonitor: ObservableObject {
     /// One-shot actions shared by swipes and taps. Returns false only when
     /// nothing could be started; asynchronous results report themselves.
     @discardableResult
-    private func perform(_ binding: EdgeBinding, increasing: Bool, tap: Bool, region: GestureRegion?, application: pid_t) -> Bool {
+    private func perform(_ binding: EdgeBinding, increasing: Bool, tap: Bool, region: GestureRegion?, application: pid_t,
+                         tapRegion: TapRegion? = nil, undoing: Bool = false) -> Bool {
         switch binding.action {
         case .outputMute, .microphoneMute:
             // Only taps reach here: a tap flips the measured state.
@@ -1135,7 +1137,14 @@ final class TrackpadMonitor: ObservableObject {
             }
             return true
         case .tileWindow:
-            return WindowTiler.tile(tilePlacement(region: region, increasing: increasing, tap: tap), pid: application)
+            // The same tap again soon puts the window back where it was.
+            if undoing { return WindowTiler.undo(pid: application) }
+            let placement = tapRegion.map(WindowTiler.placement(forTap:)) ?? tilePlacement(region: region, increasing: increasing)
+            guard let placed = WindowTiler.tile(placement, pid: application, toggle: tap) else { return false }
+            KinaraLog.info(.output, "Tiled the front window: \(placed.label)")
+            // The pill says where it went: a tap on a window already there fills the screen.
+            if tap { announce(placed.label, icon: placed.icon, at: messagePlacement) }
+            return true
         case .runShortcut:
             let name = increasing || tap ? binding.shortcut : (binding.downShortcut.isEmpty ? binding.shortcut : binding.downShortcut)
             return ShortcutsRunner.run(name)
@@ -1188,8 +1197,9 @@ final class TrackpadMonitor: ObservableObject {
         }
     }
 
-    private func tilePlacement(region: GestureRegion?, increasing: Bool, tap: Bool) -> TilePlacement {
-        guard !tap, let region else { return .fill }
+    /// A slide: up fills; down goes to this edge's half, or left and right along the top or bottom.
+    private func tilePlacement(region: GestureRegion?, increasing: Bool) -> TilePlacement {
+        guard let region else { return .fill }
         if configuration.isHorizontal(region) { return increasing ? .rightHalf : .leftHalf }
         if increasing { return .fill }
         return region == .right ? .rightHalf : .leftHalf

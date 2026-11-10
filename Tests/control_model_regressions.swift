@@ -184,6 +184,22 @@ private final class ModelFixture {
         expect(TrackpadMonitor.armedSides(for: .topLeftCorner) == [.left] && TrackpadMonitor.armedSides(for: .bottomRightCorner) == [.right]
                && TrackpadMonitor.armedSides(for: .left) == [.left] && TrackpadMonitor.armedSides(for: .top) == [.left, .right],
                "a tap arms the side edge on its own side, never the whole trackpad")
+        // A tap tiles the front window to its own side, fills the screen when it's already
+        // there, and the same tap again soon puts it back: every tap visibly does something.
+        expect([TapRegion.left, .topLeftCorner, .bottomLeftCorner].allSatisfy { WindowTiler.placement(forTap: $0) == .leftHalf }
+               && [TapRegion.right, .topRightCorner, .bottomRightCorner].allSatisfy { WindowTiler.placement(forTap: $0) == .rightHalf }
+               && [TapRegion.top, .bottom].allSatisfy { WindowTiler.placement(forTap: $0) == .fill },
+               "a tap tiles to its own side of the trackpad; the top and bottom edges fill")
+        let screenArea = CGRect(x: 0, y: 0, width: 1512, height: 944)
+        func tileTarget(_ placement: TilePlacement) -> CGRect { WindowTiler.frame(for: placement, visibleFrame: screenArea, primaryHeight: 982) }
+        expect(WindowTiler.resolve(.leftHalf, current: CGRect(x: 200, y: 120, width: 800, height: 600), target: tileTarget) == .leftHalf,
+               "a floating window goes to the tap's half")
+        expect(WindowTiler.resolve(.leftHalf, current: tileTarget(.leftHalf).insetBy(dx: 4, dy: 7), target: tileTarget) == .fill,
+               "a window already on that half, give or take a terminal's character grid, fills the screen")
+        expect(WindowTiler.resolve(.rightHalf, current: tileTarget(.fill), target: tileTarget) == .rightHalf,
+               "a window that fills the screen goes to the half, where a fill used to change nothing")
+        expect(WindowTiler.resolve(.leftHalf, current: tileTarget(.rightHalf), target: tileTarget) == .leftHalf, "the other half is not this half")
+        expect(ZoneAction.tileWindow.undoesByRepeating, "the same tap again soon puts the window back")
         // A level slide shows the indicator as it's accepted, at the level it starts from,
         // so a slide already at its limit, or a flick lifted early, still shows it.
         let start = { (action: ZoneAction, value: Double, muted: Bool) in

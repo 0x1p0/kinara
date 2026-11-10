@@ -4,11 +4,53 @@ import CoreAudio
 
 // MARK: - Window tiling
 
-enum TilePlacement: String { case leftHalf, rightHalf, fill }
+enum TilePlacement: String {
+    case leftHalf, rightHalf, fill
+    var label: String {
+        switch self {
+        case .leftHalf: return "Left half"
+        case .rightHalf: return "Right half"
+        case .fill: return "Fill screen"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .leftHalf: return "rectangle.lefthalf.filled"
+        case .rightHalf: return "rectangle.righthalf.filled"
+        case .fill: return "rectangle.fill"
+        }
+    }
+}
 
 /// Moves the front window with the Accessibility permission Sway already has,
 /// so it works in apps without a tiling shortcut and on macOS 13.
 enum WindowTiler {
+    /// The window the last tile moved and where it was, so the same tap again can put it back.
+    private static var last: (pid: pid_t, window: AXUIElement, frame: CGRect)?
+
+    /// A tap tiles to its own side of the trackpad; the top and bottom edges fill.
+    static func placement(forTap region: TapRegion) -> TilePlacement {
+        switch region {
+        case .left, .topLeftCorner, .bottomLeftCorner: return .leftHalf
+        case .right, .topRightCorner, .bottomRightCorner: return .rightHalf
+        case .top, .bottom: return .fill
+        }
+    }
+
+    /// Pure: where a tap actually sends the window. One already on the tap's
+    /// half fills the screen instead, so every tap visibly does something.
+    static func resolve(_ placement: TilePlacement, current: CGRect, target: (TilePlacement) -> CGRect) -> TilePlacement {
+        guard placement != .fill, matches(current, target(placement)) else { return placement }
+        return .fill
+    }
+
+    /// Close enough to be the same frame: apps that size in steps, like a
+    /// terminal's character grid, land a little short of the exact half.
+    static func matches(_ a: CGRect, _ b: CGRect, tolerance: CGFloat = 24) -> Bool {
+        abs(a.minX - b.minX) <= tolerance && abs(a.minY - b.minY) <= tolerance
+            && abs(a.width - b.width) <= tolerance && abs(a.height - b.height) <= tolerance
+    }
+
     /// Pure geometry: an AppKit visible frame (bottom-left origin) becomes an
     /// Accessibility frame (top-left origin at the primary display's top edge).
     static func frame(for placement: TilePlacement, visibleFrame: CGRect, primaryHeight: CGFloat) -> CGRect {
@@ -27,24 +69,53 @@ enum WindowTiler {
         CGPoint(x: point.x, y: primaryHeight - point.y)
     }
 
-    /// Main thread. A short messaging timeout keeps a hung app from stalling input.
-    static func tile(_ placement: TilePlacement, pid: pid_t) -> Bool {
-        guard pid > 0, let primary = NSScreen.screens.first else { return false }
+    /// Main thread. Moves the front window to `placement`; with `toggle`, one
+    /// already there fills the screen instead. Returns where it went, or nil
+    /// when there's no window to move, or it's full screen. A short messaging
+    /// timeout keeps a hung app from stalling input.
+    static func tile(_ placement: TilePlacement, pid: pid_t, toggle: Bool = false) -> TilePlacement? {
+        guard let primary = NSScreen.screens.first, let window = focusedWindow(of: pid) else { return nil }
+        var fullScreen: CFTypeRef?
+        if AXUIElementCopyAttributeValue(window, "AXFullScreen" as CFString, &fullScreen) == .success,
+           (fullScreen as? Bool) == true { return nil }
+        guard let current = frame(of: window) else { return nil }
+        let center = appKitPoint(CGPoint(x: current.midX, y: current.midY), primaryHeight: primary.frame.height)
+        let screen = NSScreen.screens.first { $0.frame.contains(center) } ?? NSScreen.main ?? primary
+        let target = { frame(for: $0, visibleFrame: screen.visibleFrame, primaryHeight: primary.frame.height) }
+        let chosen = toggle ? resolve(placement, current: current, target: target) : placement
+        let goal = target(chosen)
+        guard move(window, to: goal) else { return nil }
+        if let after = frame(of: window), matches(after, current, tolerance: 1), !matches(current, goal, tolerance: 1) {
+            KinaraLog.warning(.output, "Tile: the app kept its window where it was")
+        }
+        last = (pid, window, current)
+        return chosen
+    }
+
+    /// Puts back the window the last tile moved, while it's still the front window of `pid`.
+    static func undo(pid: pid_t) -> Bool {
+        guard let last, last.pid == pid, let window = focusedWindow(of: pid), CFEqual(window, last.window) else { return false }
+        self.last = nil
+        return move(window, to: last.frame)
+    }
+
+    private static func focusedWindow(of pid: pid_t) -> AXUIElement? {
+        guard pid > 0 else { return nil }
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 0.25)
         var focused: CFTypeRef?
         guard AXUIElementCopyAttributeValue(app, kAXFocusedWindowAttribute as CFString, &focused) == .success,
-              let focused, CFGetTypeID(focused) == AXUIElementGetTypeID() else { return false }
-        let window = focused as! AXUIElement // Type checked above.
-        var fullScreen: CFTypeRef?
-        if AXUIElementCopyAttributeValue(window, "AXFullScreen" as CFString, &fullScreen) == .success,
-           (fullScreen as? Bool) == true { return false }
-        let current = frame(of: window) ?? .zero
-        let center = appKitPoint(CGPoint(x: current.midX, y: current.midY), primaryHeight: primary.frame.height)
-        let screen = NSScreen.screens.first { $0.frame.contains(center) } ?? NSScreen.main ?? primary
-        let target = frame(for: placement, visibleFrame: screen.visibleFrame, primaryHeight: primary.frame.height)
-        // Size, position, size: some apps clamp a size against the old position.
-        return set(target.size, on: window) && set(target.origin, on: window) && set(target.size, on: window)
+              let focused, CFGetTypeID(focused) == AXUIElementGetTypeID() else { return nil }
+        return (focused as! AXUIElement) // Type checked above.
+    }
+
+    /// Size, position, size: some apps clamp a size against the old position.
+    /// A window that can't be resized still moves.
+    private static func move(_ window: AXUIElement, to frame: CGRect) -> Bool {
+        let sized = set(frame.size, on: window)
+        let placed = set(frame.origin, on: window)
+        let resized = set(frame.size, on: window)
+        return placed || sized || resized
     }
 
     private static func frame(of window: AXUIElement) -> CGRect? {
