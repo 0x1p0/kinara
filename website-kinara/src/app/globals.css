@@ -565,6 +565,9 @@ html:not(.js) .lt-pad .lt-pad__zone { opacity: 1; }
 .get__price { font-size: 28px; line-height: 1.14; font-weight: 600; letter-spacing: 0.007em; }
 .get__price span { color: var(--c-fg2); font-weight: 400; }
 .get .ctas { margin-top: 18px; }
+.get__meta { color: var(--c-fg2); font-size: 14px; line-height: 1.43; letter-spacing: -0.016em; }
+.get .ctas + .get__meta { margin-top: 10px; }
+.get__first { max-width: 30rem; }
 .get__points { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; margin-top: 80px; padding-top: 56px; border-top: 1px solid var(--c-line); width: 100%; }
 .get__points li { display: grid; justify-items: center; gap: 10px; }
 .get__points svg { color: var(--c-fg); }

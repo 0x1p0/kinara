@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# the latest release, read from GitHub before each build
+/src/data/release.json
+
 # production
 /build
 

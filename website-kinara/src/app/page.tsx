@@ -95,6 +95,8 @@ export default function Home() {
             <a className="btn" href={site.downloadUrl} data-no-transition>Download</a>
             <a className="link" href={site.sourceUrl} data-no-transition>View the source on GitHub <Chevron /></a>
           </div>
+          <p className="get__meta">{download.meta}</p>
+          <p className="get__meta get__first">{download.firstLaunch}</p>
           <ul className="get__points">
             {download.points.map((p, i) => <li key={p.title}>{icons[i]}<b>{p.title}</b><span>{p.body}</span></li>)}
           </ul>

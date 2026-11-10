@@ -1,5 +1,9 @@
 // Every word on the site lives here. Entries marked `placeholder: true` must be replaced
 // before launch.
+import releaseFile from './release.json';
+
+/** The newest release's disk image when the site was built (scripts/latest-release.mjs), or null. */
+export const release = releaseFile as { version: string; url: string; bytes: number } | null;
 
 export const site = {
   name: 'Kinara',
@@ -13,9 +17,10 @@ export const site = {
   // Apple asks for this credit wherever its marks are named; keep the list to the ones the site uses.
   trademarks:
     'Apple, Mac, MacBook, macOS, Magic Trackpad, Safari, FaceTime, AirPods and Mission Control are trademarks of Apple Inc., registered in the U.S. and other countries and regions. Kinara is an independent app and is not affiliated with, sponsored or endorsed by Apple Inc.',
-  // Both need the GitHub repository to be public.
   sourceUrl: 'https://github.com/0x1p0/kinara',
-  downloadUrl: 'https://github.com/0x1p0/kinara/releases/latest',
+  // Download fetches the disk image itself; one universal build runs natively on every Mac.
+  downloadUrl: release?.url ?? 'https://github.com/0x1p0/kinara/releases/latest',
+  releasesUrl: 'https://github.com/0x1p0/kinara/releases',
   issuesUrl: 'https://github.com/0x1p0/kinara/issues',
   email: 'support@kinara.example', // placeholder: true
   updated: '10 November 2026',
@@ -172,10 +177,14 @@ export const download = {
     { title: 'Signed updates', body: 'Installed only when you say so, from the same releases.' },
   ],
   note: `Kinara is free and open source under the ${site.license}.`,
+  // Under the button: what the file is, and the one step macOS asks for the first time.
+  meta: release ? `Version ${release.version} · ${(release.bytes / 1e6).toFixed(1)} MB · Universal: Apple silicon and Intel` : 'Universal: Apple silicon and Intel',
+  firstLaunch: 'First launch: open System Settings, then Privacy & Security, and click Open Anyway.',
 };
 
 export const questions = [
-  { q: 'Which Macs does it work with?', a: 'Any Mac with a built-in or Magic Trackpad on macOS 13 or later, Apple silicon or Intel. The per-app mixer needs macOS 14.2.' },
+  { q: 'Which Macs does it work with?', a: 'Any Mac with a built-in or Magic Trackpad on macOS 13 or later, Apple silicon or Intel. There is one download for both: it runs natively on either. The per-app mixer needs macOS 14.2.' },
+  { q: 'Why does macOS ask before it opens the first time?', a: 'Kinara is signed but not yet notarized by Apple, so macOS asks once. Open System Settings, then Privacy & Security, and click Open Anyway. After that it opens like any other app, and updates keep it that way.' },
   { q: 'Will it get in the way of normal use?', a: 'The middle of the trackpad stays yours. Edges answer only a deliberate swipe that starts at the edge, and palm protection checks every touch.' },
   { q: 'How do I know a tap worked?', a: 'A glass pill grows out of the matching corner of your screen and names the action, and the trackpad ticks twice. Results such as “Safari muted” or the song that started appear in the same pill. If you prefer, Settings can show them in the indicator instead.' },
   { q: 'What if I tap a corner by mistake?', a: 'Do the same tap again within 2 seconds and it’s undone. To check a corner first, rest a finger on it: its pill shows what the taps do without running anything.' },

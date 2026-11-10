@@ -3,10 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/latest-release.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/latest-release.mjs",
     "build": "next build",
     "preview": "wrangler pages dev out",
-    "deploy": "next build && wrangler pages deploy out --project-name kinara-app --branch main",
+    "deploy": "npm run build && wrangler pages deploy out --project-name kinara-app --branch main",
     "lint": "eslint",
     "check:theme": "node scripts/check-theme.mjs"
   },

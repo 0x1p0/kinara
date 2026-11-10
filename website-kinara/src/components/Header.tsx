@@ -59,7 +59,7 @@ export function Header() {
         <a className="nav__link" href={site.sourceUrl}>Source</a>
         <a className="nav__link" href="/#faq">FAQ</a>
         <ThemeToggle />
-        <a className="btn btn--sm" href="/#download" data-no-transition>Download</a>
+        <a className="btn btn--sm" href={site.downloadUrl} data-no-transition>Download</a>
       </div>
     </header>
   );
