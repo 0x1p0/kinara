@@ -301,7 +301,7 @@ enum AppVolumeRegressionTests {
         expect(results.isEmpty, "rejections still complete asynchronously")
         expect(settle(0...1), "rejections complete exactly once")
         expect(results[0] == [.failed("That volume level isn't valid.")], "NaN fails")
-        expect(results[1] == [.failed("Sway can't change this app's volume.")], "an empty bundle ID fails")
+        expect(results[1] == [.failed("Kinara can't change this app's volume.")], "an empty bundle ID fails")
 
         for id in 2...21 { controller.requestGain(1, for: app, completion: record(id)) }
         expect(settle(2...21), "a burst completes every request exactly once")

@@ -82,7 +82,7 @@ def keychain_lifecycle(failure=None, auto_register=False, initial=None):
     fake_payload = {'pkcs12': base64.b64encode(b'x' * 1001).decode(), 'password': 'disposable-test-password-only'}
     with patch.object(signing, 'run', side_effect=simulated_run), patch.object(signing, 'verify') as verify:
         try:
-            signing.sign(Path('/unused/Sway.app'), fake_payload)
+            signing.sign(Path('/unused/Kinara.app'), fake_payload)
         except (RuntimeError, KeyboardInterrupt):
             expect(failure is not None, 'only injected failures are expected')
         else:
@@ -143,9 +143,9 @@ with tempfile.TemporaryDirectory(prefix="sway-code-sign-tests.") as temporary:
         (bundle / "Contents/Resources").mkdir()
         source = work / f"{name}.c"
         source.write_text(f"int main(void) {{ return {version}; }}\n")
-        run("/usr/bin/xcrun", "clang", "-arch", "arm64", "-arch", "x86_64", str(source), "-o", str(bundle / "Contents/MacOS/Sway"))
+        run("/usr/bin/xcrun", "clang", "-arch", "arm64", "-arch", "x86_64", str(source), "-o", str(bundle / "Contents/MacOS/Kinara"))
         metadata = plistlib.loads((ROOT / "Sway/Info.plist").read_bytes())
-        metadata.update(CFBundleIdentifier=signing.IDENTIFIER, CFBundleExecutable="Sway", CFBundleName="Sway", CFBundlePackageType="APPL")
+        metadata.update(CFBundleIdentifier=signing.IDENTIFIER, CFBundleExecutable="Kinara", CFBundleName="Kinara", CFBundlePackageType="APPL")
         if version != 1:
             metadata["CFBundleVersion"] = str(int(metadata["CFBundleVersion"]) + version)
         (bundle / "Contents/Info.plist").write_bytes(plistlib.dumps(metadata))
@@ -160,7 +160,7 @@ with tempfile.TemporaryDirectory(prefix="sway-code-sign-tests.") as temporary:
     for bundle in (first, second):
         signing.verify(bundle, cert)
         expect(True, "both versions validate against the same pinned requirement")
-    expect((first / "Contents/MacOS/Sway").read_bytes() != (second / "Contents/MacOS/Sway").read_bytes(), "fixtures contain different executable code")
+    expect((first / "Contents/MacOS/Kinara").read_bytes() != (second / "Contents/MacOS/Kinara").read_bytes(), "fixtures contain different executable code")
     expect(signing.requirement(cert) not in signing.requirement(other_cert), "unrelated signer has a different requirement")
     reject(lambda: signing.verify(first, other_cert), "wrong certificate must fail")
     impostor = fixture("impostor", 1)

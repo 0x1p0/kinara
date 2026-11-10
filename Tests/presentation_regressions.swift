@@ -26,7 +26,7 @@ private final class PresentationTestDelegate: NSObject, NSApplicationDelegate {
         // item. New macOS deliberately denies unsolicited focus stealing.
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 340, height: 130),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "Sway — safe focus test"
+        window.title = "Kinara — safe focus test"
         window.isReleasedWhenClosed = false
         let button = NSButton(title: "Run focus test", target: self, action: #selector(startTests))
         button.frame = NSRect(x: 60, y: 44, width: 220, height: 40)
@@ -154,16 +154,16 @@ enum PresentationRegressionTests {
         expect(expanded, "one click expands inline options")
         button.performClick(nil)
         expect(!expanded, "second click collapses inline options")
-        expect(SettingsPane.allCases.count == 12, "settings are separated into an overview and eleven categories")
-        expect(SettingsPane.allCases.first == .overview && SettingsPane.groups.allSatisfy { group in SettingsPane.allCases.contains { $0.group == group } }, "the overview leads and every sidebar group has a page")
-        expect(SettingsPane.taps.matches("corner") && SettingsPane.profiles.matches("docked"), "new categories are searchable")
-        expect(SettingsPane.levels.matches("airpods") && SettingsPane.general.matches("export"), "new options are searchable")
-        expect(SettingsPane.protection.matches("palm rejection"), "palm rejection search")
-        expect(SettingsPane.feedback.matches("crisp"), "haptic option search")
+        expect(SettingsPane.allCases == [.home, .edges, .feel, .sound, .apps, .general], "settings are six plain places, home first")
+        expect(SettingsPane.edges.matches("corner") && SettingsPane.edges.matches("double-tap") && SettingsPane.apps.matches("docked"), "edges, corners and profiles are searchable")
+        expect(SettingsPane.sound.matches("airpods") && SettingsPane.general.matches("export"), "limits and backups are searchable")
+        expect(SettingsPane.edges.matches("palm rejection"), "palm rejection lives with the edges")
+        expect(SettingsPane.feel.matches("crisp") && SettingsPane.feel.matches("indicator"), "haptics and the indicator live in Feel")
         expect(SettingsPane.general.matches("launch login"), "startup search")
-        expect(SettingsPane.appearance.matches("DARK"), "case-insensitive theme search")
-        expect(SettingsPane.updates.matches("install"), "install updates search")
-        expect(!SettingsPane.gestures.matches("nonsense"), "irrelevant search excludes a section")
+        expect(SettingsPane.general.matches("DARK"), "case-insensitive theme search")
+        expect(SettingsPane.general.matches("install") && SettingsPane.general.matches("clipboard"), "updates and clipboard live in General")
+        expect(SettingsPane.apps.matches("exclude"), "paused apps live in Apps")
+        expect(!SettingsPane.edges.matches("nonsense"), "irrelevant search excludes a section")
         var actions = 0
         let actionHost = FirstClickHostingController(rootView: SystemActionButton(title: "GitHub Releases…") { actions += 1 }.fixedSize())
         actionHost.view.layoutSubtreeIfNeeded()
@@ -338,8 +338,8 @@ enum PresentationRegressionTests {
         let source = NSWindow(contentRect: panel, styleMask: [.titled, .closable], backing: .buffered, defer: false)
         let target = NSWindow(contentRect: panel, styleMask: [.titled, .closable], backing: .buffered, defer: false)
         source.isReleasedWhenClosed = false; target.isReleasedWhenClosed = false
-        source.title = "Sway focus test — safe preview"
-        target.title = "Sway Settings focus test — safe preview"
+        source.title = "Kinara focus test — safe preview"
+        target.title = "Kinara Settings focus test — safe preview"
         target.contentViewController = host
         let focus = WindowFocusCoordinator()
         source.makeKeyAndOrderFront(nil)

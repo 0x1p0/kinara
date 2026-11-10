@@ -72,8 +72,8 @@ do {
     try require(build.range(of: "^[0-9]+$", options: .regularExpression) != nil, "Invalid build number")
     try require(minimumOS.range(of: "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$", options: .regularExpression) != nil, "Minimum macOS version must be explicit")
     try require(CommandLine.arguments[4] == "v\(version)", "Tag and app version differ")
-    let archiveName = "Sway-\(version)-macos-universal.zip"
-    let dmgName = "Sway-\(version)-macos-universal.dmg"
+    let archiveName = "Kinara-\(version)-macos-universal.zip"
+    let dmgName = "Kinara-\(version)-macos-universal.dmg"
     let names = try FileManager.default.contentsOfDirectory(atPath: root.path)
     let expected = Set([archiveName, dmgName, "SHA256SUMS.txt"])
     try require(Set(names) == expected, "Expected only the unsigned ZIP, DMG, and checksum file; will not overwrite a signed feed")
@@ -96,13 +96,13 @@ do {
     <?xml version="1.0" encoding="utf-8"?>
     <!-- Signed update feed. Any modification requires a new signature. -->
     <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
-      <channel><title>Sway</title><item>
+      <channel><title>Kinara</title><item>
         <title>\(version)</title><pubDate>\(formatter.string(from: Date()))</pubDate>
         <sparkle:version>\(build)</sparkle:version>
         <sparkle:shortVersionString>\(version)</sparkle:shortVersionString>
         <sparkle:minimumSystemVersion>\(minimumOS)</sparkle:minimumSystemVersion>
         <description sparkle:format="markdown">\(xml(notes))</description>
-        <enclosure url="https://github.com/0x1p0/sway-application/releases/download/v\(version)/\(archiveName)" length="\(archive.count)" type="application/octet-stream" sparkle:edSignature="\(archiveSignature)"/>
+        <enclosure url="https://github.com/0x1p0/kinara/releases/download/v\(version)/\(archiveName)" length="\(archive.count)" type="application/octet-stream" sparkle:edSignature="\(archiveSignature)"/>
       </item></channel>
     </rss>
 

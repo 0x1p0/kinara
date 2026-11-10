@@ -1,12 +1,13 @@
-// 30–42.5 s. The mixer, laid out like Sway's own: one fader per app. Drag
-// one down, mute one before it pings, solo one, send one to AirPods, and then
-// a call lowers everything else (the score ducks with it).
-import { h, at, tf, words, reveal, glyph } from "../ui.js";
-import { prog, ease, lerp, spring, ep, env, clamp, SCENES, MIXER } from "../timeline.js";
+// The mixer, laid out like Kinara's own: one fader per app, hanging from the
+// menu bar. Drag one down, mute one before it pings, solo one, send one to
+// AirPods, and then a call lowers everything else (the score ducks with it).
+import { h, at, tf, words, glyph } from "../ui.js";
+import { sequence } from "../kit.js";
+import { prog, ease, lerp, spring, ep, env, clamp, MIXER, scene } from "../timeline.js";
 
-const S = SCENES.find((s) => s.id === "mixer");
-const W = 1000, ROW = 112, TOP = 104, BANNER = 64;
-const PANEL = { x: 960, y: 590 };
+const S = scene("mixer");
+// The panel is drawn at this size and scaled onto the screen.
+const W = 1000, ROW = 112, TOP = 104, BANNER = 64, SCALE = 0.44, PLACE = { right: 1204, top: 38 };
 const SLIDER = { x0: 44, x1: 956 };
 const BUTTONS = { mute: 808, solo: 870, output: 932 };
 const APPS = [
@@ -25,9 +26,10 @@ const knobX = (v) => SLIDER.x0 + (SLIDER.x1 - SLIDER.x0) * v;
 
 function button(symbol) {
   const el = h("div", { style: { position: "absolute", top: "12px", width: "48px", height: "48px", marginLeft: "-24px", borderRadius: "50%", display: "grid", placeItems: "center" } }, glyph(symbol, 24));
-  el.__set = (on) => {
+  el.__set = (on, icon) => {
     el.style.background = on ? "#f2f2f4" : "rgba(255,255,255,0.08)";
     el.style.color = on ? "#16171a" : "#f2f3f6";
+    if (icon !== el.__icon) { el.innerHTML = ""; el.append(glyph(icon, 24)); el.__icon = icon; }
   };
   return el;
 }
@@ -51,41 +53,38 @@ function row(app) {
 
 export default {
   id: "mixer",
-  pre: 0.4,
-  post: 0.4,
-  mount(root) {
+  mount(root, ctx, screen) {
     this.rows = APPS.map(row);
     this.bannerIcon = h("span", {});
     this.bannerText = h("span", { style: { flex: 1 } }, "");
     this.bannerButton = h("span", { style: { padding: "8px 18px", borderRadius: "999px", background: "rgba(255,255,255,0.12)", font: "600 20px var(--font)" } }, "Stop");
     this.banner = h("div", { style: { position: "absolute", left: "44px", right: "44px", top: "92px", height: "52px", borderRadius: "14px", background: "rgba(255,255,255,0.07)", display: "flex", alignItems: "center", gap: "14px", padding: "0 10px 0 18px", font: "560 21px var(--font)", color: "#e9eaee" } }, this.bannerIcon, this.bannerText, this.bannerButton);
-    this.panel = at(h("div", { class: "glass", style: { width: `${W}px`, height: `${TOP + APPS.length * ROW + 24}px`, borderRadius: "40px", overflow: "hidden" } },
+    this.panel = h("div", { class: "glass", style: { position: "absolute", left: "0", top: "0", width: `${W}px`, borderRadius: "40px", overflow: "hidden", transformOrigin: "62% 0%", background: "linear-gradient(180deg, rgba(50,51,58,0.84), rgba(28,29,34,0.88))" } },
       h("div", { style: { position: "absolute", left: "44px", top: "34px", display: "flex", alignItems: "baseline", gap: "12px" } },
         h("span", { style: { font: "680 32px var(--font)", letterSpacing: "-0.02em" } }, "Apps"),
         h("span", { style: { font: "650 24px var(--rounded)", color: "#8d8f96" } }, "4")),
       h("div", { class: "eyebrow", style: { position: "absolute", right: "48px", top: "46px", fontSize: "16px" } }, "Mixer"),
-      this.banner, ...this.rows), PANEL.x, PANEL.y);
+      this.banner, ...this.rows);
     // The output menu, opened from Music's speaker button.
     const item = (label, icon, check) => h("div", { class: "item", style: { display: "flex", alignItems: "center", gap: "14px", height: "46px", padding: "0 16px", borderRadius: "10px", font: "520 21px var(--font)", color: "#eceef2" } },
       h("span", { style: { width: "24px", display: "grid", placeItems: "center", color: "#cfd2d8" } }, check ? glyph("check", 20) : glyph(icon, 20)), label);
     this.items = [item("Default output (MacBook Pro Speakers)", "speaker", true), item("MacBook Pro Speakers", "laptop"), item("AirPods Pro", "airpods")];
-    this.menu = at(h("div", { class: "glass", style: { width: "470px", padding: "8px", borderRadius: "18px", transformOrigin: "100% 0%" } },
+    this.menu = at(h("div", { class: "glass", style: { width: "470px", padding: "8px", borderRadius: "18px", transformOrigin: "100% 0%", background: "linear-gradient(180deg, rgba(58,59,66,0.95), rgba(36,37,42,0.96))" } },
       this.items[0], h("div", { style: { height: "1px", margin: "6px 10px", background: "rgba(255,255,255,0.1)" } }), this.items[1], this.items[2]), 0, 0);
     this.pointer = at(h("div", { style: { color: "#fff", filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.6))", transformOrigin: "20% 15%" } }, glyph("pointer", 46)), 0, 0);
-    this.ring = at(h("div", { style: { width: "60px", height: "60px", borderRadius: "50%", border: "3px solid #eef3ff" } }), 0, 0);
-    this.captions = ["Every app gets its own fader.", "Mute one before it pings.", "Solo one. Silence the rest.", "Send one to your AirPods.", "Calls lower everything else."]
-      .map((text) => at(words(text, "h2 grad center"), 960, 132));
-    root.append(this.panel, this.menu, this.ring, this.pointer, ...this.captions);
+    this.stage = h("div", { class: "abs", style: { left: `${PLACE.right - W * SCALE}px`, top: `${PLACE.top}px`, width: `${W}px`, height: "10px", transform: `scale(${SCALE})`, transformOrigin: "0 0" } }, this.panel, this.menu, this.pointer);
+    screen.append(this.stage);
+    this.captions = ["Every app gets\nits own fader.", "Mute one.", "Solo one.", "Send one\nto AirPods.", "Calls lower\nthe rest."]
+      .map((text) => at(words(text, "h1 grad center shadowed"), 372, 520));
+    root.append(...this.captions);
   },
-  update(t, { bg }) {
-    const enter = spring(t - (S.start - 0.15), 0.5, 0.82);
-    const leave = ease.in(prog(t, S.end - 0.55, S.end + 0.15));
-    const scale = lerp(0.92, 1, clamp(enter)) * lerp(1, 0.96, leave);
-    // The panel is centred, so it grows up and down as the banner opens.
+  update(t, { d }) {
+    d.app = "Music";
+    const enter = spring(t - MIXER.open, 0.42, 0.78);
     const heightAt = (tt) => TOP + APPS.length * ROW + 24 + bannerShift(tt) * BANNER;
-    tf(this.panel, { s: scale, y: (1 - clamp(enter)) * 40, o: clamp(enter * 1.5) * (1 - leave), blur: (1 - clamp(enter)) * 10 + leave * 10 });
+    this.panel.style.transform = `scale(${lerp(0.82, 1, clamp(enter, 0, 1.2))})`;
+    this.panel.style.opacity = String(clamp(enter * 2.2));
     this.panel.style.height = `${heightAt(t)}px`;
-    const toStage = (x, y, tt = t) => ({ x: PANEL.x - W / 2 + x, y: PANEL.y - heightAt(tt) / 2 + y });
 
     // The state of each app at this moment.
     const solo = soloOn(t), call = callOn(t);
@@ -107,13 +106,9 @@ export default {
       el.__fill.style.width = `${st.volume * 100}%`;
       el.__knob.style.left = `${st.volume * 100}%`;
       el.__slider.style.opacity = String(st.muted ? 0.5 : lerp(1, 0.6, st.dim));
-      el.__mute.__set(!!st.muted);
-      el.__mute.innerHTML = "";
-      el.__mute.append(glyph(st.muted ? "mute" : "speaker", 24));
-      el.__solo.__set(!!st.soloed);
-      el.__output.__set(!!st.routed);
-      el.__output.innerHTML = "";
-      el.__output.append(glyph(st.routed ? "airpods" : "hifi", 24));
+      el.__mute.__set(!!st.muted, st.muted ? "mute" : "speaker");
+      el.__solo.__set(!!st.soloed, "headphones");
+      el.__output.__set(!!st.routed, st.routed ? "airpods" : "hifi");
     });
 
     // The banner: solo, then the call.
@@ -121,62 +116,48 @@ export default {
     this.banner.style.opacity = String(bannerO);
     this.banner.style.transform = `translateY(${(1 - bannerO) * -10}px)`;
     const isCall = t >= MIXER.call;
-    this.bannerIcon.innerHTML = "";
-    this.bannerIcon.append(glyph(isCall ? "phone" : "headphones", 22));
+    if (isCall !== this.wasCall) { this.bannerIcon.innerHTML = ""; this.bannerIcon.append(glyph(isCall ? "phone" : "headphones", 22)); this.wasCall = isCall; }
     this.bannerText.textContent = isCall ? "Video call is on a call, so other apps are lower" : "Only Music is playing";
     this.bannerButton.textContent = isCall ? "Don’t lower" : "Stop";
 
     // The output menu.
-    const button = toStage(BUTTONS.output, rowTop(2, t) + 36);
+    const menuAt = { x: BUTTONS.output - 235 + 24, y: rowTop(2, t) + 36 + 34 + 85 };
     const menuIn = spring(t - MIXER.menu, 0.32, 0.8), menuOut = ease.leave(prog(t, MIXER.pick + 0.05, MIXER.pick + 0.25));
-    const menuO = t >= MIXER.menu ? clamp(menuIn * 2) * (1 - menuOut) : 0;
-    const menuPos = { x: button.x - 235 + 24, y: button.y + 34 + 85 };
-    this.menu.style.left = `${menuPos.x}px`;
-    this.menu.style.top = `${menuPos.y}px`;
-    tf(this.menu, { s: lerp(0.9, 1, clamp(menuIn)) * scale, o: menuO, y: (1 - clamp(menuIn)) * -8 });
-    const airpodsItem = { x: menuPos.x - 60, y: menuPos.y - 85 + 8 + 46 + 13 + 46 + 23 };
+    this.menu.style.left = `${menuAt.x}px`;
+    this.menu.style.top = `${menuAt.y}px`;
+    tf(this.menu, { s: lerp(0.9, 1, clamp(menuIn)), o: t >= MIXER.menu ? clamp(menuIn * 2) * (1 - menuOut) : 0, y: (1 - clamp(menuIn)) * -8 });
+    const airpods = { x: menuAt.x - 60, y: menuAt.y - 85 + 8 + 46 + 13 + 46 + 23 };
     this.items[2].style.background = t > MIXER.pick - 0.3 && t < MIXER.pick + 0.1 ? "rgba(255,255,255,0.14)" : "transparent";
 
     // The pointer travels between targets, clicking where it stops.
-    const p = (x, y, tt) => toStage(x, y, tt);
     const stops = [
-      [S.start - 0.2, { x: 1180, y: 760 }],
-      [MIXER.drag[0] - 0.05, p(knobX(1), rowTop(0, MIXER.drag[0]) + 92, MIXER.drag[0])],
-      [MIXER.drag[1], p(knobX(0.35), rowTop(0, MIXER.drag[1]) + 92, MIXER.drag[1])],
-      [MIXER.mute - 0.05, p(BUTTONS.mute, rowTop(1, MIXER.mute) + 36, MIXER.mute)],
-      [MIXER.solo - 0.05, p(BUTTONS.solo, rowTop(2, MIXER.solo) + 36, MIXER.solo)],
-      [MIXER.stop - 0.05, p(W - 44 - 70, 118, MIXER.stop)],
-      [MIXER.menu - 0.05, p(BUTTONS.output, rowTop(2, MIXER.menu) + 36, MIXER.menu)],
-      [MIXER.pick - 0.05, airpodsItem],
-      [MIXER.pick + 0.9, { x: 1560, y: 820 }],
+      [S.start, { x: 560, y: 620 }],
+      [MIXER.drag[0] - 0.05, { x: knobX(1), y: rowTop(0, MIXER.drag[0]) + 92 }],
+      [MIXER.drag[1], { x: knobX(0.35), y: rowTop(0, MIXER.drag[1]) + 92 }],
+      [MIXER.mute - 0.05, { x: BUTTONS.mute, y: rowTop(1, MIXER.mute) + 36 }],
+      [MIXER.solo - 0.05, { x: BUTTONS.solo, y: rowTop(2, MIXER.solo) + 36 }],
+      [MIXER.stop - 0.05, { x: W - 44 - 70, y: 118 }],
+      [MIXER.menu - 0.05, { x: BUTTONS.output, y: rowTop(2, MIXER.menu) + 36 }],
+      [MIXER.pick - 0.05, airpods],
+      [MIXER.pick + 0.9, { x: 640, y: 700 }],
     ];
     let pos = stops[0][1];
     for (let k = 1; k < stops.length; k++) {
       const [t0, a] = stops[k - 1], [t1, b] = stops[k];
       if (t <= t0) break;
       // Dragging follows the knob exactly; travel eases in and out.
-      const travel = k === 2 ? prog(t, t0, t1) : smoothstep(t, Math.max(t0 + 0.15, t1 - 0.6), t1);
-      pos = { x: lerp(a.x, b.x, k === 2 ? ease.inOut(travel) : travel), y: lerp(a.y, b.y, k === 2 ? ease.inOut(travel) : travel) };
+      const travel = k === 2 ? ease.inOut(prog(t, t0, t1)) : smoothstep(t, Math.max(t0 + 0.12, t1 - 0.55), t1);
+      pos = { x: lerp(a.x, b.x, travel), y: lerp(a.y, b.y, travel) };
     }
-    const clicks = [MIXER.mute, MIXER.solo, MIXER.stop, MIXER.menu, MIXER.pick];
-    let press = 0, ringAge = -1;
-    for (const c of clicks) {
+    let press = 0;
+    for (const c of [MIXER.mute, MIXER.solo, MIXER.stop, MIXER.menu, MIXER.pick]) {
       const age = t - c;
       if (age > -0.08 && age < 0.18) press = Math.max(press, 1 - Math.abs(age - 0.04) / 0.14);
-      if (age >= 0 && age < 0.5) ringAge = age;
     }
-    const pointerO = ep(t, MIXER.drag[0] - 0.9, MIXER.drag[0] - 0.5) * (1 - ep(t, MIXER.pick + 0.5, MIXER.pick + 0.9)) * (1 - leave);
     this.pointer.style.left = `${pos.x + 14}px`;
     this.pointer.style.top = `${pos.y + 18}px`;
-    tf(this.pointer, { s: 1 - press * 0.14, o: pointerO });
-    this.ring.style.left = `${pos.x}px`;
-    this.ring.style.top = `${pos.y}px`;
-    tf(this.ring, { s: ringAge >= 0 ? lerp(0.4, 1.4, ease.out(ringAge / 0.5)) : 0.4, o: ringAge >= 0 ? (1 - ringAge / 0.5) * 0.8 * pointerO : 0 });
+    tf(this.pointer, { s: 1 - press * 0.16, o: ep(t, MIXER.open + 0.2, MIXER.open + 0.6) * (1 - ep(t, MIXER.pick + 0.5, MIXER.pick + 0.9)) });
 
-    const [, c1, c2, c3, c4] = MIXER.captions;
-    const outs = [c1 - 0.3, c2 - 0.3, c3 - 0.3, c4 - 0.3, S.end - 0.6];
-    this.captions.forEach((el, i) => reveal(el, t, MIXER.captions[i], outs[i], { rise: 0.3, stagger: 0.04, dur: 0.75 }));
-    bg.style.setProperty("--by", "52%");
-    bg.style.setProperty("--ba", "0.55");
+    sequence(this.captions, t, MIXER.captions, S.end - 0.05, { stagger: 0.05 });
   },
 };

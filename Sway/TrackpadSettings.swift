@@ -12,8 +12,8 @@ enum ZoneAction: String, CaseIterable, Identifiable, Codable {
     case workspaces, missionControl, appWindows, showDesktop, switchApps, cycleWindows
     case fullScreen, minimizeWindow, hideApp, spotlight, screenshotTools, emojiPicker
     case customShortcut
-    case appVolume, muteApp, soloApp, audioOutput, seek, nowPlaying, tileWindow
-    case nightShift, trueTone, extraDim, runShortcut, cheatSheet
+    case appVolume, muteApp, soloApp, audioApps, audioOutput, seek, nowPlaying, tileWindow
+    case nightShift, trueTone, extraDim, runShortcut, cheatSheet, ambientLight
     case copy, cut, paste, pastePlain, pastePrevious, clipboardHistory, undoRedo, selectAll, find
     case newCloseTab, reopenTab, lockScreen, sleepDisplay
     case disabled   = "disabled"
@@ -56,6 +56,7 @@ enum ZoneAction: String, CaseIterable, Identifiable, Codable {
         case .appVolume: return "App volume"
         case .muteApp: return "Mute app in front"
         case .soloApp: return "Solo app in front"
+        case .audioApps: return "Audio apps"
         case .audioOutput: return "Switch audio output"
         case .seek: return "Seek in track"
         case .nowPlaying: return "Show now playing"
@@ -65,6 +66,7 @@ enum ZoneAction: String, CaseIterable, Identifiable, Codable {
         case .extraDim: return "Extra dim"
         case .runShortcut: return "Run a Shortcut"
         case .cheatSheet: return "Show edge map"
+        case .ambientLight: return "Ambient light"
         case .copy: return "Copy"
         case .cut: return "Cut"
         case .paste: return "Paste"
@@ -101,7 +103,7 @@ enum ZoneAction: String, CaseIterable, Identifiable, Codable {
         case .missionControl: return "rectangle.3.group"
         case .appWindows: return "macwindow.on.rectangle"
         case .showDesktop: return "menubar.dock.rectangle"
-        case .switchApps: return "app.stack"
+        case .switchApps: return "rectangle.2.swap"
         case .cycleWindows: return "macwindow"
         case .fullScreen: return "arrow.up.left.and.arrow.down.right"
         case .minimizeWindow: return "minus.rectangle"
@@ -113,6 +115,7 @@ enum ZoneAction: String, CaseIterable, Identifiable, Codable {
         case .appVolume: return "dial.medium"
         case .muteApp: return "speaker.slash.circle"
         case .soloApp: return "headphones"
+        case .audioApps: return "music.note.list"
         case .audioOutput: return "airplayaudio"
         case .seek: return "goforward"
         case .nowPlaying: return "music.note"
@@ -122,6 +125,7 @@ enum ZoneAction: String, CaseIterable, Identifiable, Codable {
         case .extraDim: return "moon.fill"
         case .runShortcut: return "square.stack.3d.up.fill"
         case .cheatSheet: return "map"
+        case .ambientLight: return "light.ribbon"
         case .copy: return "doc.on.doc"
         case .cut: return "scissors"
         case .paste: return "doc.on.clipboard"
@@ -141,8 +145,8 @@ enum ZoneAction: String, CaseIterable, Identifiable, Codable {
 
     var category: String {
         switch self {
-        case .brightness, .keyboardBrightness, .nightShift, .trueTone, .extraDim: return "Display & keyboard"
-        case .volume, .appVolume, .muteApp, .soloApp, .audioOutput, .microphoneLevel, .outputMute, .microphoneMute: return "Audio & microphone"
+        case .brightness, .keyboardBrightness, .nightShift, .trueTone, .extraDim, .ambientLight: return "Display & keyboard"
+        case .volume, .appVolume, .muteApp, .soloApp, .audioApps, .audioOutput, .microphoneLevel, .outputMute, .microphoneMute: return "Audio & microphone"
         case .mediaTracks, .playPause, .seek, .nowPlaying: return "Media"
         case .tabs, .history, .zoom, .pages, .documentEnds: return "Navigation"
         case .workspaces, .missionControl, .appWindows, .showDesktop, .switchApps, .cycleWindows,
@@ -157,13 +161,27 @@ enum ZoneAction: String, CaseIterable, Identifiable, Codable {
     static let categories = ["Display & keyboard", "Audio & microphone", "Media", "Editing", "Navigation", "Windows & desktops", "Tools & shortcuts", "Other"]
     /// Follows finger travel as a level rather than firing commands.
     var isContinuous: Bool { [.brightness, .volume, .microphoneLevel, .appVolume, .nightShift, .extraDim, .seek].contains(self) }
-    var repeatsWhileSwiping: Bool { [.keyboardBrightness, .tabs, .zoom, .pages, .cycleWindows, .audioOutput, .undoRedo, .clipboardHistory].contains(self) }
+    var repeatsWhileSwiping: Bool { [.keyboardBrightness, .tabs, .zoom, .pages, .cycleWindows, .audioOutput, .undoRedo, .clipboardHistory, .audioApps].contains(self) }
     /// Uses Sway's private, in-memory clipboard history.
     var usesClipboardHistory: Bool { self == .pastePrevious || self == .clipboardHistory }
     /// Taps fire once with no direction, so only commands and toggles fit.
-    var worksAsTap: Bool { !isContinuous }
+    /// Needs a direction and an amount, so a tap can't finish it: on a tap
+    /// it arms its side edge, and the next slide there adjusts it. Then the
+    /// edge is itself again. Panels open on a tap.
+    var slidesAfterTap: Bool { isContinuous || (repeatsWhileSwiping && !opensPanel) }
+    /// A level reached through notched keys (the keyboard backlight): it steps
+    /// as fast as the finger moves, not at a command's pace.
+    var stepsLikeALevel: Bool { self == .keyboardBrightness }
     /// A tap flips these instead of sending their "up" command.
     var togglesOnTap: Bool { [.outputMute, .microphoneMute, .trueTone, .muteApp, .soloApp].contains(self) }
+    /// Doing it again puts things back, so repeating the tap soon after is "undo".
+    var undoesByRepeating: Bool {
+        [.outputMute, .microphoneMute, .trueTone, .muteApp, .soloApp, .playPause, .missionControl, .appWindows, .showDesktop, .fullScreen].contains(self)
+    }
+    /// Undone with ⌘Z in the app it changed.
+    var undoesWithCommandZ: Bool { [.paste, .pastePlain, .pastePrevious, .cut].contains(self) }
+    /// Opens a panel in the middle of the screen, which is its own feedback.
+    var opensPanel: Bool { [.clipboardHistory, .audioApps, .cheatSheet, .nowPlaying].contains(self) }
     var guidance: String {
         switch self {
         case .brightness: return "Up brightens; down dims the built-in display."
@@ -189,26 +207,28 @@ enum ZoneAction: String, CaseIterable, Identifiable, Codable {
         case .minimizeWindow: return "Either direction sends Command-M to minimize the current window. Once per swipe."
         case .hideApp: return "Either direction sends Command-H to hide the current app. Once per swipe."
         case .spotlight: return "Either direction sends Command-Space. Requires the standard Spotlight shortcut."
-        case .screenshotTools: return "Either direction opens the macOS screenshot toolbar (Command-Shift-5). You choose what to capture; Sway records nothing."
+        case .screenshotTools: return "Either direction opens the macOS screenshot toolbar (Command-Shift-5). You choose what to capture; Kinara records nothing."
         case .emojiPicker: return "Either direction opens Emoji & Symbols using Control-Command-Space."
         case .customShortcut: return "Record an up/right and down/left shortcut for this edge. Each runs once per swipe, in the app where the gesture started."
-        case .appVolume: return "Up raises; down lowers only the frontmost app’s sound, like a per-app mixer. macOS asks once for System Audio Recording permission; Sway never records or saves audio. macOS 14.2 or later."
+        case .appVolume: return "Up raises; down lowers only the frontmost app’s sound, like a per-app mixer. macOS asks once for System Audio Recording permission; Kinara never records or saves audio. macOS 14.2 or later."
         case .muteApp: return "Down mutes only the app in front; up unmutes it. A tap toggles. Uses the mixer, so the app stays muted until you unmute it. macOS 14.2 or later."
         case .soloApp: return "Up plays only the app in front and silences the rest; down ends solo. A tap toggles. macOS 14.2 or later."
+        case .audioApps: return "Shows every app making sound. Slide to choose one, then lift to mute or unmute it, or slide right first to play only that app. Great on a corner double-tap. macOS 14.2 or later."
         case .audioOutput: return "Up switches to the next audio output; down to the previous one. The indicator names the new device."
         case .seek: return "Up moves forward; down moves back within the current track. Works with Music and Spotify, and other players macOS exposes."
         case .nowPlaying: return "Shows the current track with artwork and progress. Changes nothing."
         case .tileWindow: return "Up fills the screen with the front window; down moves it to this edge’s half (left or right). Uses Accessibility, so it works in most apps."
         case .nightShift: return "Up warms the display; down cools it. Swiping to zero turns Night Shift off. Uses a private macOS interface that can change."
         case .trueTone: return "Up turns True Tone on; down turns it off. A tap toggles it. Only on displays that support True Tone."
-        case .extraDim: return "Down dims below the display’s lowest backlight level; up restores it. Quitting Sway always restores normal brightness."
+        case .extraDim: return "Down dims below the display’s lowest backlight level; up restores it. Quitting Kinara always restores normal brightness."
         case .runShortcut: return "Runs the Shortcut you choose for this edge: one for up/right, another for down/left. Opens a world of automations, such as smart lights."
         case .cheatSheet: return "Shows what every edge does in the current app. Changes nothing."
+        case .ambientLight: return "Sends a soft light slowly round the edges of your screen, in your edge light colour, like a screensaver you can keep using your Mac beside. A tap turns it on or off; swipe up to start, down to stop. Any key or click also stops it. Uses a little battery while it runs."
         case .copy: return "Either direction copies the selection (Command-C)."
         case .cut: return "Either direction cuts the selection (Command-X)."
         case .paste: return "Either direction pastes the clipboard (Command-V). Great on a corner double-tap."
         case .pastePlain: return "Pastes without formatting (Option-Shift-Command-V) in apps that support it."
-        case .pastePrevious: return "Pastes the item you copied before the current one. Uses Sway’s clipboard history, kept only in memory."
+        case .pastePrevious: return "Pastes the item you copied before the current one. Uses Kinara’s clipboard history, kept only in memory."
         case .clipboardHistory: return "Swipe to browse your recent copies, then lift to paste the one shown. Kept only in memory, never saved; password managers’ items are skipped."
         case .undoRedo: return "Down undoes; up redoes (Command-Z / Shift-Command-Z). Repeats as you keep swiping."
         case .selectAll: return "Either direction selects everything (Command-A)."
@@ -345,13 +365,19 @@ enum EdgeSlot {
 struct ActionProfile: Codable, Equatable {
     var name: String
     var bindings: [String: EdgeBinding] = [:]
+    /// One or two fingers while this app is in front; nil follows the everyday setting.
+    var fingers: Int?
 
-    init(name: String, bindings: [String: EdgeBinding] = [:]) { self.name = name; self.bindings = bindings }
+    init(name: String, bindings: [String: EdgeBinding] = [:], fingers: Int? = nil) {
+        self.name = name; self.bindings = bindings; self.fingers = Self.valid(fingers)
+    }
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name = (try? container.decodeIfPresent(String.self, forKey: .name)) ?? "Profile"
         bindings = (try? container.decodeIfPresent([String: EdgeBinding].self, forKey: .bindings)) ?? [:]
+        fingers = Self.valid((try? container.decodeIfPresent(Int.self, forKey: .fingers)) ?? nil)
     }
+    private static func valid(_ fingers: Int?) -> Int? { fingers == 1 || fingers == 2 ? fingers : nil }
 }
 
 /// Sanitized on creation and decoding: a non-finite value could not even be
@@ -586,8 +612,18 @@ class TrackpadSettings: ObservableObject {
     @Published var accelerationEnabled: Bool {
         didSet { defaults.set(accelerationEnabled, forKey: "accelerationEnabled") }
     }
-    @Published var notchesEnabled: Bool {
-        didSet { defaults.set(notchesEnabled, forKey: "notchesEnabled") }
+    /// A detent at 50%: off unless someone wants to find the middle by feel.
+    /// How many copies clipboard history keeps, newest first.
+    static let clipboardLimits = [10, 20, 50, 100]
+    @Published var clipboardLimit: Int {
+        didSet { defaults.set(clipboardLimit, forKey: "clipboardLimit") }
+    }
+    /// Clipboard history keeps screenshots and copied pictures as well as text.
+    @Published var clipboardImages: Bool {
+        didSet { defaults.set(clipboardImages, forKey: "clipboardImages") }
+    }
+    @Published var midpointNotch: Bool {
+        didSet { defaults.set(midpointNotch, forKey: "midpointNotch") }
     }
     /// A favorite level adds a notch; a negative value means none.
     @Published var volumeFavorite: Double {
@@ -616,6 +652,23 @@ class TrackpadSettings: ObservableObject {
     }
     @Published var nowPlayingHUD: Bool {
         didSet { defaults.set(nowPlayingHUD, forKey: "nowPlayingHUD") }
+    }
+    /// Tap feedback in the matching screen corner (one glass pill that also carries
+    /// the result), rather than in the indicator.
+    @Published var cornerEffects: Bool {
+        didSet { defaults.set(cornerEffects, forKey: "cornerEffects") }
+    }
+    /// A soft light along the matching screen edge while sliding.
+    @Published var edgeLight: Bool {
+        didSet { defaults.set(edgeLight, forKey: "edgeLight") }
+    }
+    /// The edge light's colours, which the ambient light shares.
+    @Published var edgeLightColor: EdgeLightColor {
+        didSet { defaults.set(edgeLightColor.rawValue, forKey: "edgeLightColor") }
+    }
+    /// Tap spots that have shown their one-time "change it in Settings" line. Progress, not a preference.
+    @Published var seenGestureHints: Set<String> {
+        didSet { defaults.set(seenGestureHints.sorted(), forKey: "seenGestureHints") }
     }
     @Published var menuBarScroll: Bool {
         didSet { defaults.set(menuBarScroll, forKey: "menuBarScroll") }
@@ -657,7 +710,10 @@ class TrackpadSettings: ObservableObject {
         activationThreshold = Self.clamp(defaults.object(forKey: "activationThreshold") as? Double ?? 4, to: 0...12, fallback: 4)
         launchAtLogin = defaults.object(forKey: "launchAtLogin") as? Bool ?? false
         appearanceMode = defaults.string(forKey: "appearanceMode") ?? "system"
-        showDockIcon = defaults.object(forKey: "showDockIcon") as? Bool ?? false
+        // On by default: an open window should be one ⌘-Tab away, and macOS
+        // only lists apps that show in the Dock. With no window open, Kinara
+        // stays menu-bar-only either way.
+        showDockIcon = defaults.object(forKey: "showDockIcon") as? Bool ?? true
 
         if let data = defaults.data(forKey: "toggleHotkey"),
            let hk = try? JSONDecoder().decode(HotkeyCombo.self, from: data) {
@@ -677,7 +733,7 @@ class TrackpadSettings: ObservableObject {
         menuBarValueSource = defaults.string(forKey: "menuBarValueSource") ?? "icon"
         muteAtZero         = defaults.object(forKey: "muteAtZero") as? Bool ?? true
         minimumFingers = defaults.integer(forKey: "minimumFingers") == 1 ? 1 : 2
-        cursorFreezeOnOneFinger = defaults.object(forKey: "cursorFreezeOnOneFinger") as? Bool ?? false
+        cursorFreezeOnOneFinger = defaults.object(forKey: "cursorFreezeOnOneFinger") as? Bool ?? true
 
         topEdgeEnabled = defaults.integer(forKey: "minimumFingers") == 1 && (defaults.object(forKey: "topEdgeEnabled") as? Bool ?? false)
         topEdgeHeight  = Self.clamp(defaults.object(forKey: "topEdgeHeight") as? Double ?? 0.15, to: Self.topEdgeHeightRange, fallback: 0.15)
@@ -703,7 +759,9 @@ class TrackpadSettings: ObservableObject {
         cornerTapFingers = defaults.integer(forKey: "cornerTapFingers") == 1 ? 1 : 0
         precisionEnabled = defaults.object(forKey: "precisionEnabled") as? Bool ?? true
         accelerationEnabled = defaults.object(forKey: "accelerationEnabled") as? Bool ?? true
-        notchesEnabled = defaults.object(forKey: "notchesEnabled") as? Bool ?? true
+        midpointNotch = defaults.object(forKey: "midpointNotch") as? Bool ?? false
+        clipboardLimit = (defaults.object(forKey: "clipboardLimit") as? Int).flatMap { Self.clipboardLimits.contains($0) ? $0 : nil } ?? 20
+        clipboardImages = defaults.object(forKey: "clipboardImages") as? Bool ?? true
         volumeFavorite = Self.favorite(defaults.object(forKey: "volumeFavorite") as? Double)
         brightnessFavorite = Self.favorite(defaults.object(forKey: "brightnessFavorite") as? Double)
         deviceVolumeLimits = Self.load([String: DeviceLimit].self, "deviceVolumeLimits", from: defaults) ?? [:]
@@ -712,6 +770,10 @@ class TrackpadSettings: ObservableObject {
         let sound = defaults.string(forKey: "volumeFeedbackSound") ?? "system"
         volumeFeedbackSound = ["system", "on", "off"].contains(sound) ? sound : "system"
         nowPlayingHUD = defaults.object(forKey: "nowPlayingHUD") as? Bool ?? true
+        cornerEffects = defaults.object(forKey: "cornerEffects") as? Bool ?? true
+        edgeLight = defaults.object(forKey: "edgeLight") as? Bool ?? true
+        edgeLightColor = EdgeLightColor(rawValue: defaults.string(forKey: "edgeLightColor") ?? "") ?? .accent
+        seenGestureHints = Set(defaults.stringArray(forKey: "seenGestureHints") ?? [])
         menuBarScroll = defaults.object(forKey: "menuBarScroll") as? Bool ?? true
         cheatSheetHotkey = Self.load(HotkeyCombo.self, "cheatSheetHotkey", from: defaults) ?? .none
         urlCommandsEnabled = defaults.object(forKey: "urlCommandsEnabled") as? Bool ?? true
@@ -781,6 +843,11 @@ class TrackpadSettings: ObservableObject {
         resolvedBinding(slot, appBundleID: appBundleID, docked: docked).binding
     }
 
+    /// Fingers for edge gestures: the app in front's own choice, else the everyday one.
+    func requiredFingers(appBundleID: String?) -> Int {
+        appBundleID.flatMap { appProfiles[$0]?.fingers } ?? (minimumFingers == 1 ? 1 : 2)
+    }
+
     /// Whether any context could make this slot active, so the recognizer can
     /// accept touches that a profile, but not the everyday setup, assigns.
     func slotIsAssigned(_ slot: String) -> Bool {
@@ -797,11 +864,11 @@ class TrackpadSettings: ObservableObject {
         return increasing ? swipeUpShortcut : swipeDownShortcut
     }
 
+    /// The 50% notch when it's on, plus a favorite level wherever one is set.
     func notches(for action: ZoneAction) -> [Double] {
-        guard notchesEnabled else { return [] }
-        var points = [0.5]
+        var points = midpointNotch ? [0.5] : []
         let favorite = action == .volume ? volumeFavorite : action == .brightness ? brightnessFavorite : -1
-        if favorite >= 0 && abs(favorite - 0.5) > Self.notchCapture * 2 { points.append(favorite) }
+        if favorite >= 0 && !points.contains(where: { abs(favorite - $0) <= Self.notchCapture * 2 }) { points.append(favorite) }
         return points
     }
 
@@ -823,9 +890,9 @@ class TrackpadSettings: ObservableObject {
         "topEdgeEnabled", "topEdgeHeight", "topEdgeSwipeDirection", "topLeftAction", "topRightAction",
         "topEdgeAction", "palmRejectionMode", "typingCooldown", "bottomEdgeEnabled", "bottomEdgeHeight",
         "bottomEdgeAction", "edgeBindings", "appProfiles", "dockedProfileEnabled", "dockedProfile", "tapCornerSize", "cornerTapFingers",
-        "precisionEnabled", "accelerationEnabled", "notchesEnabled", "volumeFavorite", "brightnessFavorite",
+        "precisionEnabled", "accelerationEnabled", "midpointNotch", "clipboardLimit", "clipboardImages", "volumeFavorite", "brightnessFavorite",
         "deviceVolumeLimits", "brightnessFollowsPointer", "extraDimBelowMinimum", "volumeFeedbackSound",
-        "nowPlayingHUD", "menuBarScroll", "cheatSheetHotkey", "urlCommandsEnabled",
+        "nowPlayingHUD", "cornerEffects", "edgeLight", "edgeLightColor", "menuBarScroll", "cheatSheetHotkey", "urlCommandsEnabled",
     ]
     static let exportFormat = "com.sway.settings"
 
@@ -839,9 +906,9 @@ class TrackpadSettings: ObservableObject {
         case unreadable, notSway, newerVersion
         var description: String {
             switch self {
-            case .unreadable: return "This file could not be read as Sway settings."
-            case .notSway: return "This file is not a Sway settings export."
-            case .newerVersion: return "These settings come from a newer version of Sway. Update Sway, then try again."
+            case .unreadable: return "This file could not be read as Kinara settings."
+            case .notSway: return "This file is not a Kinara settings export."
+            case .newerVersion: return "These settings come from a newer version of Kinara. Update Kinara, then try again."
             }
         }
     }
@@ -889,11 +956,14 @@ class TrackpadSettings: ObservableObject {
         tapCornerSize = other.tapCornerSize
         cornerTapFingers = other.cornerTapFingers
         precisionEnabled = other.precisionEnabled; accelerationEnabled = other.accelerationEnabled
-        notchesEnabled = other.notchesEnabled
+        midpointNotch = other.midpointNotch
+        clipboardLimit = other.clipboardLimit
+        clipboardImages = other.clipboardImages
         volumeFavorite = other.volumeFavorite; brightnessFavorite = other.brightnessFavorite
         deviceVolumeLimits = other.deviceVolumeLimits
         brightnessFollowsPointer = other.brightnessFollowsPointer; extraDimBelowMinimum = other.extraDimBelowMinimum
-        volumeFeedbackSound = other.volumeFeedbackSound; nowPlayingHUD = other.nowPlayingHUD
+        volumeFeedbackSound = other.volumeFeedbackSound; nowPlayingHUD = other.nowPlayingHUD; cornerEffects = other.cornerEffects; edgeLight = other.edgeLight
+        edgeLightColor = other.edgeLightColor
         menuBarScroll = other.menuBarScroll; cheatSheetHotkey = other.cheatSheetHotkey
         urlCommandsEnabled = other.urlCommandsEnabled
     }
@@ -911,7 +981,59 @@ class TrackpadSettings: ObservableObject {
         topEdgeEnabled = false
         bottomEdgeEnabled = false
         invertScrollDirection = false
-        cursorFreezeOnOneFinger = false
+        // A one-finger slide on an edge is a control, not pointing: the pointer stays put.
+        cursorFreezeOnOneFinger = true
+    }
+
+    /// Kinara's pick for someone new, using every kind of gesture: one finger on
+    /// the edges (volume right, brightness left); a double-tap in each corner
+    /// (the clipboard, app audio, play/pause, Mission Control); tap and hold in
+    /// the top right for the edge map; and a double-tap on the right edge to mute.
+    /// `appAudio` is false where the mixer can't run.
+    func applyRecommendedSetup(appAudio: Bool) {
+        applyGesturePreset(.oneFinger)
+        hapticFeedback = true
+        midpointNotch = false
+        cornerEffects = true
+        edgeLight = true
+        for (slot, action) in Self.recommendedTaps {
+            setBaseBinding(EdgeBinding(action == .audioApps && !appAudio ? .showDesktop : action), for: slot)
+        }
+        defaults.set(true, forKey: "appliedRecommendedSetup")
+    }
+    static let recommendedTaps: [(String, ZoneAction)] = [
+        ("bottomRightCorner.doubleTap", .clipboardHistory),
+        ("bottomLeftCorner.doubleTap", .audioApps),
+        ("topRightCorner.doubleTap", .playPause),
+        ("topLeftCorner.doubleTap", .missionControl),
+        ("topRightCorner.tapHold", .cheatSheet),
+        ("right.doubleTap", .outputMute),
+    ]
+
+    /// A fresh install: Kinara hasn't set anything up yet and no tap is assigned.
+    var offersRecommendedSetup: Bool {
+        !defaults.bool(forKey: "appliedRecommendedSetup") && !bindings.keys.contains { $0.hasSuffix(".doubleTap") || $0.hasSuffix(".tapHold") }
+    }
+
+    /// The first-run tour: every gesture this setup has. Both edge slides, each
+    /// corner's double-tap (bottom corners first), each corner's tap and hold,
+    /// then each edge's double-tap.
+    func tourSteps() -> [TourStep] {
+        var steps: [TourStep] = []
+        for side in ["right", "left"] where baseBinding(side).action != .disabled {
+            steps.append(TourStep(kind: .slide(side), slot: side, action: baseBinding(side).action))
+        }
+        let corners = ["bottomRightCorner", "bottomLeftCorner", "topRightCorner", "topLeftCorner"]
+        for corner in corners where baseBinding("\(corner).doubleTap").action != .disabled {
+            steps.append(TourStep(kind: .doubleTap(corner), slot: "\(corner).doubleTap", action: baseBinding("\(corner).doubleTap").action))
+        }
+        for corner in corners where baseBinding("\(corner).tapHold").action != .disabled {
+            steps.append(TourStep(kind: .tapHold(corner), slot: "\(corner).tapHold", action: baseBinding("\(corner).tapHold").action))
+        }
+        for side in ["right", "left", "top", "bottom"] where baseBinding("\(side).doubleTap").action != .disabled {
+            steps.append(TourStep(kind: .doubleTap(side), slot: "\(side).doubleTap", action: baseBinding("\(side).doubleTap").action))
+        }
+        return steps
     }
 
     func resetGestureSettings() {
@@ -939,7 +1061,41 @@ class TrackpadSettings: ObservableObject {
         cornerTapFingers = 0
         precisionEnabled = true
         accelerationEnabled = true
-        notchesEnabled = true
+        midpointNotch = false
+    }
+}
+
+/// One stop on the first-run tour: a gesture, where it lives, and what it does.
+struct TourStep: Equatable {
+    enum Kind: Equatable {
+        /// "left" or "right": a slide along that side edge.
+        case slide(String)
+        /// A tap region: a corner ("bottomRightCorner") or an edge ("right").
+        case doubleTap(String)
+        /// Tap once, then touch again and hold, in a corner.
+        case tapHold(String)
+    }
+
+    /// The tap region this stop happens in, for the on-screen guide.
+    var region: String {
+        switch kind {
+        case let .slide(side): return side
+        case let .doubleTap(region), let .tapHold(region): return region
+        }
+    }
+    let kind: Kind
+    /// What the monitor reports when someone does it: the edge, or the tap slot.
+    let slot: String
+    let action: ZoneAction
+
+    /// "the right edge", "the bottom-right corner".
+    var place: String {
+        switch kind {
+        case let .slide(side): return "the \(side) edge"
+        case let .doubleTap(region), let .tapHold(region):
+            let names = ["topLeftCorner": "top-left", "topRightCorner": "top-right", "bottomLeftCorner": "bottom-left", "bottomRightCorner": "bottom-right"]
+            return names[region].map { "the \($0) corner" } ?? "the \(region) edge"
+        }
     }
 }
 

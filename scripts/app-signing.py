@@ -68,12 +68,12 @@ def requirement(certificate=CERTIFICATE, identifier=IDENTIFIER):
 
 def verify(bundle, certificate=CERTIFICATE, identifier=IDENTIFIER):
     metadata = plistlib.loads((bundle / "Contents/Info.plist").read_bytes())
-    if metadata.get("CFBundleIdentifier") != identifier or metadata.get("CFBundleExecutable") != "Sway":
+    if metadata.get("CFBundleIdentifier") != identifier or metadata.get("CFBundleExecutable") != "Kinara":
         raise RuntimeError("Unexpected app identity or executable")
     expected = requirement(certificate, identifier)
     run("/usr/bin/codesign", "--verify", "--deep", "--strict", "--all-architectures",
         "-R", "=" + expected, str(bundle))
-    architectures = run("/usr/bin/lipo", "-archs", str(bundle / "Contents/MacOS/Sway")).decode().split()
+    architectures = run("/usr/bin/lipo", "-archs", str(bundle / "Contents/MacOS/Kinara")).decode().split()
     if not architectures or set(architectures) - {"arm64", "x86_64"}:
         raise RuntimeError("Unexpected executable architectures")
     with tempfile.TemporaryDirectory(prefix="sway-public-cert.") as temporary:

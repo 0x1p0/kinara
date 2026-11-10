@@ -170,8 +170,15 @@ struct GestureConfiguration: Equatable {
     /// regions that actually have an action for it.
     var fingerLayers = false
     var alternateRegions: Set<GestureRegion> = []
+    /// Where tap actions live. A touch that starts on one must travel clearly
+    /// further than any tap before it counts as a slide, so a corner tap can
+    /// never nudge the volume.
+    var tapGuard = TapConfiguration()
+    /// Well past the farthest a tap may wander (TapConfiguration.maximumTravel).
+    static let tapGuardDisplacement = 0.06
 
     var maximumFingers: Int { fingerLayers ? 2 : requiredFingers }
+    func guardsTap(x: Double, y: Double) -> Bool { tapGuard.region(x: x, y: y).map(tapGuard.hasSlot) ?? false }
     func isHorizontal(_ region: GestureRegion) -> Bool { region == .bottom || (region.isTop && topHorizontal) }
     var minimumLifetime: Double { strict ? 0.095 : 0.065 }
     var minimumSamples: Int { strict ? 6 : 4 }
@@ -237,6 +244,8 @@ struct EdgeGestureRecognizer {
     private var assembledIDs: Set<Int32>?
     private var assembledCentroid: (x: Double, y: Double)?
     private var smoothedSpeed = 0.0
+    /// The touch began where a tap action lives (see GestureConfiguration.tapGuard).
+    private var guardsTap = false
 
     var isCapturing: Bool { startedAt != nil && !decision.ended && (decision.phase == .gathering || decision.phase == .accepted) }
 
@@ -301,6 +310,7 @@ struct EdgeGestureRecognizer {
             decision = GestureDecision(phase: .gathering, reason: "Checking touch direction and movement…",
                                        x: decision.x, y: decision.y, count: contacts.count)
             decision.region = configuration.region(x: contacts[0].x, y: contacts[0].y)
+            guardsTap = configuration.guardsTap(x: contacts[0].x, y: contacts[0].y)
             firstPositions = Dictionary(uniqueKeysWithValues: contacts.map { ($0.id, $0) })
             previousPositions = firstPositions
             pathLengths = Dictionary(uniqueKeysWithValues: contacts.map { ($0.id, 0) })
@@ -426,7 +436,8 @@ struct EdgeGestureRecognizer {
             reject(horizontal ? "Swipe left or right along this \(decision.region == .bottom ? "bottom" : "top") zone." : "Swipe up or down along this side zone.")
         } else if path > configuration.minimumDisplacement * 2.5 && decision.straightness < 0.45 {
             reject("Movement was mostly jitter or backtracking. Try a steady swipe.")
-        } else if decision.displacement >= configuration.minimumDisplacement &&
+        } else if decision.displacement >= (guardsTap ? max(configuration.minimumDisplacement, GestureConfiguration.tapGuardDisplacement)
+                                                       : configuration.minimumDisplacement) &&
                     decision.straightness >= configuration.requiredStraightness &&
                     perFingerDisplacements.allSatisfy({ abs($0) >= configuration.minimumDisplacement * 0.65 && $0 * netAxis > 0 }) {
             decision.phase = .accepted
@@ -434,8 +445,10 @@ struct EdgeGestureRecognizer {
             decision.justAccepted = true
             // Consume activation movement to avoid a jump on confirmation.
             decision.delta = 0
-        } else if decision.elapsed > configuration.restingDeadline {
-            reject("Contact stayed still or unclear too long. Lift, then swipe deliberately.")
+        } else if decision.elapsed > configuration.restingDeadline + (guardsTap ? 0.5 : 0) {
+            // A slide from a tap zone travels further before it counts, so it gets longer to do it.
+            reject(guardsTap ? "This spot has a tap action. Taps stay taps; slide further to adjust."
+                             : "Contact stayed still or unclear too long. Lift, then swipe deliberately.")
         }
         return decision
     }
@@ -608,6 +621,8 @@ struct EdgeTapRecognizer {
     /// belong to Sway and are withheld from the app under the pointer.
     private(set) var claimsClicksUntil = -Double.infinity
     var isTouching: Bool { started != nil }
+    /// A first tap waiting for its second: where, and when it lifted.
+    var pendingTap: (region: TapRegion, end: Double)? { lastTap }
 
     mutating func keyDown(at timestamp: Double) {
         lastKeyTime = timestamp
@@ -696,6 +711,84 @@ struct EdgeTapRecognizer {
         isSecond = false
         holdFired = false
         if !keepingTap { lastTap = nil }
+    }
+}
+
+/// Whether a disabled event tap may switch itself back on. macOS disables a
+/// tap that answers too slowly, and keeps routing input through it while it's
+/// on. If Accessibility was taken away, or the tap keeps timing out, turning
+/// it back on would hold up every click and key behind it: the whole Mac
+/// would seem frozen. So it resumes only while trusted, and only now and then.
+struct TapRecovery {
+    static let window = 2.0
+    static let maximumResumes = 2
+    private var resumes: [Double] = []
+
+    mutating func mayResume(trusted: Bool, at time: Double) -> Bool {
+        guard trusted, time.isFinite else { return false }
+        resumes.removeAll { time - $0 > Self.window }
+        guard resumes.count < Self.maximumResumes else { return false }
+        resumes.append(time)
+        return true
+    }
+}
+
+/// A finger resting still on a tap zone, to preview what its taps do without
+/// doing them. Only a deliberate rest counts: the zone's finger count, every
+/// finger in the zone, nearly still, and no typing or click since it landed.
+struct TapRestDetector {
+    static let delay = 0.7
+    static let maximumTravel = 0.012
+    enum Change: Equatable { case show(TapRegion), hide }
+
+    private var started: Double?
+    private var region: TapRegion?
+    private var starts: [Int32: GestureContact] = [:]
+    private var invalid = false
+    private var lastKeyTime = -Double.infinity
+    private(set) var showing: TapRegion?
+
+    /// Typing, a click, or a tap that fired: this touch is not a rest.
+    mutating func interrupt(at timestamp: Double? = nil) -> Change? {
+        if let timestamp { lastKeyTime = timestamp }
+        if started != nil { invalid = true }
+        return hide()
+    }
+
+    mutating func process(contacts: [GestureContact], timestamp: Double, configuration: TapConfiguration) -> Change? {
+        guard !contacts.isEmpty, timestamp.isFinite else {
+            started = nil; region = nil; starts.removeAll(); invalid = false
+            return hide()
+        }
+        if started == nil {
+            started = timestamp
+            region = configuration.region(x: contacts[0].x, y: contacts[0].y)
+            invalid = region.map { !configuration.hasSlot($0) } ?? true || timestamp - lastKeyTime < configuration.typingCooldown
+        }
+        guard !invalid, let region, let start = started else { return hide() }
+        for contact in contacts {
+            if let origin = starts[contact.id] {
+                if hypot(contact.x - origin.x, contact.y - origin.y) > Self.maximumTravel { invalid = true; return hide() }
+            } else {
+                guard timestamp - start <= 0.1, configuration.region(x: contact.x, y: contact.y) == region else { invalid = true; return hide() }
+                starts[contact.id] = contact
+            }
+        }
+        guard contacts.count == configuration.requiredFingers(for: region) else {
+            if timestamp - start > 0.1 { invalid = true; return hide() }
+            return nil
+        }
+        if showing == nil, timestamp - start >= Self.delay {
+            showing = region
+            return .show(region)
+        }
+        return nil
+    }
+
+    private mutating func hide() -> Change? {
+        guard showing != nil else { return nil }
+        showing = nil
+        return .hide
     }
 }
 
@@ -847,7 +940,7 @@ final class GestureTelemetry: ObservableObject {
     func monitorStopped() {
         guard isTesting else { return }
         var next = snapshot
-        next.decision = GestureDecision(reason: "Enable Sway to detect gestures.")
+        next.decision = GestureDecision(reason: "Enable Kinara to detect gestures.")
         snapshot = next
     }
 

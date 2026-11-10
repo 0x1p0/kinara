@@ -1,5 +1,5 @@
 #!/bin/bash
-# Draw Sway's app icon into every size the macOS asset catalog references.
+# Draw Kinara's app icon into every size the macOS asset catalog references.
 # With no argument, Design/render-icon.swift renders the 1024 master and the
 # bolder small renditions (16, 32, 64) from geometry; 128-512 are downsampled
 # from the master. Pass a square PNG to package external artwork instead.
@@ -19,7 +19,7 @@ if [[ $# -eq 0 ]]; then
     for size in 16 32 64; do
         swift "$renderer" "$asset_directory/icon_${size}x${size}.png" "$size" >/dev/null
     done
-    sips -z 512 512 "$master" --out "$project_directory/website/assets/sway-icon.png" >/dev/null
+    sips -z 512 512 "$master" --out "$project_directory/website/assets/kinara-icon.png" >/dev/null
     printf 'Rendered AppIcon from geometry: 16, 32, 64 (small renditions), 128, 256, 512, 1024, plus the website icon.\n'
     exit 0
 fi

@@ -92,7 +92,8 @@ final class ControlCenterModel: ObservableObject {
 
     func refreshAccess() {
         guard !preview else { return }
-        assign(\.hasAccess, AXIsProcessTrusted())
+        // Asked fresh: AXIsProcessTrusted() alone can stay yes after access is taken away.
+        assign(\.hasAccess, TrackpadMonitor.accessIsLive())
     }
 
     func refresh() {
@@ -301,6 +302,9 @@ struct MenuBarView: View {
     @ObservedObject private var mixer: MixerModel
     @StateObject private var controls: ControlCenterModel
     @State private var showsMoreOptions = false
+    @StateObject private var moreOptionsReveal: RevealDriver
+    @State private var hoveringMore = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let preview: Bool
     private let previewStandaloneSurface: Bool
     private let previewReduceTransparency: Bool
@@ -313,6 +317,7 @@ struct MenuBarView: View {
         self.previewReduceTransparency = preview && previewReduceTransparency
         self.openSettings = openSettings
         _showsMoreOptions = State(initialValue: preview && previewExpandedOptions)
+        _moreOptionsReveal = StateObject(wrappedValue: RevealDriver(progress: preview && previewExpandedOptions ? 1 : 0))
         _controls = StateObject(wrappedValue: preview ? ControlCenterModel(settings: settings, preview: true) : .shared)
         mixer = preview ? .preview : .shared
     }
@@ -332,15 +337,33 @@ struct MenuBarView: View {
         return "Edges ready"
     }
 
+    /// The options unfold from under the button and the popover's glass grows
+    /// with them, both set on every display frame; closing folds them back.
+    private func setMoreOptions(_ shown: Bool) {
+        showsMoreOptions = shown
+        if reduceMotion { moreOptionsReveal.set(shown ? 1 : 0) }
+        else { moreOptionsReveal.animate(to: shown ? 1 : 0, duration: shown ? 0.42 : 0.34) }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
             HStack(spacing: 10) {
                 SwayLogo(size: 30, dimmed: !settings.isEnabled)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Sway").font(.system(size: 14, weight: .semibold))
+                    Text("Kinara").font(.system(size: 14, weight: .semibold))
                     Text(statusLine).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
+                // More lives up here, beside the switch, so the menu needs no footer of its own.
+                MoreOptionsButton(isExpanded: showsMoreOptions) { setMoreOptions(!showsMoreOptions) }
+                    .frame(width: 24, height: 20)
+                    .foregroundStyle(.secondary)
+                    // A quiet pill behind the dots: a hint on hover, held while open.
+                    .background(Capsule().fill(Color.primary.opacity(showsMoreOptions ? 0.12 : hoveringMore ? 0.06 : 0))
+                        .frame(width: 30, height: 22))
+                    .onHover { hovering in
+                        withAnimation(.easeOut(duration: 0.15)) { hoveringMore = hovering }
+                    }
                 Toggle("Enable trackpad gestures", isOn: Binding(get: { settings.isEnabled }, set: {
                     if preview { settings.isEnabled = $0 } else { session.setEnabled($0) }
                 }))
@@ -365,7 +388,7 @@ struct MenuBarView: View {
             }
 
             if (MixerModel.isSupported || preview) && mixer.showInMenu {
-                Divider()
+                MenuHairline()
                 MixerMenuSection(mixer: mixer)
             }
 
@@ -401,55 +424,64 @@ struct MenuBarView: View {
 
             if updates.updateAvailable, let version = updates.latestVersion, !preview {
                 Button { (NSApp.delegate as? AppDelegate)?.checkForUpdates() } label: {
-                    Label("Sway \(version) available…", systemImage: "arrow.down.circle")
+                    Label("Kinara \(version) available…", systemImage: "arrow.down.circle")
                         .font(.system(size: 11)).frame(maxWidth: .infinity, alignment: .leading)
                 }.buttonStyle(.plain).help("Review and install the signed update")
             }
-            HStack(spacing: 8) {
-                MenuTile(title: "Edge map", icon: "map") { if !preview { EdgeMapHUD.shared.show(autoHide: true) } }
-                if settings.isEnabled {
-                    MenuTile(title: "Pause 15 min", icon: "pause.circle") { if !preview { session.pause(for: 15 * 60) } else { settings.isEnabled = false } }
-                } else {
-                    MenuTile(title: "Resume", icon: "play.circle") { if preview { settings.isEnabled = true } else { session.setEnabled(true) } }
+            // Spacing lives inside this stack, where it can grow with what it separates.
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 8) {
+                    MenuTile(title: "Edge map", icon: "map") { if !preview { EdgeMapHUD.shared.show(autoHide: true) } }
+                    if settings.isEnabled {
+                        MenuTile(title: "Pause 15 min", icon: "pause.circle") { if !preview { session.pause(for: 15 * 60) } else { settings.isEnabled = false } }
+                    } else {
+                        MenuTile(title: "Resume", icon: "play.circle") { if preview { settings.isEnabled = true } else { session.setEnabled(true) } }
+                    }
+                    MenuTile(title: "Settings", icon: "gearshape", action: openSettings)
+                        .keyboardShortcut(",", modifiers: .command)
                 }
-                MenuTile(title: "Settings", icon: "gearshape", action: openSettings)
-                    .keyboardShortcut(",", modifiers: .command)
-            }
-            Divider()
-            HStack {
                 if controls.undoValues != nil {
                     Button { controls.undo() } label: { Label("Undo", systemImage: "arrow.uturn.backward") }
                         .help("Undo your last adjustment").accessibilityLabel("Undo last adjustment")
+                        .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary)
+                        .padding(.top, 15)
                 }
-                Spacer()
-                MoreOptionsButton(isExpanded: showsMoreOptions) { showsMoreOptions.toggle() }
-                    .frame(width: 24, height: 20)
-            }
-            .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary)
-            if showsMoreOptions {
-                VStack(alignment: .leading, spacing: 12) {
-                    Button { if !preview { (NSApp.delegate as? AppDelegate)?.showQuickControls() } } label: {
-                        Label("Open Controls…", systemImage: "macwindow").frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    Button { if !preview { (NSApp.delegate as? AppDelegate)?.checkForUpdates() } } label: {
-                        Label("Software Updates…", systemImage: "arrow.down.circle").frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    Button { if !preview { (NSApp.delegate as? AppDelegate)?.showGettingStarted() } } label: {
-                        Label("Getting Started…", systemImage: "questionmark.circle").frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    HStack {
-                        Text("Pause gestures").foregroundStyle(.secondary)
-                        Spacer()
-                        ForEach([5, 15, 60], id: \.self) { minutes in
-                            Button(minutes == 60 ? "1 hr" : "\(minutes) min") {
-                                if !preview { session.pause(for: TimeInterval(minutes * 60)) }
-                                showsMoreOptions = false
-                            }.buttonStyle(.bordered).controlSize(.small)
+                VStack(alignment: .leading, spacing: 15) {
+                    MenuHairline()
+                    VStack(alignment: .leading, spacing: 12) {
+                        Button { if !preview { (NSApp.delegate as? AppDelegate)?.showQuickControls() } } label: {
+                            Label("Open Controls…", systemImage: "macwindow").frame(maxWidth: .infinity, alignment: .leading)
                         }
-                    }
-                    Divider()
-                    Button("Quit Sway") { if !preview { NSApp.terminate(nil) } }.keyboardShortcut("q")
-                }.font(.system(size: 12)).buttonStyle(.plain)
+                        Button { if !preview { (NSApp.delegate as? AppDelegate)?.checkForUpdates() } } label: {
+                            Label("Software Updates…", systemImage: "arrow.down.circle").frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        Button { if !preview { (NSApp.delegate as? AppDelegate)?.showGettingStarted() } } label: {
+                            Label("Getting Started…", systemImage: "questionmark.circle").frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        Button { if !preview { KinaraLog.revealInFinder() } } label: {
+                            Label("Diagnostic Log…", systemImage: "doc.text.magnifyingglass").frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        HStack {
+                            Text("Pause gestures").foregroundStyle(.secondary)
+                            Spacer()
+                            ForEach([5, 15, 60], id: \.self) { minutes in
+                                Button(minutes == 60 ? "1 hr" : "\(minutes) min") {
+                                    if !preview { session.pause(for: TimeInterval(minutes * 60)) }
+                                    setMoreOptions(false)
+                                }.buttonStyle(.bordered).controlSize(.small)
+                            }
+                        }
+                        MenuHairline()
+                        Button("Quit Kinara") { if !preview { NSApp.terminate(nil) } }.keyboardShortcut(showsMoreOptions ? KeyboardShortcut("q") : nil)
+                    }.font(.system(size: 12)).buttonStyle(.plain)
+                }
+                // Always in place, folded to nothing when closed: a removed view
+                // leaves the layout at once, so closing would snap shut. The
+                // stack's spacing folds with it, so the glass never jumps.
+                .padding(.top, 15)
+                .revealed(by: moreOptionsReveal)
+                .disabled(!showsMoreOptions)
+                .accessibilityHidden(!showsMoreOptions)
             }
         }
         .padding(17)
@@ -457,8 +489,21 @@ struct MenuBarView: View {
         .fixedSize(horizontal: false, vertical: true)
         .modifier(MenuGlassSurface(standalone: previewStandaloneSurface, forceOpaque: previewReduceTransparency,
                                    themeDiffersFromSystem: !preview && themeDiffersFromSystem))
+        // While the popover's glass grows or shrinks to the new height, the
+        // menu stays pinned to the top. Centered, the header would jump up
+        // and slide back down with every change. A zero minimum lets the frame
+        // be shorter than the menu; its ideal height is still the menu's.
+        .frame(minHeight: 0, maxHeight: .infinity, alignment: .top)
         .tint(.primary)
         .preferredColorScheme(settings.resolvedColorScheme)
+    }
+}
+
+/// The menu's separator: a half-point hairline, as in macOS's own menus. A full
+/// Divider reads as a heavy rule on the menu's glass.
+private struct MenuHairline: View {
+    var body: some View {
+        Rectangle().fill(Color.primary.opacity(0.1)).frame(height: 0.5).accessibilityHidden(true)
     }
 }
 
@@ -565,6 +610,7 @@ private struct PopoverMaterial: NSViewRepresentable {
 struct ContentView: View {
     @ObservedObject private var settings: TrackpadSettings
     @ObservedObject private var monitor = TrackpadMonitor.shared
+    @ObservedObject private var ambient = AmbientLight.shared
     // Not observed: touch samples publish up to 30 times a second, and the
     // whole window must not redraw for them. The map and the safe-test panel
     // observe it themselves; this reads only rarely-changing flags.
@@ -580,18 +626,30 @@ struct ContentView: View {
     @State private var showAppPicker = false
     @State private var confirmReset = false
     @State private var presetMessage: String?
+    /// The edge or corner chosen on the map, edited below it.
     @State private var selectedZone = "left"
+    /// The page whose Advanced sheet is open.
+    @State private var advancedPane: SettingsPane?
+    /// Whether the page has scrolled under the title, which then gets its hairline.
+    @State private var scrolled = false
+    @State private var askedForAccess = false
     @State private var editingProfile: ProfileTarget?
     @Namespace private var sidebarSelection
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.controlActiveState) private var activeState
     @State private var transferMessage: String?
     private let preview: Bool
+    /// Renders lay a page's advanced options out under it: a sheet can't be captured.
+    private let previewAdvanced: Bool
 
-    init(initialPane: SettingsPane = .overview, preview: Bool = false, settings: TrackpadSettings = .shared, updates: UpdateChecker = .shared) {
+    init(initialPane: SettingsPane = .home, spot: String = "left", showsAdvanced: Bool = false, preview: Bool = false,
+         settings: TrackpadSettings = .shared, updates: UpdateChecker = .shared) {
         self.preview = preview
+        self.previewAdvanced = preview && showsAdvanced
         self.settings = settings
         self.updates = updates
         _pane = State(initialValue: initialPane)
+        _selectedZone = State(initialValue: spot)
         _controls = StateObject(wrappedValue: preview ? ControlCenterModel(settings: settings, preview: true) : .shared)
         mixer = preview ? .preview : .shared
     }
@@ -611,96 +669,25 @@ struct ContentView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 10) {
-                    SwayLogo(size: 34)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Sway").font(.system(size: 15, weight: .semibold))
-                        Label(status.title, systemImage: status.icon).font(.system(size: 11)).foregroundStyle(.secondary)
-                            .labelStyle(.titleAndIcon)
-                    }
-                    Spacer(minLength: 4)
-                    Toggle("Gestures", isOn: Binding(get: { settings.isEnabled }, set: { value in
-                        if preview { settings.isEnabled = value } else { SwaySession.shared.setEnabled(value) }
-                    })).labelsHidden().toggleStyle(.switch).controlSize(.mini)
-                        .help(settings.isEnabled ? "Pause edge gestures" : "Resume edge gestures")
-                }
-                TextField("Search", text: $search)
-                    .textFieldStyle(.roundedBorder).accessibilityLabel("Find a setting")
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 2) {
-                        ForEach(SettingsPane.groups, id: \.self) { group in
-                            let items = visiblePanes.filter { $0.group == group }
-                            if !items.isEmpty {
-                                if !group.isEmpty {
-                                    Text(group).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
-                                        .padding(.horizontal, 8).padding(.top, 12).padding(.bottom, 4)
-                                }
-                                ForEach(items) { item in sidebarRow(item) }
-                            }
-                        }
-                    }
-                }.scrollIndicators(.never)
-                if visiblePanes.isEmpty { Text("No matching settings").font(.system(size: 12)).foregroundStyle(.secondary) }
-                Button { if !preview { (NSApp.delegate as? AppDelegate)?.showGettingStarted() } } label: {
-                    Label("Getting started", systemImage: "sparkles").font(.system(size: 12))
-                }.buttonStyle(.plain).foregroundStyle(.secondary)
-            }
-            .padding(14).frame(width: 224)
-            .background(Color.primary.opacity(0.03))
+            sidebar
+                .frame(width: 214)
+                .frame(maxHeight: .infinity)
+                .background(SidebarMaterial(preview: preview))
             Divider()
-            VStack(alignment: .leading, spacing: 0) {
-                if visiblePanes.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "magnifyingglass").font(.system(size: 28)).foregroundStyle(.secondary)
-                        Text("No settings found").font(.headline)
-                        Text("Try a word like haptics, paste, corner, or updates.").font(.subheadline).foregroundStyle(.secondary)
-                        Button("Clear search") { search = "" }.buttonStyle(.bordered)
-                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                VStack(alignment: .leading, spacing: 0) {
-                PageTitle(pane.title, subtitle: pane.detail, icon: pane.icon).padding(.horizontal, 28).padding(.top, 24).padding(.bottom, 16)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 22) {
-                        if !controls.hasAccess && [.gestures, .protection, .about].contains(pane) { permissionCard }
-                        if controls.hasAccess && settings.isEnabled && !monitor.isRunning && !preview && pane == .gestures {
-                            VStack(alignment: .leading, spacing: 10) {
-                                Notice(monitor.statusMessage, icon: "exclamationmark.triangle", tint: .primary)
-                                Button("Reconnect trackpad") { monitor.restart() }.buttonStyle(.bordered)
-                            }
-                        }
-                        if let message = controls.message { Notice(message, icon: "exclamationmark.triangle", tint: .primary) }
-                        switch pane {
-                        case .overview: overviewPage
-                        case .gestures: gesturesPage
-                        case .taps: tapsPage
-                        case .profiles: profilesPage
-                        case .protection: protectionPage
-                        case .levels: levelsPage
-                        case .mixer: mixerPage
-                        case .feedback: feedbackPage
-                        case .appearance: appearancePage
-                        case .general: generalPage
-                        case .updates: SettingsSection("Updates") { UpdatePreferencesContent(updates: updates, preview: preview) }
-                        case .about: aboutPage
-                        }
-                    }.padding(.horizontal, 28).padding(.bottom, 28).frame(maxWidth: .infinity, alignment: .leading)
-                }
-                }
-                .id(pane)
-                .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 8)))
-                }
-            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            content
         }
-        .frame(width: 820, height: 660)
+        .frame(minWidth: 820, idealWidth: 820, maxWidth: .infinity, minHeight: 520, idealHeight: 660, maxHeight: .infinity)
+        .background(GroupedBackground())
+        // The sidebar runs up under the window's buttons, as in System Settings.
+        .ignoresSafeArea()
         // One gentle transaction for page changes: the content settles in and
         // the sidebar highlight glides, wherever the change came from.
         .animation(reduceMotion ? .easeInOut(duration: 0.12) : .spring(response: 0.34, dampingFraction: 0.88), value: pane)
-        .background(Color(nsColor: .windowBackgroundColor))
         .preferredColorScheme(settings.resolvedColorScheme)
-        .tint(SwayTheme.accent)
         .onChange(of: pane) { value in
-            if value != .protection { endTesting() }
+            if value != .edges { endTesting() }
+            advancedPane = nil
+            scrolled = false
             updateLiveView(value)
         }
         .onAppear { updateLiveView(pane) }
@@ -712,101 +699,187 @@ struct ContentView: View {
         .onDisappear { endTesting(); if !preview { telemetry.isLiveViewing = false } }
         .sheet(isPresented: $showAppPicker) { AppPickerSheet(excludedApps: $settings.excludedApps) }
         .sheet(item: $editingProfile) { target in ProfileEditor(settings: settings, target: target) }
-        .alert("Reset gesture settings?", isPresented: $confirmReset) {
-            Button("Cancel", role: .cancel) { }
-            Button("Reset gestures", role: .destructive) { settings.resetGestureSettings() }
-        } message: { Text("Restores zone assignments, layers, taps, feel, sensitivity, palm protection, haptics, and limits. Your app profiles, recorded shortcuts, excluded apps, and appearance stay as they are.") }
+    }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // The window's own buttons sit in this strip.
+            Color.clear.frame(height: 52)
+            SearchField(text: $search).padding(.horizontal, 10)
+            HStack(spacing: 10) {
+                SwayLogo(size: 30)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Kinara").font(.system(size: 13, weight: .semibold))
+                    Text(status.title).font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 4)
+                Toggle("Gestures", isOn: Binding(get: { settings.isEnabled }, set: { value in
+                    if preview { settings.isEnabled = value } else { SwaySession.shared.setEnabled(value) }
+                })).labelsHidden().toggleStyle(.switch).controlSize(.mini)
+                    .help(settings.isEnabled ? "Pause edge gestures" : "Resume edge gestures")
+            }
+            .padding(.horizontal, 14).padding(.top, 16).padding(.bottom, 12)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(visiblePanes) { item in sidebarRow(item) }
+                }.padding(.horizontal, 10)
+            }.scrollIndicators(.never)
+        }
     }
 
     private func sidebarRow(_ item: SettingsPane) -> some View {
-        Button { pane = item } label: {
-            HStack(spacing: 9) {
-                Image(systemName: item.icon).font(.system(size: 11, weight: .semibold))
-                    .frame(width: 22, height: 22)
-                    .foregroundStyle(pane == item ? Color(nsColor: .windowBackgroundColor) : .primary)
-                    .background(pane == item ? Color.primary : Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                Text(item.title).font(.system(size: 13, weight: pane == item ? .semibold : .regular))
+        let selected = pane == item
+        let key = activeState != .inactive
+        return Button { pane = item } label: {
+            HStack(spacing: 8) {
+                PaneIcon(pane: item)
+                Text(item.title).font(.system(size: 13))
+                    .foregroundStyle(selected && key ? Color.white : Color.primary)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 6).padding(.vertical, 5)
             .background {
-                if pane == item {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.08))
+                if selected {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(key ? Color.accentColor : Color.primary.opacity(0.1))
                         .matchedGeometryEffect(id: "sidebar", in: sidebarSelection)
                 }
             }
-            .contentShape(RoundedRectangle(cornerRadius: 8))
-        }.buttonStyle(.plain).accessibilityAddTraits(pane == item ? [.isSelected] : [])
+            .contentShape(RoundedRectangle(cornerRadius: 7))
+        }.buttonStyle(.plain).accessibilityAddTraits(selected ? [.isSelected] : [])
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(visiblePanes.isEmpty ? "Search" : pane.title)
+                .font(.system(size: 15, weight: .semibold))
+                .frame(height: 52).padding(.horizontal, 24)
+            Divider().opacity(scrolled ? 1 : 0)
+            if visiblePanes.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").font(.system(size: 26, weight: .light)).foregroundStyle(.secondary)
+                    Text("No Results for “\(search)”").font(.system(size: 15, weight: .semibold))
+                    Text("Try haptics, paste, corner or updates.").font(.system(size: 12)).foregroundStyle(.secondary)
+                }.frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        notices
+                        page
+                    }
+                    .padding(.horizontal, 24).padding(.top, 6).padding(.bottom, 28)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(GeometryReader { geo in
+                        Color.clear.preference(key: ScrollOffsetKey.self, value: geo.frame(in: .named("settingsPage")).minY)
+                    })
+                }
+                .coordinateSpace(name: "settingsPage")
+                .onPreferenceChange(ScrollOffsetKey.self) { offset in
+                    let now = offset < -1
+                    if now != scrolled { scrolled = now }
+                }
+                .id(pane)
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 6)))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .sheet(item: $advancedPane) { item in
+            AdvancedSheet(title: item.title) { advancedSections(item) }
+                .preferredColorScheme(settings.resolvedColorScheme)
+                .onDisappear { showsSafeTest = false; endTesting() }
+        }
+    }
+
+    @ViewBuilder private var notices: some View {
+        if !controls.hasAccess && [.edges, .general].contains(pane) { permissionCard }
+        if controls.hasAccess && settings.isEnabled && !monitor.isRunning && !preview && pane == .edges {
+            HStack(spacing: 12) {
+                Notice(monitor.statusMessage, icon: "exclamationmark.triangle", tint: .primary)
+                Button("Reconnect") { monitor.restart() }
+            }
+        }
+        if let message = controls.message { Notice(message, icon: "exclamationmark.triangle", tint: .primary) }
+    }
+
+    @ViewBuilder private var page: some View {
+        switch pane {
+        case .home: homePage
+        case .edges: edgesPage
+        case .feel: feelPage
+        case .sound: soundPage
+        case .apps: appsPage
+        case .general: generalPage
+        }
+        if pane.hasAdvanced {
+            HStack {
+                Spacer()
+                Button("Advanced…") { advancedPane = pane }
+            }
+        }
+        if previewAdvanced { advancedSections(pane) }
+    }
+
+    @ViewBuilder private func advancedSections(_ item: SettingsPane) -> some View {
+        switch item {
+        case .edges: edgesAdvanced
+        case .feel: feelAdvanced
+        case .sound: soundAdvanced
+        case .general: generalAdvanced
+        case .home, .apps: EmptyView()
+        }
     }
 
     private var permissionCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Allow trackpad gestures", systemImage: "lock.shield")
-                .font(.system(size: 15, weight: .semibold))
-            Text("Enable Sway in System Settings → Privacy & Security → Accessibility. Menu-bar sliders work without this permission.")
-                .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            HStack {
-                Button("Open Accessibility Settings", action: openAccessibility).buttonStyle(.bordered)
-                Button("Check again") { controls.refresh(); if controls.hasAccess { monitor.restart() } }.buttonStyle(.bordered)
-            }
-            .controlSize(.regular)
-            AccessibilityRecoveryHelp()
-        }
-        .padding(14).background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
-    }
-
-
-    // MARK: Overview
-
-    private var overviewPage: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            HStack(alignment: .center, spacing: 16) {
-                Image(systemName: status.icon).font(.system(size: 26, weight: .medium))
-                    .frame(width: 54, height: 54)
-                    .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(controls.hasAccess ? (settings.isEnabled ? "Sway is ready" : "Gestures are paused") : "One step left")
-                        .font(.system(size: 18, weight: .semibold))
-                    Text(controls.hasAccess ? (settings.isEnabled ? (status.detail == "Edges are ready" ? "Swipe an edge, or double-tap a corner." : "\(status.detail) is active for the app in front.") : "Your sliders still work. Turn gestures back on anytime.")
-                                            : "Allow Accessibility so Sway can feel your edge swipes. Touch data stays on your Mac.")
-                        .font(.system(size: 12.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                StatusGlyph(icon: "lock.fill", color: .orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Allow Accessibility").font(.system(size: 13, weight: .semibold))
+                    Text(askedForAccess ? "Switch on Kinara in System Settings." : "So Kinara can feel your edges. Sliders work without it.")
+                        .font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 8)
-                if !controls.hasAccess {
-                    Button("Allow…", action: openAccessibility).buttonStyle(MonochromePrimaryButtonStyle())
-                } else if !settings.isEnabled {
-                    Button("Resume") { if !preview { SwaySession.shared.setEnabled(true) } else { settings.isEnabled = true } }
-                        .buttonStyle(MonochromePrimaryButtonStyle())
+                if askedForAccess {
+                    Button("Check Again") { controls.refresh(); if controls.hasAccess { monitor.restart() } }
                 }
-            }.swayCard()
+                Button("Allow…", action: askForAccessibility).buttonStyle(.borderedProminent)
+            }
+            if askedForAccess {
+                Button("No prompt? Open Accessibility Settings", action: openAccessibilitySettings)
+                    .buttonStyle(.link).font(.system(size: 11.5))
+            }
+            AccessibilityRecoveryHelp()
+        }
+        .padding(14).modifier(CardSurface())
+    }
 
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("Your trackpad").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
-                    Spacer()
-                    Text("Click a zone to change it").font(.system(size: 11)).foregroundStyle(.secondary)
-                }.padding(.horizontal, 4)
+    // MARK: Home
+
+    private var homePage: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            statusCard
+            VStack(spacing: 12) {
                 TrackpadMap(settings: settings, selectedZone: nil, telemetry: telemetry, showsTouches: telemetry.isLiveViewing,
                             onSelect: { zone in
-                                if ["left", "right"].contains(zone) { selectedZone = zone }
-                                pane = zone == "bottom" || zone.hasPrefix("top") || ["left", "right"].contains(zone) ? .gestures : .taps
+                                selectSpot(zone)
+                                pane = .edges
                             }, showsCorners: true)
-                    .frame(height: 190)
-            }
-
+                    .frame(width: 400, height: 240)
+                Text("Click an edge or corner to change it").font(.system(size: 11.5)).foregroundStyle(.secondary)
+            }.frame(maxWidth: .infinity)
             VStack(alignment: .leading, spacing: 8) {
-                Text("Quick settings").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).padding(.leading, 4)
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    QuickTile(title: "Haptics", value: settings.hapticFeedback ? settings.hapticStyle.label : "Off", icon: "waveform.path", isOn: settings.hapticFeedback) {
+                Text("Quick settings").font(.system(size: 13, weight: .semibold)).padding(.leading, 2)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
+                    QuickTile(title: "Haptics", value: settings.hapticFeedback ? settings.hapticStyle.label : "Off", icon: "waveform", isOn: settings.hapticFeedback) {
                         settings.hapticFeedback.toggle()
                     }
                     QuickTile(title: "Fine control", value: settings.precisionEnabled ? "On" : "Off", icon: "scope", isOn: settings.precisionEnabled) {
                         settings.precisionEnabled.toggle()
                     }
-                    QuickTile(title: "Notches", value: settings.notchesEnabled ? "At 50%" : "Off", icon: "dial.medium", isOn: settings.notchesEnabled) {
-                        settings.notchesEnabled.toggle()
+                    QuickTile(title: "50% notch", value: settings.midpointNotch ? "On" : "Off", icon: "dial.medium", isOn: settings.midpointNotch) {
+                        settings.midpointNotch.toggle()
                     }
-                    QuickTile(title: "Indicator", value: settings.osdStyle == "edge" ? "Follows finger" : settings.osdStyle == "off" ? "Off" : "Pill", icon: "rectangle.portrait.on.rectangle.portrait", isOn: settings.osdStyle != "off") {
+                    QuickTile(title: "Indicator", value: settings.osdStyle == "edge" ? "Follows finger" : settings.osdStyle == "off" ? "Off" : "Pill", icon: "capsule.portrait", isOn: settings.osdStyle != "off") {
                         settings.osdStyle = settings.osdStyle == "edge" ? "horizontal" : "edge"
                     }
                     QuickTile(title: "Speed curve", value: settings.accelerationEnabled ? "On" : "Off", icon: "gauge.with.dots.needle.67percent", isOn: settings.accelerationEnabled) {
@@ -817,44 +890,40 @@ struct ContentView: View {
                     }
                 }
             }
-
-            let ideas = suggestions
-            if !ideas.isEmpty {
-                SettingsSection("Try next") {
-                    ForEach(Array(ideas.enumerated()), id: \.offset) { index, idea in
-                        HStack(spacing: 12) {
-                            Image(systemName: idea.icon).font(.system(size: 14)).frame(width: 30, height: 30)
-                                .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(idea.title).font(.system(size: 13.5, weight: .medium))
-                                Text(idea.detail).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                            }
-                            Spacer(minLength: 8)
-                            Button("Set up") { pane = idea.pane }.buttonStyle(.bordered).controlSize(.small)
-                        }.padding(.horizontal, 16).padding(.vertical, 11)
-                        if index < ideas.count - 1 { Divider().padding(.leading, 58) }
-                    }
-                }
-            }
         }
     }
 
-    /// Next steps that match what isn't set up yet, never more than three.
-    private var suggestions: [(title: String, detail: String, icon: String, pane: SettingsPane)] {
-        var ideas: [(String, String, String, SettingsPane)] = []
-        if !EdgeSlot.allTaps.contains(where: { settings.slotIsAssigned($0) }) {
-            ideas.append(("Double-tap a corner to paste", "Corners make great buttons: paste, Mission Control, a Shortcut.", "hand.tap", .taps))
+    private var statusCard: some View {
+        HStack(spacing: 14) {
+            StatusGlyph(icon: !controls.hasAccess ? "lock.fill" : settings.isEnabled ? "checkmark" : "pause.fill",
+                        color: !controls.hasAccess ? .orange : settings.isEnabled ? .green : .gray, size: 40)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(controls.hasAccess ? (settings.isEnabled ? "Kinara is ready" : "Gestures are paused") : "One step left")
+                    .font(.system(size: 15, weight: .semibold))
+                Text(controls.hasAccess
+                     ? (settings.isEnabled ? (status.detail == "Edges are ready" ? "Slide along an edge, or double-tap a corner." : "\(status.detail) is on for the app in front.")
+                                           : "Your sliders still work. Turn gestures back on anytime.")
+                     : "Allow Accessibility so Kinara can feel your edges. Touch data stays on your Mac.")
+                    .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                // As in the guide: macOS's own prompt, then a way on if it doesn't come up.
+                if !controls.hasAccess && askedForAccess {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Switch on Kinara in System Settings.").font(.system(size: 12)).foregroundStyle(.secondary)
+                    }.padding(.top, 4)
+                    Button("No prompt? Open Accessibility Settings", action: openAccessibilitySettings)
+                        .buttonStyle(.link).font(.system(size: 12))
+                }
+            }
+            Spacer(minLength: 8)
+            if !controls.hasAccess {
+                Button("Allow…", action: askForAccessibility).buttonStyle(.borderedProminent).controlSize(.large)
+            } else if !settings.isEnabled {
+                Button("Resume") { if !preview { SwaySession.shared.setEnabled(true) } else { settings.isEnabled = true } }
+                    .buttonStyle(.borderedProminent).controlSize(.large)
+            }
         }
-        if settings.appProfiles.isEmpty {
-            ideas.append(("Give an app its own edges", "Switch tabs in your browser, scrub in your editor.", "square.stack", .profiles))
-        }
-        if !EdgeSlot.sides.contains(where: { settings.slotIsAssigned(EdgeSlot.option($0)) }) {
-            ideas.append(("Hold ⌥ for a second action", "Each side edge can do two things.", "option", .gestures))
-        }
-        if settings.cheatSheetHotkey.isEmpty {
-            ideas.append(("Peek at your edges", "Hold a shortcut to see what every edge does in the app you’re using.", "map", .general))
-        }
-        return Array(ideas.prefix(3)).map { (title: $0.0, detail: $0.1, icon: $0.2, pane: $0.3) }
+        .padding(16).modifier(CardSurface())
     }
 
     private var everydayBinding: (String) -> Binding<EdgeBinding> {
@@ -868,150 +937,474 @@ struct ContentView: View {
         }
     }
 
-    private var gesturesPage: some View {
-        Group {
-            SettingsCard {
-                SettingRow("Preset", detail: presetMessage ?? "Choose a starting point, then fine-tune.") {
-                    Menu("Choose…") {
-                        ForEach(GesturePreset.allCases) { preset in
-                            Button(preset.title) {
-                                settings.applyGesturePreset(preset)
-                                presetMessage = "\(preset.title) applied."
-                            }
-                        }
-                    }.frame(width: 145)
-                }
-                Divider()
-                SettingRow("Finger count", detail: "Use the same number throughout a swipe.") {
-                    Picker("Finger count", selection: $settings.minimumFingers) {
+    // MARK: Edges & corners
+
+    /// A spot chosen on the map is edited right below it. The top edge's two
+    /// halves are one spot.
+    private func selectSpot(_ zone: String) {
+        let spot = zone.hasPrefix("top") && !zone.hasSuffix("Corner") ? "top" : zone
+        withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.9)) { selectedZone = spot }
+    }
+
+    /// One trackpad, one inspector: click a spot, and everything it does is below it.
+    private var edgesPage: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            VStack(spacing: 14) {
+                TrackpadMap(settings: settings, selectedZone: selectedZone, telemetry: telemetry,
+                            showsTouches: telemetry.isTesting || telemetry.isLiveViewing, onSelect: { selectSpot($0) }, showsCorners: true)
+                    .frame(width: 400, height: 240)
+                HStack(spacing: 8) {
+                    Text("Slide with").font(.system(size: 12)).foregroundStyle(.secondary)
+                    Picker("Slide with", selection: $settings.minimumFingers) {
                         Text("1 finger").tag(1); Text("2 fingers").tag(2)
-                    }.pickerStyle(.segmented).fixedSize()
+                    }.pickerStyle(.segmented).labelsHidden().fixedSize()
                 }
                 .onChange(of: settings.minimumFingers) { value in
                     if value != 1 { settings.topEdgeEnabled = false; settings.bottomEdgeEnabled = false }
                 }
-            }
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Trackpad edges").font(.system(size: 13, weight: .semibold))
-                    Spacer()
-                    Text(telemetry.isLiveViewing ? "Live: touch your trackpad to see it here" : "Start inside an edge to adjust")
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
+            }.frame(maxWidth: .infinity)
+            spotEditor
+        }
+    }
+
+    /// What the chosen spot does: an edge's slide and taps, or a corner's taps.
+    private var spotEditor: some View {
+        let spot = selectedZone
+        return SettingsSection("") {
+            HStack(spacing: 12) {
+                SpotGlyph(spot: spot)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(EdgeSlot.title(spot)).font(.system(size: 13, weight: .semibold))
+                    Text(spotHint(spot)).font(.system(size: 11)).foregroundStyle(.secondary)
                 }
-                TrackpadMap(settings: settings, selectedZone: selectedZone, telemetry: telemetry,
-                            showsTouches: telemetry.isTesting || telemetry.isLiveViewing, onSelect: { selectedZone = $0 })
-                    .frame(height: 118)
-                SettingsCard {
-                    ZoneEditor(title: "Left edge", slot: "left", settings: settings, width: $settings.leftZoneWidth, selected: selectedZone == "left")
-                    Divider()
-                    ZoneEditor(title: "Right edge", slot: "right", settings: settings, width: $settings.rightZoneWidth, selected: selectedZone == "right")
+                Spacer(minLength: 0)
+            }.padding(12)
+            RowDivider()
+            switch spot {
+            case "left", "right":
+                SlotEditor(title: "Slide", binding: everydayBinding(spot), sharedFallback: true)
+                RowDivider()
+                tapRegionEditors(spot)
+                RowDivider()
+                EdgeWidthSlider(title: "Width", value: spot == "left" ? $settings.leftZoneWidth : $settings.rightZoneWidth,
+                                range: TrackpadSettings.sideZoneWidthRange)
+            case "top", "bottom":
+                extraEdgeEditor(top: spot == "top")
+            default:
+                tapRegionEditors(spot)
+                RowDivider()
+                LabeledSlider("Size", value: $settings.tapCornerSize, range: TrackpadSettings.cornerSizeRange,
+                              display: "\(Int((settings.tapCornerSize * 100).rounded()))%")
+            }
+        }
+        .id(spot)
+        .transition(.opacity)
+    }
+
+    private func spotHint(_ spot: String) -> String {
+        switch spot {
+        case "left", "right": return "Slide up or down along the \(spot) side."
+        case "top": return settings.topEdgeSwipeDirection == "horizontal" ? "Slide left or right along the top." : "Slide up or down at the top."
+        case "bottom": return "Slide left or right along the bottom."
+        default: return "Double-tap, or tap and hold, in this corner."
+        }
+    }
+
+    @ViewBuilder private func extraEdgeEditor(top: Bool) -> some View {
+        let on = top ? settings.topEdgeEnabled : settings.bottomEdgeEnabled
+        ToggleRow(top ? "Use the top edge" : "Use the bottom edge", detail: on ? nil : "Takes one finger.",
+                  value: Binding(get: { on }, set: { value in
+                      if value { settings.minimumFingers = 1 }
+                      if top { settings.topEdgeEnabled = value } else { settings.bottomEdgeEnabled = value }
+                  }))
+        if on {
+            RowDivider()
+            if top {
+                SettingRow("Slide") {
+                    Picker("Top slide direction", selection: $settings.topEdgeSwipeDirection) {
+                        Text("Left and right").tag("horizontal"); Text("Up and down").tag("vertical")
+                    }.pickerStyle(.segmented).fixedSize()
                 }
-                Text("Choose from \(ZoneAction.allCases.count - 1) actions on any edge. Direction notes use Up/Down; horizontal edges use Right/Left. Reverse swipe direction reverses both.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                RowDivider()
+                if settings.topEdgeSwipeDirection == "horizontal" {
+                    SlotEditor(title: "Left half", binding: everydayBinding("topLeft"))
+                    RowDivider()
+                    SlotEditor(title: "Right half", binding: everydayBinding("topRight"))
+                } else {
+                    SlotEditor(title: "Slide action", binding: everydayBinding("top"))
+                }
+                RowDivider()
+                EdgeWidthSlider(title: "Height", value: $settings.topEdgeHeight, range: TrackpadSettings.topEdgeHeightRange)
+            } else {
+                SlotEditor(title: "Slide", binding: everydayBinding("bottom"))
+                RowDivider()
+                EdgeWidthSlider(title: "Height", value: $settings.bottomEdgeHeight, range: TrackpadSettings.topEdgeHeightRange)
             }
-            if usesSharedShortcuts {
-                SettingsSection("Shared custom shortcuts") {
-                    SettingsCard {
-                        HotkeyRecorder(hotkey: $settings.swipeUpShortcut, title: "Up / right swipe", detail: "Sent once after an intentional swipe.", showsRegistrationError: false)
-                        Divider()
-                        HotkeyRecorder(hotkey: $settings.swipeDownShortcut, title: "Down / left swipe", detail: "Sent once after an intentional swipe.", showsRegistrationError: false)
-                    }
-                    Text("Edges set to Custom shortcuts use this pair until you record a pair for that edge. Shortcuts follow the frontmost app and are not globally registered hotkeys. Avoid destructive commands.")
-                        .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            RowDivider()
+            tapRegionEditors(top ? "top" : "bottom")
+        }
+    }
+
+    private var edgesAdvanced: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            SettingsSection("Presets", footer: presetMessage) {
+                SettingRow("Start from a preset") {
+                    Menu("Choose…") {
+                        ForEach(GesturePreset.allCases) { preset in
+                            Button(preset.title) {
+                                settings.applyGesturePreset(preset)
+                                presetMessage = "\(preset.title) applied. You can change any edge after."
+                            }
+                        }
+                    }.fixedSize()
                 }
             }
-            SettingsSection("Feel") {
-                ToggleRow("Fine control", detail: "While swiping, slide inward from the edge to adjust in small steps, like scrubbing a video. A soft tap tells you it’s on.", value: $settings.precisionEnabled)
-                Divider()
-                ToggleRow("Speed-sensitive levels", detail: "Slow swipes make small changes; a quick flick covers more of the range.", value: $settings.accelerationEnabled)
-                Divider()
-                LabeledSlider("Sensitivity", detail: "How quickly levels change or repeatable actions step.", value: $settings.sensitivity, range: 0.3...3, display: String(format: "%.1f×", settings.sensitivity))
-                Divider()
-                ToggleRow("Reverse swipe direction", detail: settings.invertScrollDirection ? "Down increases. Up decreases." : "Up increases. Down decreases.", value: $settings.invertScrollDirection)
-                Divider()
-                ToggleRow("Hold pointer while adjusting", detail: "Only during a confirmed one-finger gesture.", value: $settings.cursorFreezeOnOneFinger)
-                    .disabled(settings.minimumFingers != 1 && !EdgeSlot.sides.contains { settings.slotIsAssigned(EdgeSlot.alternate($0)) })
+            SettingsSection("More edges") {
+                ToggleRow("Top edge", detail: "Takes one finger.", value: Binding(get: { settings.topEdgeEnabled }, set: { on in
+                    if on { settings.minimumFingers = 1 }
+                    settings.topEdgeEnabled = on
+                    if on { selectSpot("top") }
+                }))
+                RowDivider()
+                ToggleRow("Bottom edge", detail: "Takes one finger. Leave it off if your thumb rests there.", value: Binding(get: { settings.bottomEdgeEnabled }, set: { on in
+                    if on { settings.minimumFingers = 1 }
+                    settings.bottomEdgeEnabled = on
+                    if on { selectSpot("bottom") }
+                }))
             }
-            SettingsSection("Layers") {
-                Text("Give each side edge more actions. Hold ⌥ while you swipe, or use \(otherFingerCount) instead of \(settings.minimumFingers == 1 ? "1" : "2"). Layers you leave Off change nothing.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(14)
-                Divider()
-                SlotEditor(title: "Left edge + ⌥", binding: everydayBinding(EdgeSlot.option("left")))
-                Divider()
-                SlotEditor(title: "Right edge + ⌥", binding: everydayBinding(EdgeSlot.option("right")))
-                Divider()
-                SlotEditor(title: "Left edge, \(otherFingerCount)", binding: everydayBinding(EdgeSlot.alternate("left")),
-                           detail: settings.minimumFingers == 2 ? "One finger that starts in this edge and moves along it adjusts instead of pointing." : nil)
-                Divider()
-                SlotEditor(title: "Right edge, \(otherFingerCount)", binding: everydayBinding(EdgeSlot.alternate("right")))
+            SettingsSection("Second actions", footer: "Hold ⌥ while you slide, or slide with \(otherFingerCount). Off changes nothing.") {
+                SlotEditor(title: "Left edge with ⌥", binding: everydayBinding(EdgeSlot.option("left")))
+                RowDivider()
+                SlotEditor(title: "Right edge with ⌥", binding: everydayBinding(EdgeSlot.option("right")))
+                RowDivider()
+                SlotEditor(title: "Left edge with \(otherFingerCount)", binding: everydayBinding(EdgeSlot.alternate("left")))
+                RowDivider()
+                SlotEditor(title: "Right edge with \(otherFingerCount)", binding: everydayBinding(EdgeSlot.alternate("right")))
             }
-            SettingsCard {
-                ToggleRow("Top edge gestures", detail: "One finger; side edges remain available.", value: Binding(get: { settings.topEdgeEnabled }, set: { value in if value { settings.minimumFingers = 1 }; settings.topEdgeEnabled = value }))
-                if settings.topEdgeEnabled {
-                    Divider()
-                    SettingRow("Swipe direction") {
-                        Picker("Top swipe direction", selection: $settings.topEdgeSwipeDirection) {
-                            Text("Horizontal").tag("horizontal"); Text("Vertical").tag("vertical")
+            if settings.minimumFingers == 2 {
+                SettingsSection("Corner taps") {
+                    SettingRow("Tap corners with") {
+                        Picker("Fingers for corner taps", selection: $settings.cornerTapFingers) {
+                            Text("2 fingers").tag(0); Text("1 finger").tag(1)
                         }.pickerStyle(.segmented).fixedSize()
                     }
-                    if settings.topEdgeSwipeDirection == "horizontal" {
-                        SlotEditor(title: "Top left", binding: everydayBinding("topLeft"))
-                        SlotEditor(title: "Top right", binding: everydayBinding("topRight"))
-                    } else {
-                        SlotEditor(title: "Top edge action", binding: everydayBinding("top"))
-                    }
-                    EdgeWidthSlider(title: "Top height", value: $settings.topEdgeHeight, range: TrackpadSettings.topEdgeHeightRange)
-                        .padding(14)
                 }
             }
-            SettingsCard {
-                ToggleRow("Bottom edge gestures", detail: "One finger, swiping left or right along the bottom. Leave it off if you rest your thumb there.", value: Binding(get: { settings.bottomEdgeEnabled }, set: { value in if value { settings.minimumFingers = 1 }; settings.bottomEdgeEnabled = value }))
-                if settings.bottomEdgeEnabled {
-                    Divider()
-                    SlotEditor(title: "Bottom edge action", binding: everydayBinding("bottom"))
-                    EdgeWidthSlider(title: "Bottom height", value: $settings.bottomEdgeHeight, range: TrackpadSettings.topEdgeHeightRange)
-                        .padding(14)
+            if usesSharedShortcuts {
+                SettingsSection("Custom shortcuts", footer: "Used by edges set to Custom shortcut until you record keys there.") {
+                    HotkeyRecorder(hotkey: $settings.swipeUpShortcut, title: "Slide up or right", detail: "Sent once per slide.", showsRegistrationError: false)
+                    RowDivider()
+                    HotkeyRecorder(hotkey: $settings.swipeDownShortcut, title: "Slide down or left", detail: "Sent once per slide.", showsRegistrationError: false)
+                }
+            }
+            SettingsSection("Palm protection", footer: "Palms are always ignored, typing or not. Where a spot has a tap action, tap-to-click there belongs to Kinara; pressing the trackpad still clicks.") {
+                SettingRow("Checks") {
+                    Picker("Palm protection", selection: $settings.palmRejectionMode) {
+                        Text("Balanced").tag("balanced"); Text("Strict").tag("strict")
+                    }.pickerStyle(.segmented).fixedSize()
+                }
+                RowDivider()
+                LabeledSlider("Pause after typing", value: $settings.typingCooldown, range: 0.2...1, display: String(format: "%.2f s", settings.typingCooldown))
+                RowDivider()
+                LabeledSlider("Start distance", value: $settings.activationThreshold, range: 0...12,
+                              display: String(format: "%.1f%%", max(settings.palmRejectionMode == "strict" ? 1.4 : 0.8, settings.activationThreshold / 5 * (settings.palmRejectionMode == "strict" ? 1.3 : 1))))
+            }
+            SettingsSection("Test safely") {
+                DisclosureGroup("Try gestures without running them", isExpanded: $showsSafeTest) {
+                    SafeTestPanel(settings: settings, controls: controls, preview: preview, endTesting: endTesting).padding(.top, 12)
+                }
+                .font(.system(size: 13)).padding(.horizontal, 12).padding(.vertical, 10)
+            }
+        }
+    }
+
+    // MARK: Feel
+
+    private var feelPage: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            SettingsSection("Haptics") {
+                ToggleRow("Haptic feedback", value: $settings.hapticFeedback)
+                if settings.hapticFeedback {
+                    RowDivider()
+                    SettingRow("Strength") {
+                        HStack(spacing: 8) {
+                            Picker("Haptic strength", selection: $settings.hapticStyle) {
+                                ForEach(HapticStyle.allCases) { style in Text(style.label).tag(style) }
+                            }.pickerStyle(.menu).fixedSize()
+                            Button("Try") { if !preview, !telemetry.isTesting { HapticOutput.shared.play(settings.hapticStyle) } }
+                                .disabled(telemetry.isTesting)
+                                .help("Rest a finger on the trackpad, then click Try.")
+                        }
+                    }
+                }
+            }
+            SettingsSection("On screen") {
+                SettingRow("Indicator") {
+                    Picker("Indicator style", selection: $settings.osdStyle) {
+                        Text("Pill").tag("horizontal"); Text("Vertical").tag("vertical"); Text("Follows finger").tag("edge"); Text("Off").tag("off")
+                    }.pickerStyle(.menu).fixedSize()
+                }
+                RowDivider()
+                SettingRow("Tap results") {
+                    Picker("Tap feedback", selection: $settings.cornerEffects) {
+                        Text("In the corner").tag(true); Text("In the indicator").tag(false)
+                    }.pickerStyle(.menu).fixedSize()
+                }
+                RowDivider()
+                ToggleRow("Edge light", detail: "A soft glow follows your finger along the screen’s edge.", value: $settings.edgeLight)
+                RowDivider()
+                SettingRow("Light colour", detail: "For the edge light, the corner light and the ambient light.") {
+                    EdgeLightSwatches(selection: $settings.edgeLightColor)
+                }
+                RowDivider()
+                SettingRow("Ambient light", detail: "The light laps your screen’s edges until you press a key or click. Put it on a corner double-tap in Edges & corners.") {
+                    Button(ambient.isRunning ? "Stop" : "Start") { if !preview { AmbientLight.shared.toggle() } }
+                }
+            }
+            SettingsSection("Levels") {
+                ToggleRow("Fine control", detail: "Slide inward from the edge for small steps.", value: $settings.precisionEnabled)
+                RowDivider()
+                ToggleRow("Speed curve", detail: "Slow slides make small changes; a flick covers more.", value: $settings.accelerationEnabled)
+                RowDivider()
+                ToggleRow("Notch at 50%", value: $settings.midpointNotch)
+                RowDivider()
+                ToggleRow("Reverse direction", value: $settings.invertScrollDirection)
+            }
+        }
+    }
+
+    private var feelAdvanced: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            SettingsSection("Slides") {
+                LabeledSlider("Sensitivity", value: $settings.sensitivity, range: 0.3...3, display: String(format: "%.1f×", settings.sensitivity))
+                RowDivider()
+                ToggleRow("Hold the pointer while sliding", value: $settings.cursorFreezeOnOneFinger)
+                    .disabled(settings.minimumFingers != 1 && !EdgeSlot.sides.contains { settings.slotIsAssigned(EdgeSlot.alternate($0)) })
+            }
+            if settings.hapticFeedback {
+                SettingsSection("Haptics") {
+                    SettingRow("Steps") {
+                        Picker("Haptic level spacing", selection: $settings.hapticSpacing) {
+                            ForEach(HapticSpacing.allCases) { spacing in Text(spacing.label).tag(spacing) }
+                        }.pickerStyle(.segmented).fixedSize()
+                    }
+                    RowDivider()
+                    ToggleRow("Tap when a slide starts", value: $settings.hapticOnStart)
+                }
+            }
+            SettingsSection("Indicator") {
+                if settings.osdStyle == "horizontal" {
+                    LabeledSlider("Width", value: $settings.osdHorizontalWidth, range: 160...320, display: "\(Int(settings.osdHorizontalWidth)) pt")
+                    RowDivider()
+                } else if settings.osdStyle == "vertical" {
+                    SettingRow("Position") {
+                        Picker("Indicator position", selection: $settings.osdPosition) {
+                            ForEach(OSDPosition.allCases) { item in Text(item.label).tag(item) }
+                        }.pickerStyle(.menu).fixedSize()
+                    }
+                    RowDivider()
+                }
+                if settings.osdStyle != "off" {
+                    SettingRow("See it as it looks now") {
+                        Button("Preview") { if !preview { OSDOverlay.shared.show(type: .volume, value: Float(controls.volume)) } }
+                    }
+                    RowDivider()
+                }
+                ToggleRow("Now Playing card", detail: "Artwork and title when you skip or pause.", value: $settings.nowPlayingHUD)
+                RowDivider()
+                SettingRow("Volume click") {
+                    Picker("Volume feedback sound", selection: $settings.volumeFeedbackSound) {
+                        Text("Like macOS").tag("system"); Text("On").tag("on"); Text("Off").tag("off")
+                    }.pickerStyle(.segmented).fixedSize()
                 }
             }
         }
     }
 
-    // MARK: Taps & corners
+    // MARK: Sound & display
 
-    private var tapsPage: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("Tap twice quickly for a double-tap. Tap once, then touch again and hold still for tap-and-hold. Palms are ignored, and both start with a short, still tap, so a resting hand never triggers them. Edge taps use \(settings.minimumFingers == 1 ? "one finger" : "two fingers"), like your swipes\(settings.minimumFingers == 2 && settings.cornerTapFingers == 1 ? "; corners use one finger" : "").")
-                .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            TrackpadMap(settings: settings, selectedZone: nil, telemetry: telemetry,
-                        showsTouches: telemetry.isLiveViewing, onSelect: nil, showsCorners: true)
-                .frame(height: 118)
-            SettingsSection("Edges") {
-                ForEach(tapEdges, id: \.self) { region in
-                    SlotEditor(title: "\(EdgeSlot.title(region)) double-tap", binding: everydayBinding(EdgeSlot.tap(region, "doubleTap")), tapOnly: true)
-                    Divider()
-                    SlotEditor(title: "\(EdgeSlot.title(region)) tap and hold", binding: everydayBinding(EdgeSlot.tap(region, "tapHold")), tapOnly: true)
-                    if region != tapEdges.last { Divider() }
+    private var soundPage: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            SettingsSection("Volume") {
+                LimitEditor(action: .volume, lower: $settings.volumeMin, upper: $settings.volumeMax)
+                RowDivider()
+                ToggleRow("Mute at zero", value: $settings.muteAtZero)
+            }
+            SettingsSection("Brightness") {
+                LimitEditor(action: .brightness, lower: $settings.brightnessMin, upper: $settings.brightnessMax)
+                RowDivider()
+                ToggleRow("Follow the pointer", detail: "Changes the display the pointer is on. Now: \(controls.brightnessDevice).", value: $settings.brightnessFollowsPointer)
+                RowDivider()
+                ToggleRow("Extra dim", detail: "Slide past the lowest level to dim further.", value: $settings.extraDimBelowMinimum)
+            }
+            if !MixerModel.isSupported && !preview {
+                Notice("The app mixer needs macOS 14.2 or later.", icon: "info.circle", tint: .primary)
+            } else {
+                mixerSection
+            }
+        }
+    }
+
+    private var mixerSection: some View {
+        SettingsSection("Apps") {
+            if mixer.permission != .authorized {
+                MixerPermissionRow(mixer: mixer).padding(12)
+                RowDivider()
+            }
+            let list = mixer.playingChannels + (mixer.showOtherApps ? mixer.otherChannels : [])
+            if list.isEmpty {
+                Text("Apps show up here when they play sound, each with its own fader.")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .padding(.horizontal, 12).padding(.vertical, 11)
+            } else {
+                VStack(alignment: .leading, spacing: 14) {
+                    MixerBanners(mixer: mixer)
+                    ForEach(list) { MixerChannelRow(channel: $0, mixer: mixer, large: true) }
+                }.padding(12)
+            }
+            RowDivider()
+            ToggleRow("Lower other apps during calls", value: $mixer.duckDuringCalls)
+        }
+    }
+
+    private var soundAdvanced: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            SettingsSection("This output", footer: "Handy for keeping headphones quieter.") { outputLimits }
+            SettingsSection("Favorite levels", footer: "Slides pause at a favorite with a soft tap.") {
+                FavoriteLevelRow(action: .volume, favorite: $settings.volumeFavorite, current: controls.volume)
+                RowDivider()
+                FavoriteLevelRow(action: .brightness, favorite: $settings.brightnessFavorite, current: controls.brightness)
+            }
+            if MixerModel.isSupported || preview {
+                SettingsSection("Mixer", footer: "Kinara reroutes an app only while you’ve changed it. Audio is never recorded or saved.") {
+                    ToggleRow("Faders in the menu bar", value: $mixer.showInMenu)
+                    RowDivider()
+                    ToggleRow("Allow boost to 150%", value: $mixer.allowBoost)
+                    RowDivider()
+                    ToggleRow("List apps before they play", detail: "Mute an app before its next sound.", value: $mixer.showOtherApps)
+                    if mixer.duckDuringCalls {
+                        RowDivider()
+                        LabeledSlider("Other apps during calls", value: $mixer.duckLevel, range: 0.05...0.8,
+                                      display: "\(Int((mixer.duckLevel * 100).rounded()))%")
+                    }
+                    RowDivider()
+                    SettingRow("Every app back to 100%") { Button("Reset") { mixer.resetAllChannels() } }
                 }
             }
-            SettingsSection("Corners") {
-                LabeledSlider("Corner size", detail: "Corners with a tap action take this much of each edge, for taps only. Swipes still start from the side edges.", value: $settings.tapCornerSize, range: TrackpadSettings.cornerSizeRange, display: "\(Int((settings.tapCornerSize * 100).rounded()))%")
-                if settings.minimumFingers == 2 {
-                    Divider()
-                    SettingRow("Fingers for corner taps", detail: settings.cornerTapFingers == 1 ? "One finger in a corner, two fingers on the edges. Tap-to-click in a corner with an action belongs to Sway." : "Same as your swipes: two fingers.") {
-                        Picker("Fingers for corner taps", selection: $settings.cornerTapFingers) {
-                            Text("Like swipes").tag(0); Text("1 finger").tag(1)
-                        }.pickerStyle(.segmented).fixedSize()
+        }
+    }
+
+    @ViewBuilder private var outputLimits: some View {
+        ToggleRow("Own limits for \(controls.volumeDevice)", value: Binding(get: {
+            currentDeviceUID.map { settings.deviceVolumeLimits[$0] != nil } ?? false
+        }, set: { on in
+            guard let uid = currentDeviceUID else { return }
+            settings.deviceVolumeLimits[uid] = on ? DeviceLimit(name: controls.volumeDevice, min: settings.volumeMin, max: settings.volumeMax) : nil
+        }))
+        .disabled(currentDeviceUID == nil)
+        if let uid = currentDeviceUID, let limit = settings.deviceVolumeLimits[uid] {
+            RowDivider()
+            LimitEditor(action: .volume,
+                        lower: Binding(get: { limit.min }, set: { settings.deviceVolumeLimits[uid] = DeviceLimit(name: limit.name, min: $0, max: settings.deviceVolumeLimits[uid]?.max ?? limit.max) }),
+                        upper: Binding(get: { limit.max }, set: { settings.deviceVolumeLimits[uid] = DeviceLimit(name: limit.name, min: settings.deviceVolumeLimits[uid]?.min ?? limit.min, max: $0) }))
+        }
+        let others = settings.deviceVolumeLimits.filter { $0.key != currentDeviceUID }.sorted { $0.value.name < $1.value.name }
+        ForEach(others, id: \.key) { item in
+            RowDivider()
+            HStack {
+                Text(item.value.name).font(.system(size: 13))
+                Spacer()
+                Text("\(Int(item.value.min * 100))–\(Int(item.value.max * 100))%").font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
+                Button { settings.deviceVolumeLimits.removeValue(forKey: item.key) } label: { Image(systemName: "minus.circle.fill") }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel("Forget limits for \(item.value.name)")
+            }.padding(.horizontal, 12).padding(.vertical, 10)
+        }
+    }
+
+    // MARK: Apps
+
+    private var appsPage: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            profilesPage
+            SettingsSection("Paused apps") {
+                SettingRow(settings.excludedApps.isEmpty ? "Kinara works in every app"
+                           : settings.excludedApps.count == 1 ? "Paused in 1 app" : "Paused in \(settings.excludedApps.count) apps") {
+                    Button("Manage…") { showAppPicker = true }
+                }
+                if let id = exclusions.currentAppBundleID, !preview, !settings.excludedApps.contains(id) {
+                    RowDivider()
+                    SettingRow(exclusions.currentAppName) {
+                        Button("Pause Here") { settings.excludedApps.append(id) }
                     }
                 }
-                ForEach(["topLeftCorner", "topRightCorner", "bottomLeftCorner", "bottomRightCorner"], id: \.self) { corner in
-                    Divider()
-                    SlotEditor(title: "\(EdgeSlot.title(corner)) double-tap", binding: everydayBinding(EdgeSlot.tap(corner, "doubleTap")), tapOnly: true)
-                    Divider()
-                    SlotEditor(title: "\(EdgeSlot.title(corner)) tap and hold", binding: everydayBinding(EdgeSlot.tap(corner, "tapHold")), tapOnly: true)
+            }
+        }
+    }
+
+    // MARK: General
+
+    private var generalPage: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            SettingsSection("") {
+                ToggleRow("Open at login", value: $settings.launchAtLogin)
+                if login.lastError != nil || login.status == .requiresApproval || login.status == .notFound {
+                    Text(login.statusMessage).font(.system(size: 11)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true).padding(.horizontal, 12).padding(.bottom, 10)
+                }
+                RowDivider()
+                ToggleRow("Show in the Dock while Settings is open", value: $settings.showDockIcon)
+            }
+            SettingsSection("Appearance") {
+                SettingRow("Theme") {
+                    Picker("Theme", selection: $settings.appearanceMode) {
+                        Text("System").tag("system"); Text("Light").tag("light"); Text("Dark").tag("dark")
+                    }.pickerStyle(.segmented).fixedSize()
+                }
+                RowDivider()
+                SettingRow("Menu bar shows") {
+                    Picker("Menu bar display", selection: $settings.menuBarValueSource) {
+                        Text("Kinara icon").tag("icon"); Text("Kinara name").tag("name"); Text("Volume").tag("volume"); Text("Brightness").tag("brightness"); Text("Both levels").tag("both")
+                    }.pickerStyle(.menu).fixedSize()
+                }
+                RowDivider()
+                ToggleRow("Scroll the icon to change volume", detail: "Hold ⌥ for brightness.", value: $settings.menuBarScroll)
+            }
+            clipboardSection
+            SettingsSection("Shortcuts") {
+                HotkeyRecorder(hotkey: $settings.toggleHotkey, title: "Pause or resume", detail: "")
+                RowDivider()
+                HotkeyRecorder(hotkey: $settings.cheatSheetHotkey, title: "Show the edge map", detail: "Hold it to see what every edge does.", usesCheatSheetError: true)
+            }
+            SettingsSection("Updates") { UpdatePreferencesContent(updates: updates, preview: preview) }
+            SettingsSection("Help") {
+                SettingRow("Getting started") {
+                    Button("Open Guide") { if !preview { (NSApp.delegate as? AppDelegate)?.showGettingStarted() } }
+                }
+                RowDivider()
+                SettingRow("Version") {
+                    Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0")
+                        .font(.system(size: 13)).foregroundStyle(.secondary)
                 }
             }
-            Text("Where an edge or corner has a tap action, tap-to-click there no longer clicks what’s under the pointer. Pressing the trackpad always clicks. Nothing runs during a safe gesture test.")
-                .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var generalAdvanced: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            automationSection
+            SettingsSection("Troubleshooting") {
+                SettingRow("Diagnostic log") { Button("Show in Finder") { if !preview { KinaraLog.revealInFinder() } } }
+                RowDivider()
+                SettingRow("Controls in a window") {
+                    Button("Open") { if !preview { (NSApp.delegate as? AppDelegate)?.showQuickControls() } }
+                }
+                RowDivider()
+                SettingRow("Every edge and corner as new") { Button("Reset…") { confirmReset = true } }
+            }
+            .alert("Reset gesture settings?", isPresented: $confirmReset) {
+                Button("Cancel", role: .cancel) { }
+                Button("Reset gestures", role: .destructive) { settings.resetGestureSettings() }
+            } message: { Text("Edges, corners, layers, feel, palm protection, haptics and limits go back to how Kinara starts. Profiles, shortcuts, paused apps and appearance stay.") }
         }
     }
 
@@ -1019,58 +1412,85 @@ struct ContentView: View {
         ["left", "right"] + (settings.topEdgeEnabled ? ["top"] : []) + (settings.bottomEdgeEnabled ? ["bottom"] : [])
     }
 
+    /// A spot's double-tap and tap-and-hold.
+    private func tapRegionEditors(_ region: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SlotEditor(title: "Double-tap", binding: everydayBinding(EdgeSlot.tap(region, "doubleTap")), tapOnly: true)
+            RowDivider()
+            SlotEditor(title: "Tap and hold", binding: everydayBinding(EdgeSlot.tap(region, "tapHold")), tapOnly: true)
+        }
+    }
+
     // MARK: Profiles
 
     private var profilesPage: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            SettingsSection("App profiles") {
+        VStack(alignment: .leading, spacing: 24) {
+            SettingsSection("App profiles", footer: "A profile changes only the edges you pick, while that app is in front.") {
                 if settings.appProfiles.isEmpty {
-                    Text("No app profiles yet. A profile changes only the edges you pick, while that app is in front. For example: tabs in your browser, the timeline in your video editor.")
-                        .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(14)
+                    Text("Give an app its own edges, like switching tabs in Safari.")
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                        .padding(.horizontal, 12).padding(.vertical, 11)
+                    RowDivider()
                 }
                 ForEach(settings.appProfiles.keys.sorted { (settings.appProfiles[$0]?.name ?? $0).localizedCaseInsensitiveCompare(settings.appProfiles[$1]?.name ?? $1) == .orderedAscending }, id: \.self) { id in
-                    HStack(spacing: 10) {
-                        Image(nsImage: Self.appIcon(id)).resizable().frame(width: 26, height: 26)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(settings.appProfiles[id]?.name ?? id).font(.system(size: 14, weight: .medium))
-                            Text(Self.changeSummary(settings.appProfiles[id]?.bindings.count ?? 0)).font(.system(size: 12)).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button("Edit…") { editingProfile = .app(id) }.buttonStyle(.bordered)
-                        Button { settings.appProfiles.removeValue(forKey: id) } label: { Image(systemName: "minus.circle") }
-                            .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel("Remove profile")
-                    }.padding(14)
-                    Divider()
+                    profileRow(id)
+                    RowDivider()
                 }
-                HStack {
-                    Button("Add app…", action: addProfileApp).buttonStyle(.bordered)
+                HStack(spacing: 8) {
+                    Button("Add App…", action: addProfileApp)
                     if let id = exclusions.currentAppBundleID, settings.appProfiles[id] == nil, !preview {
                         Button("Add \(exclusions.currentAppName)") {
                             settings.appProfiles[id] = ActionProfile(name: exclusions.currentAppName)
                             editingProfile = .app(id)
-                        }.buttonStyle(.bordered)
+                        }
                     }
                     Spacer()
-                }.padding(14)
+                }.padding(.horizontal, 12).padding(.vertical, 10)
             }
-            SettingsSection("When docked") {
-                ToggleRow("Docked profile", detail: "Applies while an external display is connected. \(BrightnessController.shared.hasExternalDisplayConnected && !preview ? "Connected now." : "Not connected now.")", value: $settings.dockedProfileEnabled)
+            SettingsSection("When docked", footer: "Kinara uses the app’s profile first, then the docked one, then your everyday edges.") {
+                ToggleRow("Docked profile", detail: "While an external display is connected\(BrightnessController.shared.hasExternalDisplayConnected && !preview ? ", like now" : "").",
+                          value: $settings.dockedProfileEnabled)
                 if settings.dockedProfileEnabled {
-                    Divider()
-                    HStack {
-                        Text(Self.changeSummary(settings.dockedProfile.bindings.count)).font(.system(size: 12)).foregroundStyle(.secondary)
-                        Spacer()
-                        Button("Edit…") { editingProfile = .docked }.buttonStyle(.bordered)
-                    }.padding(14)
+                    RowDivider()
+                    SettingRow(Self.changeSummary(settings.dockedProfile.bindings.count)) {
+                        Button("Edit…") { editingProfile = .docked }
+                    }
                 }
             }
-            Text("Sway checks the app in front first, then the docked profile, then your everyday setup. The edge map shows which one is active.")
-                .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private func profileRow(_ id: String) -> some View {
+        HStack(spacing: 10) {
+            Image(nsImage: Self.appIcon(id)).resizable().frame(width: 24, height: 24)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(settings.appProfiles[id]?.name ?? id).font(.system(size: 13))
+                Text(Self.profileSummary(settings.appProfiles[id])).font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Picker("Fingers in \(settings.appProfiles[id]?.name ?? "this app")", selection: Binding(
+                get: { settings.appProfiles[id]?.fingers ?? 0 },
+                set: { settings.appProfiles[id]?.fingers = $0 == 0 ? nil : $0 })) {
+                Text("Everyday fingers").tag(0)
+                Divider()
+                Text("1 finger").tag(1)
+                Text("2 fingers").tag(2)
+            }.labelsHidden().pickerStyle(.menu).fixedSize().help("How many fingers edge gestures take while this app is in front")
+            Button("Edit…") { editingProfile = .app(id) }
+            Button { settings.appProfiles.removeValue(forKey: id) } label: { Image(systemName: "minus.circle.fill") }
+                .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel("Remove profile")
+        }.padding(.horizontal, 12).padding(.vertical, 8)
     }
 
     private static func changeSummary(_ count: Int) -> String {
         count == 0 ? "Uses your everyday setup" : count == 1 ? "1 change" : "\(count) changes"
+    }
+
+    private static func profileSummary(_ profile: ActionProfile?) -> String {
+        let count = profile?.bindings.count ?? 0
+        guard let fingers = profile?.fingers else { return changeSummary(count) }
+        let hand = fingers == 1 ? "1 finger" : "2 fingers"
+        return count == 0 ? hand : "\(hand) · \(changeSummary(count))"
     }
 
     static func appIcon(_ bundleID: String) -> NSImage {
@@ -1094,282 +1514,49 @@ struct ContentView: View {
         }
     }
 
-    private var protectionPage: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 10) {
-                SettingsCard {
-                    SettingRow("Intent checks", detail: settings.palmRejectionMode == "strict" ? "More travel and consistency before activation." : "Balanced response with deliberate movement.") {
-                        Picker("Palm protection", selection: $settings.palmRejectionMode) {
-                            Text("Balanced").tag("balanced"); Text("Strict").tag("strict")
-                        }.pickerStyle(.segmented).fixedSize()
-                    }
-                    DisclosureGroup("Fine-tune protection") {
-                        LabeledSlider("Pause after typing", detail: "Prevents a resting hand from starting a gesture after a keypress.", value: $settings.typingCooldown, range: 0.2...1, display: String(format: "%.2f s", settings.typingCooldown))
-                        LabeledSlider("Start distance", detail: "Minimum travel across the trackpad before a swipe can activate.", value: $settings.activationThreshold, range: 0...12, display: String(format: "%.1f%%", max(settings.palmRejectionMode == "strict" ? 1.4 : 0.8, settings.activationThreshold / 5 * (settings.palmRejectionMode == "strict" ? 1.3 : 1))))
-                    }.font(.system(size: 12)).padding(14)
-                }
-                Text("Palms are always ignored, typing or not: Sway reads each contact's size and shape from the trackpad, and anything larger or longer than a fingertip, like a palm, the side of your hand or a thumb lying flat, never triggers an edge or a tap. Fingertips beside a resting palm still work. The checks above add intent on top. No touch data is saved.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-            DisclosureGroup("Test gestures safely", isExpanded: $showsSafeTest) {
-                SafeTestPanel(settings: settings, controls: controls, preview: preview, endTesting: endTesting).padding(.top, 14)
-            }.font(.system(size: 13, weight: .medium))
-        }
-    }
-
     private var currentDeviceUID: String? { preview ? "preview-device" : VolumeController.shared.deviceUID }
 
-    private var levelsPage: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            SettingsSection("Comfort limits") {
-                LimitEditor(action: .brightness, lower: $settings.brightnessMin, upper: $settings.brightnessMax)
-                Divider()
-                LimitEditor(action: .volume, lower: $settings.volumeMin, upper: $settings.volumeMax)
-                Divider()
-                ToggleRow("Mute at zero", detail: "Mute audio when the volume reaches 0%.", value: $settings.muteAtZero)
+    /// What clipboard history keeps. It runs only while a clipboard action
+    /// is on an edge or corner, and forgets everything when Kinara quits.
+    private var clipboardSection: some View {
+        let running = preview || ClipboardHistory.shared.isEnabled
+        return SettingsSection("Clipboard history", footer: running
+                               ? "Type to search when the picker opens. ⌘1 to ⌘9 paste the first nine."
+                               : "Put Clipboard history on an edge or corner, and Kinara starts keeping your copies.") {
+            SettingRow("Keep") {
+                Picker("Copies to keep", selection: $settings.clipboardLimit) {
+                    ForEach(TrackpadSettings.clipboardLimits, id: \.self) { Text("\($0) copies").tag($0) }
+                }.pickerStyle(.menu).fixedSize()
             }
-            SettingsSection("This audio output") {
-                ToggleRow("Limits just for \(controls.volumeDevice)", detail: "Sway remembers these for this device and uses them whenever it’s the output. Handy for keeping headphones quieter.", value: Binding(get: {
-                    currentDeviceUID.map { settings.deviceVolumeLimits[$0] != nil } ?? false
-                }, set: { on in
-                    guard let uid = currentDeviceUID else { return }
-                    settings.deviceVolumeLimits[uid] = on ? DeviceLimit(name: controls.volumeDevice, min: settings.volumeMin, max: settings.volumeMax) : nil
-                }))
-                .disabled(currentDeviceUID == nil)
-                if let uid = currentDeviceUID, let limit = settings.deviceVolumeLimits[uid] {
-                    Divider()
-                    LimitEditor(action: .volume,
-                                lower: Binding(get: { limit.min }, set: { settings.deviceVolumeLimits[uid] = DeviceLimit(name: limit.name, min: $0, max: settings.deviceVolumeLimits[uid]?.max ?? limit.max) }),
-                                upper: Binding(get: { limit.max }, set: { settings.deviceVolumeLimits[uid] = DeviceLimit(name: limit.name, min: settings.deviceVolumeLimits[uid]?.min ?? limit.min, max: $0) }))
-                }
-                let others = settings.deviceVolumeLimits.filter { $0.key != currentDeviceUID }.sorted { $0.value.name < $1.value.name }
-                ForEach(others, id: \.key) { item in
-                    Divider()
-                    HStack {
-                        Text(item.value.name).font(.system(size: 13))
-                        Spacer()
-                        Text("\(Int(item.value.min * 100))–\(Int(item.value.max * 100))%").font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
-                        Button { settings.deviceVolumeLimits.removeValue(forKey: item.key) } label: { Image(systemName: "minus.circle") }
-                            .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel("Forget limits for \(item.value.name)")
-                    }.padding(14)
-                }
+            RowDivider()
+            ToggleRow("Include images", detail: "Up to 256 MB of them; the oldest go first.", value: $settings.clipboardImages)
+            RowDivider()
+            SettingRow("Kept in memory, never on disk") {
+                Button("Clear History") { if !preview { ClipboardHistory.shared.clear() } }
             }
-            SettingsSection("Favorite levels") {
-                FavoriteLevelRow(action: .volume, favorite: $settings.volumeFavorite, current: controls.volume)
-                Divider()
-                FavoriteLevelRow(action: .brightness, favorite: $settings.brightnessFavorite, current: controls.brightness)
-                Text(settings.notchesEnabled ? "Swipes settle on a favorite with a crisp tap, like a notch at 50%." : "Turn on notches in Haptics to feel your favorites.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary).padding([.horizontal, .bottom], 14)
-            }
-            SettingsSection("Displays") {
-                ToggleRow("Brightness follows the pointer", detail: "Adjusts the display the pointer is on: Apple displays directly, other monitors over DDC/CI where they support it. Otherwise the built-in display.", value: $settings.brightnessFollowsPointer)
-                Text("Now adjusting: \(controls.brightnessDevice)").font(.system(size: 12)).foregroundStyle(.secondary).padding([.horizontal, .bottom], 14)
-                Divider()
-                ToggleRow("Extra dim below minimum", detail: "Keep swiping down past the lowest brightness to dim further, for late nights. Quitting Sway restores normal brightness.", value: $settings.extraDimBelowMinimum)
-            }
-        }
-    }
-
-    private var mixerPage: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            if !MixerModel.isSupported && !preview {
-                Notice("The mixer needs macOS 14.2 or later.", icon: "info.circle", tint: .primary)
-            } else {
-                if mixer.permission != .authorized {
-                    SettingsSection("Access") { MixerPermissionRow(mixer: mixer).padding(16) }
-                }
-                SettingsSection("Apps") {
-                    let list = mixer.playingChannels + (mixer.showOtherApps ? mixer.otherChannels : [])
-                    if list.isEmpty {
-                        Text("Apps appear here when they play sound. Play something to try it.")
-                            .font(.system(size: 12)).foregroundStyle(.secondary).padding(16)
-                    } else {
-                        VStack(alignment: .leading, spacing: 16) {
-                            MixerBanners(mixer: mixer)
-                            ForEach(list) { MixerChannelRow(channel: $0, mixer: mixer, large: true) }
-                        }.padding(16)
-                    }
-                }
-                SettingsSection("Calls") {
-                    ToggleRow("Lower other apps during calls", detail: "When an app uses your microphone, everything else fades down, and comes back when the call ends.", value: $mixer.duckDuringCalls)
-                    Divider()
-                    LabeledSlider("Keep other apps at", detail: "How loud other apps stay while you’re on a call.", value: $mixer.duckLevel,
-                                  range: 0.05...0.8, display: "\(Int((mixer.duckLevel * 100).rounded()))%")
-                        .disabled(!mixer.duckDuringCalls)
-                }
-                SettingsSection("Options") {
-                    ToggleRow("Show the mixer in the menu bar", detail: "Every app that plays sound gets a fader in Sway’s menu.", value: $mixer.showInMenu)
-                    Divider()
-                    ToggleRow("Allow boost to 150%", detail: "Faders can go past full level, with a soft limiter so loud parts don’t crackle.", value: $mixer.allowBoost)
-                    Divider()
-                    ToggleRow("List apps that haven’t played yet", detail: "Mute an app before its next sound, such as a chat app’s pings.", value: $mixer.showOtherApps)
-                    Divider()
-                    SettingRow("Forget every app’s settings", detail: "Puts every app back at 100%, unmuted, on the default output.") {
-                        Button("Reset") { mixer.resetAllChannels() }
-                    }
-                }
-                Text("Sway reroutes an app only while you’ve changed it: a level other than 100%, muted, solo, lowered for a call, or another output. Every other app plays untouched. Audio is never recorded or saved.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    private var feedbackPage: some View {
-        VStack(alignment: .leading, spacing: 18) {
-        SettingsSection("Notches and sound") {
-            ToggleRow("Notches", detail: "Levels rest briefly at 50% and your favorite levels, with a crisp tap, so you can find them without looking.", value: $settings.notchesEnabled)
-            Divider()
-            SettingRow("Volume sound", detail: "The click macOS plays after you change the volume.") {
-                Picker("Volume feedback sound", selection: $settings.volumeFeedbackSound) {
-                    Text("Like macOS").tag("system"); Text("On").tag("on"); Text("Off").tag("off")
-                }.pickerStyle(.segmented).fixedSize()
-            }
-        }
-        SettingsSection("Trackpad haptics") {
-            ToggleRow("Haptic feedback", detail: "Feel confirmed edge gestures and level changes.", value: $settings.hapticFeedback)
-            if settings.hapticFeedback {
-                Divider()
-                SettingRow("Tap style") {
-                    Picker("Haptic tap style", selection: $settings.hapticStyle) {
-                        ForEach(HapticStyle.allCases) { style in Text(style.label).tag(style) }
-                    }.pickerStyle(.segmented).fixedSize()
-                }
-                Divider()
-                SettingRow("Level steps", detail: "Smaller steps give more taps.") {
-                    Picker("Haptic level spacing", selection: $settings.hapticSpacing) {
-                        ForEach(HapticSpacing.allCases) { spacing in Text(spacing.label).tag(spacing) }
-                    }.pickerStyle(.segmented).fixedSize()
-                }
-                Divider()
-                ToggleRow("Tap at gesture start", detail: "Know when Sway accepts your swipe.", value: $settings.hapticOnStart)
-                Divider()
-                VStack(alignment: .leading, spacing: 8) {
-                    Button("Try this tap") {
-                        if !preview, !telemetry.isTesting { HapticOutput.shared.play(settings.hapticStyle) }
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(telemetry.isTesting)
-                    .help("Click while keeping a finger on your Force Touch trackpad.")
-                    Text(telemetry.isTesting ? "Stop the gesture test to preview haptics." : settings.hapticStyle == .strong ? "Strongest drives the trackpad’s actuator directly for the firmest click it can make. It uses a private macOS interface and falls back to Crisp where unavailable." : "Keep a finger resting on your Force Touch trackpad. These are tap patterns; macOS controls the strength and may suppress feedback.")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }.padding(14)
-            }
-        }
-        }
-    }
-
-    private var appearancePage: some View {
-        SettingsSection("Appearance") {
-            SettingRow("Indicator") {
-                Picker("Indicator style", selection: $settings.osdStyle) {
-                    Text("Pill").tag("horizontal"); Text("Vertical").tag("vertical"); Text("Follow finger").tag("edge"); Text("Off").tag("off")
-                }.pickerStyle(.segmented).fixedSize()
-            }
-            if settings.osdStyle == "edge" {
-                Text("Hugs the side of the screen that matches the edge you’re touching, and moves with your finger. Sliders and the menu bar show the pill.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding([.horizontal, .bottom], 14)
-            }
-            if settings.osdStyle == "horizontal" {
-                LabeledSlider("Indicator width", detail: "Shown at the bottom of the active display.", value: $settings.osdHorizontalWidth, range: 160...320, display: "\(Int(settings.osdHorizontalWidth)) pt")
-            } else if settings.osdStyle == "vertical" {
-                SettingRow("Position") {
-                    Picker("Indicator position", selection: $settings.osdPosition) {
-                        ForEach(OSDPosition.allCases) { item in Text(item.label).tag(item) }
-                    }.frame(width: 140)
-                }
-            }
-            if settings.osdStyle != "off" {
-                Button("Preview indicator") { if !preview { OSDOverlay.shared.show(type: .volume, value: Float(controls.volume)) } }
-                    .buttonStyle(.bordered).padding([.horizontal, .bottom], 14)
-            }
-            Divider()
-            ToggleRow("Now Playing display", detail: "Shows artwork, title and progress when you skip, play, pause or seek with a gesture.", value: $settings.nowPlayingHUD)
-            Divider()
-            SettingRow("Theme") {
-                Picker("Theme", selection: $settings.appearanceMode) {
-                    Text("System").tag("system"); Text("Light").tag("light"); Text("Dark").tag("dark")
-                }.pickerStyle(.segmented).fixedSize()
-            }
-            Divider()
-            SettingRow("Menu bar") {
-                Picker("Menu bar display", selection: $settings.menuBarValueSource) {
-                    Text("Sway icon").tag("icon"); Text("Sway name").tag("name"); Text("Volume").tag("volume"); Text("Brightness").tag("brightness"); Text("Both levels").tag("both")
-                }.frame(width: 150)
-            }
-            Divider()
-            ToggleRow("Scroll on the menu bar icon", detail: "Scroll over Sway’s icon to change the volume; hold ⌥ for brightness.", value: $settings.menuBarScroll)
-        }
-    }
-
-    private var generalPage: some View {
-        VStack(alignment: .leading, spacing: 18) {
-        SettingsSection("Stay out of the way") {
-            ToggleRow("Show in Dock while windows are open", detail: "Close the last window to hide the Dock icon. Sway keeps running in the menu bar.", value: $settings.showDockIcon)
-            Divider()
-            HStack {
-                Text("You can also reopen Sway from Spotlight or Applications.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
-                Button("Open controls") { if !preview { (NSApp.delegate as? AppDelegate)?.showQuickControls() } }
-                    .buttonStyle(.bordered)
-            }.padding(14)
-            Divider()
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Excluded apps").font(.system(size: 14, weight: .medium))
-                    Text(settings.excludedApps.isEmpty ? "Gestures work in every app." : "\(settings.excludedApps.count) apps pause gestures automatically.")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("Manage…") { showAppPicker = true }.buttonStyle(.bordered)
-            }.padding(14)
-            if let id = exclusions.currentAppBundleID, !preview, !settings.excludedApps.contains(id) {
-                Button("Exclude \(exclusions.currentAppName)") {
-                    settings.excludedApps.append(id)
-                }.buttonStyle(.plain).foregroundStyle(SwayTheme.accent).font(.system(size: 12)).padding([.horizontal, .bottom], 14)
-            }
-            Divider()
-            HotkeyRecorder(hotkey: $settings.toggleHotkey)
-            Divider()
-            HotkeyRecorder(hotkey: $settings.cheatSheetHotkey, title: "Edge map shortcut", detail: "Hold it to see what every edge does in the app you’re using.", usesCheatSheetError: true)
-            Divider()
-            ToggleRow("Launch at login", detail: "Have Sway ready when you sign in.", value: $settings.launchAtLogin)
-            if login.lastError != nil || login.status == .requiresApproval || login.status == .notFound {
-                Text(login.statusMessage).font(.system(size: 12)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true).padding([.horizontal, .bottom], 14)
-            }
-        }
-        automationSection
         }
     }
 
     private var automationSection: some View {
-        SettingsSection("Automation and your settings") {
-            ToggleRow("Sway links", detail: "Let Shortcuts, scripts and launchers use sway:// links: pause, resume or toggle gestures, set volume or brightness within your limits, or show the edge map. Links can’t change your setup.", value: $settings.urlCommandsEnabled)
-            if settings.urlCommandsEnabled {
-                Text("Examples: sway://pause?minutes=15 · sway://volume?level=40 · sway://edge-map")
-                    .font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
-                    .padding([.horizontal, .bottom], 14)
+        VStack(alignment: .leading, spacing: 22) {
+            SettingsSection("Automation", footer: settings.urlCommandsEnabled ? "For example kinara://pause?minutes=15 or kinara://volume?level=40. Links can’t change your setup." : nil) {
+                ToggleRow("Kinara links", detail: "Let Shortcuts and scripts pause Kinara or set levels.", value: $settings.urlCommandsEnabled)
             }
-            Divider()
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Settings file").font(.system(size: 14, weight: .medium))
-                    Text(transferMessage ?? "Save your setup, including profiles, to move it to another Mac or keep a backup.")
-                        .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            SettingsSection("Your settings", footer: transferMessage ?? "Move your setup, profiles included, to another Mac, or keep a backup.") {
+                SettingRow("Settings file") {
+                    HStack(spacing: 8) {
+                        Button("Export…", action: exportSettings)
+                        Button("Import…", action: importSettings)
+                    }
                 }
-                Spacer()
-                Button("Export…", action: exportSettings).buttonStyle(.bordered)
-                Button("Import…", action: importSettings).buttonStyle(.bordered)
-            }.padding(14)
+            }
         }
     }
 
     private func exportSettings() {
         guard !preview else { return }
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "Sway Settings.plist"
+        panel.nameFieldStringValue = "Kinara Settings.plist"
         panel.allowedContentTypes = [.propertyList]
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
@@ -1396,38 +1583,10 @@ struct ContentView: View {
         }
     }
 
-    private var aboutPage: some View {
-        SettingsSection("About Sway") {
-            HStack {
-                Text("Sway").font(.system(size: 13, weight: .medium))
-                Spacer()
-                Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0")")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-            }.padding(14)
-            Divider()
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Getting started").font(.system(size: 14))
-                    Text("Find Sway and set up trackpad access.")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("Open guide…") { if !preview { (NSApp.delegate as? AppDelegate)?.showGettingStarted() } }
-                    .buttonStyle(.bordered)
-            }.padding(14)
-            Divider()
-            HStack {
-                Text("Gesture setup").font(.system(size: 14))
-                Spacer()
-                Button("Reset…") { confirmReset = true }.buttonStyle(.bordered)
-            }.padding(14)
-        }
-    }
-
     /// Live finger dots only while a page with a map is on screen.
     private func updateLiveView(_ value: SettingsPane) {
         guard !preview else { return }
-        telemetry.isLiveViewing = value == .overview || value == .gestures || value == .taps
+        telemetry.isLiveViewing = value == .home || value == .edges
     }
 
     private func endTesting() {
@@ -1436,9 +1595,16 @@ struct ContentView: View {
         telemetry.isTesting = false
     }
 
-    private func openAccessibility() {
+    /// What the guide does: only macOS's own prompt, which adds Kinara to the
+    /// list and has its own button to System Settings.
+    private func askForAccessibility() {
+        askedForAccess = true
         guard !preview else { return }
         AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
+    }
+
+    private func openAccessibilitySettings() {
+        guard !preview else { return }
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
     }
 
@@ -1453,11 +1619,11 @@ struct UpdatePreferencesContent: View {
     private var showsPreviewUpdate: Bool { preview && previewUpdateAvailable }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ToggleRow("Check automatically", detail: "Check GitHub daily. Downloads stay in your control.",
+            ToggleRow("Check automatically", detail: "Once a day. Nothing installs without you.",
                       value: Binding(get: { updates.automaticallyChecks }, set: { if !preview { updates.automaticallyChecks = $0 } }))
-            Divider()
+            RowDivider()
             VStack(alignment: .leading, spacing: 10) {
-                Text(showsPreviewUpdate ? "A new version of Sway is available." : updates.status).font(.system(size: 13))
+                Text(showsPreviewUpdate ? "A new version of Kinara is available." : updates.status).font(.system(size: 13))
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityLabel("Update status: \(updates.status)")
                 if let checked = updates.lastChecked {
@@ -1480,9 +1646,9 @@ struct UpdatePreferencesContent: View {
                 if let error = installer.error {
                     Text(error).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
-                Text("Install updates here without dragging a new app. Downloads and release information are verified before installation. Sway restarts when you confirm.")
+                Text("Updates are verified before they install, and Kinara restarts when you confirm.")
                     .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }.padding(14)
+            }.padding(12)
         }
     }
 }
@@ -1508,7 +1674,7 @@ struct UpdateWindowView: View {
 private struct AccessibilityRecoveryHelp: View {
     var body: some View {
         DisclosureGroup("Already enabled, but gestures don’t work?") {
-            Text("If Sway is switched on in the list but gestures still don’t work, that entry belongs to an older copy. In Accessibility, remove the Sway entry with −, then use + to add Sway from Applications and switch it on. If macOS still reports the old state, quit and reopen Sway once. Your other apps’ permissions stay untouched.")
+            Text("If Kinara is switched on in the list but gestures still don’t work, that entry belongs to an older copy. In Accessibility, remove the Kinara entry with −, then use + to add Kinara from Applications and switch it on. If macOS still reports the old state, quit and reopen Kinara once. Your other apps’ permissions stay untouched.")
                 .fixedSize(horizontal: false, vertical: true).padding(.top, 4)
         }
         .font(.system(size: 11)).foregroundStyle(.secondary)
@@ -1519,7 +1685,7 @@ private struct AccessibilityRecoveryHelp: View {
 /// only when the person chooses Allow, never by surprise at launch, and the
 /// guide notices the grant by itself while it is on screen.
 struct GettingStartedView: View {
-    enum Step: Int, CaseIterable { case welcome, access, practice, personalize, done }
+    enum Step: Int, CaseIterable { case welcome, access, tour, personalize, done }
 
     @ObservedObject var settings: TrackpadSettings
     @StateObject private var controls: ControlCenterModel
@@ -1530,6 +1696,11 @@ struct GettingStartedView: View {
     /// When Allow was pressed, to recognize an old entry that never applies.
     @State private var requestedAt: Date?
     @State private var now = Date()
+    /// The tour: its stops, which one is up, and whether that one was just done.
+    @State private var tourSteps: [TourStep] = []
+    @State private var tourIndex = 0
+    @State private var tourSucceeded = false
+    @State private var tourDone: Set<String> = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let preview: Bool
     private let animatesInPreview: Bool
@@ -1553,7 +1724,7 @@ struct GettingStartedView: View {
                 switch step {
                 case .welcome: welcome
                 case .access: access
-                case .practice: practice
+                case .tour: tour
                 case .personalize: personalize
                 case .done: done
                 }
@@ -1572,9 +1743,15 @@ struct GettingStartedView: View {
         .onChange(of: controls.hasAccess) { granted in
             // Granted in System Settings while the guide waits: move on by itself.
             guard granted, step == .access else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { go(to: .practice) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { go(to: .tour) }
         }
-        .onChange(of: step) { value in setPracticing(value == .practice) }
+        .onChange(of: step) { value in setTouring(value == .tour) }
+        .onReceive(NotificationCenter.default.publisher(for: .kinaraGestureUsed)) { note in tourSaw(note.object as? String) }
+        .onAppear {
+            // Someone new starts on Kinara's picks; an existing setup is never touched.
+            if !preview, settings.offersRecommendedSetup { settings.applyRecommendedSetup(appAudio: AppVolumeController.isSupported) }
+            if step == .tour { if preview { tourSteps = settings.tourSteps() } else { setTouring(true) } }
+        }
         .background {
             if step == .access && !controls.hasAccess && !preview {
                 // Checks once a second only while this step waits, even with
@@ -1582,7 +1759,7 @@ struct GettingStartedView: View {
                 AccessWatcher { now = Date(); controls.refreshAccess() }
             }
         }
-        .onDisappear { setPracticing(false) }
+        .onDisappear { setTouring(false) }
     }
 
     // MARK: Steps
@@ -1591,13 +1768,13 @@ struct GettingStartedView: View {
         VStack(spacing: 22) {
             OnboardingTrackpad(animate: !reduceMotion && (!preview || animatesInPreview)).frame(width: 300, height: 190)
             VStack(spacing: 8) {
-                Text("Meet Sway").font(.system(size: 30, weight: .bold))
+                Text("Meet Kinara").font(.system(size: 30, weight: .bold))
                 Text("The edges of your trackpad become controls: volume, brightness, media, windows, and anything Shortcuts can do.")
                     .font(.system(size: 14)).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true).frame(maxWidth: 420)
             }
             VStack(alignment: .leading, spacing: 12) {
-                feature("hand.draw", "Swipe an edge", "Two fingers along the side, just like scrolling.")
+                feature("hand.draw", "Slide an edge", settings.minimumFingers == 1 ? "One finger along the side, like a slider." : "Two fingers along the side, just like scrolling.")
                 feature("hand.tap", "Tap a corner", "Double-tap to paste, open Mission Control, and more.")
                 feature("waveform.path", "Feels built in", "Haptic notches, a native indicator, almost no battery.")
             }.frame(maxWidth: 400)
@@ -1612,16 +1789,16 @@ struct GettingStartedView: View {
                 .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .contentTransition(.opacity)
             VStack(spacing: 8) {
-                Text(controls.hasAccess ? "You’re all set" : "Let Sway feel your trackpad").font(.system(size: 24, weight: .bold))
+                Text(controls.hasAccess ? "You’re all set" : "Let Kinara feel your trackpad").font(.system(size: 24, weight: .bold))
                 Text(controls.hasAccess ? "Accessibility is on. Let’s try a swipe."
-                                        : "macOS asks you to allow Accessibility for apps that respond to gestures. Sway uses it only to recognize edge swipes and keep them from scrolling.")
+                                        : "macOS asks you to allow Accessibility for apps that respond to gestures. Kinara uses it only to recognize edge swipes and keep them from scrolling.")
                     .font(.system(size: 13.5)).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true).frame(maxWidth: 430)
             }
             if !controls.hasAccess {
                 VStack(alignment: .leading, spacing: 10) {
                     privacyLine("lock", "Touch data never leaves your Mac and is never saved.")
-                    privacyLine("eye.slash", "Sway never reads what you type, only that you’re typing.")
+                    privacyLine("eye.slash", "Kinara never reads what you type, only that you’re typing.")
                     privacyLine("arrow.uturn.backward", "You can turn it off anytime in System Settings.")
                 }.padding(16).frame(maxWidth: 430, alignment: .leading)
                     .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -1632,7 +1809,7 @@ struct GettingStartedView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Label("Already switched on, but nothing happens?", systemImage: "exclamationmark.circle")
                                 .font(.system(size: 13, weight: .semibold))
-                            Text("That entry belongs to an older copy of Sway. In the list, select Sway and click −. Then choose Allow Accessibility here and switch the new entry on.")
+                            Text("That entry belongs to an older copy of Kinara. In the list, select Kinara and click −. Then choose Allow Accessibility here and switch the new entry on.")
                                 .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                             Button("Open Accessibility Settings", action: openAccessibilitySettings).buttonStyle(.bordered).controlSize(.small)
                         }
@@ -1641,7 +1818,7 @@ struct GettingStartedView: View {
                     } else {
                         HStack(spacing: 8) {
                             ProgressView().controlSize(.small)
-                            Text("Switch on Sway in System Settings. This page continues by itself.")
+                            Text("Switch on Kinara in System Settings. This page continues by itself.")
                                 .font(.system(size: 12)).foregroundStyle(.secondary)
                         }
                         Button("No prompt? Open Accessibility Settings", action: openAccessibilitySettings)
@@ -1662,19 +1839,79 @@ struct GettingStartedView: View {
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
     }
 
-    private var practice: some View {
+    /// The screen stands in for the trackpad: each stop is lit on the matching
+    /// screen edge or corner, and moves on once you've done it for real.
+    private var tour: some View {
         VStack(spacing: 18) {
-            VStack(spacing: 8) {
-                Text(practiced ? "That’s it" : "Try a swipe").font(.system(size: 24, weight: .bold))
-                Text(practiceInstruction).font(.system(size: 13.5)).foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true).frame(maxWidth: 430)
+            if !controls.hasAccess && !preview {
+                VStack(spacing: 8) {
+                    Text("Try it later").font(.system(size: 24, weight: .bold))
+                    Text("Gestures need Accessibility. Once it’s on, open Getting Started from Kinara’s menu to take the tour.")
+                        .font(.system(size: 13.5)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true).frame(maxWidth: 430)
+                }
+            } else if let current = currentTourStep {
+                VStack(spacing: 8) {
+                    Text(tourSucceeded ? "Nice" : tourTitle(current)).font(.system(size: 26, weight: .bold))
+                        .contentTransition(.opacity)
+                    Text(tourDetail(current))
+                        .font(.system(size: 13.5)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true).frame(maxWidth: 430, minHeight: 40, alignment: .top)
+                }
+                TourTrackpad(step: current, succeeded: tourSucceeded)
+                Label("Watch \(current.place) of your screen: it shows where your finger goes.", systemImage: "rectangle.dashed")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+            } else {
+                VStack(spacing: 8) {
+                    Text("You’ve got it").font(.system(size: 26, weight: .bold))
+                    Text("That’s the whole idea. Rest a finger in a corner any time to see what it does, and change anything in Settings.")
+                        .font(.system(size: 13.5)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true).frame(maxWidth: 430)
+                }
+                TourTrackpad(step: nil, succeeded: true)
             }
-            TrackpadMap(settings: settings, selectedZone: practiced ? nil : "right", telemetry: telemetry,
-                        showsTouches: telemetry.isTesting, onSelect: nil)
-                .frame(width: 440, height: 250)
-            Label(practiced ? "Recognized. Nothing on your Mac changed during practice." : controls.hasAccess ? "Practice mode: no levels change yet." : "Gestures need Accessibility. You can practice later in Palm protection.",
-                  systemImage: practiced ? "checkmark.circle.fill" : "info.circle")
-                .font(.system(size: 12)).foregroundStyle(.secondary)
+            if !tourSteps.isEmpty {
+                HStack(spacing: 10) {
+                    ForEach(Array(tourSteps.enumerated()), id: \.offset) { index, item in
+                        let done = tourDone.contains(item.slot)
+                        Image(systemName: done ? "checkmark" : item.action.icon)
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 30, height: 30)
+                            .background(Circle().fill(Color.primary.opacity(done ? 0.14 : 0.05)))
+                            .overlay(Circle().strokeBorder(Color.primary.opacity(index == tourIndex ? 0.7 : 0), lineWidth: 1.5))
+                            .foregroundStyle(done || index == tourIndex ? .primary : .secondary)
+                            .accessibilityLabel("\(item.action.label), \(done ? "done" : index == tourIndex ? "now" : "next")")
+                    }
+                }
+                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: tourIndex)
+            }
+        }
+    }
+
+    private var currentTourStep: TourStep? { tourSteps.indices.contains(tourIndex) ? tourSteps[tourIndex] : nil }
+
+    private func tourTitle(_ step: TourStep) -> String {
+        switch step.kind {
+        case .slide: return "Slide \(step.place)"
+        case .doubleTap: return "Double-tap \(step.place)"
+        case .tapHold: return "Tap and hold \(step.place)"
+        }
+    }
+
+    private func tourDetail(_ step: TourStep) -> String {
+        let fingers = settings.minimumFingers == 1 ? "one finger" : "two fingers"
+        if tourSucceeded {
+            if step.action.opensPanel { return "That’s \(step.action.label). Press esc to close it." }
+            if step.action.undoesByRepeating { return "That’s \(step.action.label). Do it again to put it back." }
+            return "That’s \(step.action.label), for real."
+        }
+        // "to change volume", "to open Clipboard history", "for Play / pause".
+        let purpose = step.action.isContinuous ? "to change \(step.action.label.lowercased())"
+                    : step.action.opensPanel ? "to open \(step.action.label)" : "for \(step.action.label)"
+        switch step.kind {
+        case let .slide(side): return "Put \(fingers) on the \(side) edge of your trackpad and slide up or down \(purpose)."
+        case .doubleTap: return "Tap twice, quickly, \(step.region.hasSuffix("Corner") ? "in" : "on") \(step.place) of your trackpad \(purpose)."
+        case .tapHold: return "Tap once in \(step.place) of your trackpad, then touch again and hold still \(purpose)."
         }
     }
 
@@ -1711,6 +1948,15 @@ struct GettingStartedView: View {
                 Text("Rest a finger on the trackpad, then press Feel it.").font(.system(size: 11)).foregroundStyle(.secondary)
             }
             VStack(alignment: .leading, spacing: 8) {
+                Text("Corners").font(.system(size: 13, weight: .semibold))
+                HStack(alignment: .firstTextBaseline) {
+                    Text(cornerSummary).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button("Use Kinara’s picks") { if !preview { settings.applyRecommendedSetup(appAudio: AppVolumeController.isSupported) } }
+                        .buttonStyle(.bordered).controlSize(.small)
+                }
+            }
+            VStack(alignment: .leading, spacing: 8) {
                 Text("Indicator").font(.system(size: 13, weight: .semibold))
                 Picker("Indicator", selection: $settings.osdStyle) {
                     Text("Pill").tag("horizontal"); Text("Follow finger").tag("edge"); Text("Off").tag("off")
@@ -1725,7 +1971,7 @@ struct GettingStartedView: View {
                 Spacer()
                 Image(nsImage: SwayGlyph.image(active: true)).renderingMode(.template)
                     .padding(7).background(Color.primary.opacity(0.14), in: RoundedRectangle(cornerRadius: 6))
-                    .accessibilityLabel("Sway menu bar icon")
+                    .accessibilityLabel("Kinara menu bar icon")
                 Image(systemName: "wifi").foregroundStyle(.secondary)
                 Image(systemName: "battery.75percent").foregroundStyle(.secondary)
                 Text("9:41").font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
@@ -1733,16 +1979,16 @@ struct GettingStartedView: View {
             .padding(.horizontal, 14).padding(.vertical, 6).frame(maxWidth: 420)
             .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(spacing: 8) {
-                Text("Sway lives in your menu bar").font(.system(size: 24, weight: .bold))
-                Text("Click Sway’s icon for volume and brightness, quick options, and Settings. Scroll over it to change the volume.")
+                Text("Kinara lives in your menu bar").font(.system(size: 24, weight: .bold))
+                Text("Click Kinara’s icon for volume and brightness, quick options, and Settings. Scroll over it to change the volume.")
                     .font(.system(size: 13.5)).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true).frame(maxWidth: 430)
             }
             Button("Show me") { if !preview { (NSApp.delegate as? AppDelegate)?.revealMenuBar() } }.buttonStyle(.bordered)
             VStack(spacing: 0) {
-                onboardingSwitch("Open Sway when you log in", icon: "power", value: $settings.launchAtLogin)
+                onboardingSwitch("Open Kinara when you log in", icon: "power", value: $settings.launchAtLogin)
                 Divider().padding(.leading, 44)
-                onboardingSwitch("Show in the Dock while windows are open", icon: "dock.rectangle", value: $settings.showDockIcon)
+                onboardingSwitch("Show in the Dock and ⌘-Tab while windows are open", icon: "dock.rectangle", value: $settings.showDockIcon)
             }
             .frame(maxWidth: 430)
             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -1786,7 +2032,7 @@ struct GettingStartedView: View {
         switch step {
         case .welcome: return "Get started"
         case .access: return controls.hasAccess ? "Continue" : "Allow Accessibility"
-        case .practice: return practiced || !controls.hasAccess ? "Continue" : "Skip"
+        case .tour: return currentTourStep == nil || !controls.hasAccess ? "Continue" : "Skip"
         case .personalize: return "Continue"
         case .done: return "Done"
         }
@@ -1794,9 +2040,9 @@ struct GettingStartedView: View {
 
     private func primaryAction() {
         switch step {
-        case .welcome: go(to: controls.hasAccess ? .practice : .access)
+        case .welcome: go(to: controls.hasAccess ? .tour : .access)
         case .access:
-            if controls.hasAccess { go(to: .practice); return }
+            if controls.hasAccess { go(to: .tour); return }
             requestedAccess = true
             requestedAt = Date()
             guard !preview else { return }
@@ -1804,7 +2050,8 @@ struct GettingStartedView: View {
             // Sway to the list and has its own button to System Settings.
             // If macOS doesn't show it again, the link below opens Settings.
             AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
-        case .practice: go(to: .personalize)
+        case .tour:
+            if currentTourStep == nil || !controls.hasAccess { go(to: .personalize) } else { advanceTour() }
         case .personalize: go(to: .done)
         case .done: openControls()
         }
@@ -1816,12 +2063,14 @@ struct GettingStartedView: View {
 
     // MARK: Helpers
 
-    private var practiced: Bool { telemetry.isTesting && telemetry.acceptedCount > 0 }
-
-    private var practiceInstruction: String {
-        if practiced { return "Sway recognized your swipe. On the right edge that would change your \(settings.rightZoneAction.label.lowercased())." }
-        let fingers = settings.minimumFingers == 1 ? "one finger" : "two fingers"
-        return "Place \(fingers) inside the highlighted right edge, then swipe up."
+    /// What each corner's double-tap does, in a line.
+    private var cornerSummary: String {
+        let names = [("topLeftCorner", "Top left"), ("topRightCorner", "Top right"), ("bottomLeftCorner", "Bottom left"), ("bottomRightCorner", "Bottom right")]
+        let set = names.compactMap { slot, name -> String? in
+            let action = settings.baseBinding("\(slot).doubleTap").action
+            return action == .disabled ? nil : "\(name): \(action.label)"
+        }
+        return set.isEmpty ? "No corner taps yet. Kinara’s picks put the clipboard, app audio, play/pause and Mission Control there." : set.joined(separator: " · ")
     }
 
     private var currentPreset: GesturePreset {
@@ -1829,18 +2078,46 @@ struct GettingStartedView: View {
         return settings.palmRejectionMode == "strict" ? .precise : .everyday
     }
 
-    /// Practice uses the safe test: gestures are recognized, nothing changes.
-    private func setPracticing(_ on: Bool) {
+    /// The tour uses Kinara for real (not the safe test), so each gesture does what it will every day.
+    private func setTouring(_ on: Bool) {
         guard !preview else { return }
-        if on, controls.hasAccess, settings.isEnabled {
-            monitor.cancelCurrentGesture()
-            telemetry.resetCounters()
-            telemetry.isTesting = true
-            monitor.start()
-        } else if !on, telemetry.isTesting {
-            monitor.cancelCurrentGesture()
-            telemetry.isTesting = false
+        if on {
+            tourSteps = settings.tourSteps()
+            tourIndex = 0
+            tourDone = []
+            tourSucceeded = false
+            if telemetry.isTesting { monitor.cancelCurrentGesture(); telemetry.isTesting = false }
+            if controls.hasAccess, settings.isEnabled { monitor.start() }
+            showTourGuide()
+        } else {
+            TourGuide.shared.hide()
         }
+    }
+
+    private func showTourGuide() {
+        guard !preview, step == .tour, controls.hasAccess, let current = currentTourStep else { TourGuide.shared.hide(); return }
+        let screen = NSApp.windows.first { $0.identifier?.rawValue == "Sway.Welcome" }?.screen
+        TourGuide.shared.show(current, on: screen)
+    }
+
+    /// A gesture done for real: if it's this stop's, celebrate, then move on.
+    private func tourSaw(_ slot: String?) {
+        guard step == .tour, !tourSucceeded, let current = currentTourStep, slot == current.slot else { return }
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.8)) { tourSucceeded = true }
+        TourGuide.shared.succeed()
+        DispatchQueue.main.asyncAfter(deadline: .now() + (current.action.opensPanel ? 2.2 : 1.3)) { [current] in
+            guard step == .tour, currentTourStep == current else { return }
+            advanceTour()
+        }
+    }
+
+    private func advanceTour() {
+        if let current = currentTourStep, tourSucceeded { tourDone.insert(current.slot) }
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
+            tourSucceeded = false
+            tourIndex += 1
+        }
+        showTourGuide()
     }
 
     private func feature(_ icon: String, _ title: String, _ detail: String) -> some View {
@@ -1925,7 +2202,10 @@ private struct OnboardingTrackpad: View {
 }
 
 
-// Geometry describes real physical zones. Text stays outside narrow strips.
+/// The trackpad as a chooser. Each edge is a rail along the side, labeled
+/// with what it does; each corner is a button. The chosen one glows like
+/// Kinara's edge light, and its real area shows faintly behind it, so its
+/// width or size reads too. Hovering names a spot in the middle.
 private struct TrackpadMap: View {
     @ObservedObject var settings: TrackpadSettings
     let selectedZone: String?
@@ -1934,65 +2214,33 @@ private struct TrackpadMap: View {
     let onSelect: ((String) -> Void)?
     var showsCorners = false
     @State private var trail: [CGPoint] = []
+    @State private var hovered: String?
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private let radius: CGFloat = 20
+    private let inset: CGFloat = 12
+    private let button: CGFloat = 30
+    private static let corners = ["topLeftCorner", "topRightCorner", "bottomLeftCorner", "bottomRightCorner"]
 
     var body: some View {
         GeometryReader { geo in
-            let width = geo.size.width
-            let height = geo.size.height
-            let topHeight = settings.topEdgeEnabled ? height * settings.topEdgeHeight : 0
-            let bottomHeight = settings.bottomEdgeEnabled ? height * settings.bottomEdgeHeight : 0
+            let size = geo.size
             ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 17).fill(SwayTheme.canvas)
-                RoundedRectangle(cornerRadius: 17).strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
-                zone("left", action: settings.leftZoneAction, width: width * settings.leftZoneWidth, height: height - topHeight - bottomHeight)
-                    .offset(y: topHeight)
-                zone("right", action: settings.rightZoneAction, width: width * settings.rightZoneWidth, height: height - topHeight - bottomHeight)
-                    .offset(x: width * (1 - settings.rightZoneWidth), y: topHeight)
-                if settings.bottomEdgeEnabled {
-                    zone("bottom", action: settings.bottomEdgeAction, width: width, height: bottomHeight).offset(y: height - bottomHeight)
-                }
+                RoundedRectangle(cornerRadius: radius, style: .continuous).fill(surface)
+                footprint(in: size)
+                caption.frame(width: size.width, height: size.height).allowsHitTesting(false)
+                ForEach(edgeKeys, id: \.self) { key in edge(key, in: size) }
                 if showsCorners {
-                    ForEach(["topLeftCorner", "topRightCorner", "bottomLeftCorner", "bottomRightCorner"], id: \.self) { key in
-                        corner(key, width: width, height: height)
-                    }
+                    ForEach(Self.corners, id: \.self) { key in corner(key, in: size) }
                 }
-                if settings.topEdgeEnabled {
-                    if settings.topEdgeSwipeDirection == "horizontal" {
-                        zone("topLeft", action: settings.topLeftAction, width: width / 2, height: topHeight)
-                        zone("topRight", action: settings.topRightAction, width: width / 2, height: topHeight).offset(x: width / 2)
-                    } else {
-                        zone("top", action: settings.topEdgeAction, width: width, height: topHeight)
-                    }
-                }
-                VStack(spacing: 6) {
-                    Image(systemName: showsTouches ? "waveform.path" : "cursorarrow")
-                        .font(.system(size: 16, weight: .light)).foregroundStyle(.secondary)
-                    Text(showsTouches ? "Live touch view" : "Free space")
-                        .font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
-                    if !showsTouches { Text("Point & scroll").font(.system(size: 10)).foregroundStyle(.secondary) }
-                }
-                .frame(width: width * max(0.12, 1 - settings.leftZoneWidth - settings.rightZoneWidth), height: max(0, height - topHeight - bottomHeight))
-                .offset(x: width * settings.leftZoneWidth, y: topHeight)
-                .allowsHitTesting(false)
-                if showsTouches {
-                    Path { path in
-                        for (index, point) in trail.enumerated() {
-                            let position = CGPoint(x: point.x * width, y: (1 - point.y) * height)
-                            if index == 0 { path.move(to: position) } else { path.addLine(to: position) }
-                        }
-                    }
-                    .stroke(Color.primary.opacity(0.7), style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
-                    .allowsHitTesting(false)
-                    if telemetry.fingerCount > 0 {
-                        Circle().fill(Color.primary).frame(width: 11, height: 11)
-                            .overlay(Circle().stroke(Color(nsColor: .windowBackgroundColor), lineWidth: 2))
-                            .position(x: telemetry.x * width, y: (1 - telemetry.y) * height)
-                            .allowsHitTesting(false)
-                    }
-                }
+                if showsTouches { touches(in: size) }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 17))
+            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(rim, lineWidth: 1))
+            .shadow(color: .black.opacity(scheme == .dark ? 0.45 : 0.1), radius: 18, y: 9)
+            .shadow(color: .black.opacity(scheme == .dark ? 0.3 : 0.06), radius: 2, y: 1)
         }
+        .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.86), value: selectedZone)
         .onChange(of: telemetry.sampleCount) { count in
             guard showsTouches else { return }
             if count <= 1 { trail.removeAll(keepingCapacity: true) }
@@ -2006,81 +2254,281 @@ private struct TrackpadMap: View {
         .accessibilityLabel("Trackpad gesture map")
     }
 
-    private func corner(_ key: String, width: CGFloat, height: CGFloat) -> some View {
-        let size = settings.tapCornerSize
-        let action = settings.baseBinding(EdgeSlot.tap(key, "doubleTap")).action
-        let hold = settings.baseBinding(EdgeSlot.tap(key, "tapHold")).action
-        let shown = action != .disabled ? action : hold
-        return ZStack {
-            Rectangle().fill(Color.primary.opacity(shown == .disabled ? 0.04 : 0.18))
-            Rectangle().strokeBorder(Color.primary.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
-            if shown != .disabled { Image(systemName: shown.icon).font(.system(size: 11, weight: .semibold)) }
-        }
-        .frame(width: width * size, height: height * size)
-        .offset(x: key.contains("Right") ? width * (1 - size) : 0, y: key.hasPrefix("bottom") ? height * (1 - size) : 0)
-        .allowsHitTesting(false)
-        .accessibilityLabel("\(EdgeSlot.title(key)): \(shown.label)")
+    /// Side edges always; top and bottom once they're on. The top's two halves are one spot.
+    private var edgeKeys: [String] {
+        ["left", "right"] + (settings.topEdgeEnabled ? ["top"] : []) + (settings.bottomEdgeEnabled ? ["bottom"] : [])
     }
 
-    private func zone(_ key: String, action: ZoneAction, width: CGFloat, height: CGFloat) -> some View {
-        let selected = selectedZone == key || (showsTouches && telemetry.activeZone == key)
-        let isTop = key.hasPrefix("top") || key == "bottom"
-        return Button { onSelect?(key) } label: {
-            ZStack {
-                Rectangle().fill(Color.primary.opacity(action == .disabled ? 0.025 : selected ? 0.16 : 0.075))
-                Rectangle().strokeBorder(Color.primary.opacity(selected ? 0.6 : 0.2), lineWidth: selected ? 1.5 : 0.5)
-                if width >= 38 && height >= 28 {
-                    if isTop {
-                        Image(systemName: key == "bottom" || settings.topEdgeSwipeDirection == "horizontal" ? "arrow.left.and.right" : "arrow.up.and.down")
-                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(.primary)
-                    } else {
-                        VStack(spacing: 10) {
-                            Image(systemName: action.icon).font(.system(size: 15))
-                            Image(systemName: "arrow.up.and.down").font(.system(size: 12, weight: .medium))
-                        }.foregroundStyle(Color.primary.opacity(action == .disabled ? 0.35 : 0.85))
-                    }
-                }
-            }.frame(width: max(0, width), height: max(0, height))
+    /// Brushed glass, a little lighter at the top as if lit from above.
+    private var surface: LinearGradient {
+        LinearGradient(colors: scheme == .dark ? [Color(white: 0.24), Color(white: 0.185)] : [Color(white: 1), Color(white: 0.94)],
+                       startPoint: .top, endPoint: .bottom)
+    }
+
+    private var rim: LinearGradient {
+        LinearGradient(colors: scheme == .dark ? [Color.white.opacity(0.2), Color.white.opacity(0.05)] : [Color.black.opacity(0.05), Color.black.opacity(0.13)],
+                       startPoint: .top, endPoint: .bottom)
+    }
+
+    // MARK: Edges
+
+    private func edgeFrame(_ key: String, in size: CGSize) -> CGRect {
+        // Clear of the corner buttons, so every spot has its own target.
+        let reach = inset + button + 6
+        let band: CGFloat = 46
+        switch key {
+        case "left": return CGRect(x: 0, y: reach, width: size.width * 0.34, height: size.height - reach * 2)
+        case "right": return CGRect(x: size.width * 0.66, y: reach, width: size.width * 0.34, height: size.height - reach * 2)
+        case "top": return CGRect(x: reach, y: 0, width: size.width - reach * 2, height: band)
+        default: return CGRect(x: reach, y: size.height - band, width: size.width - reach * 2, height: band)
         }
-        .buttonStyle(.plain)
-        .disabled(onSelect == nil)
-        .accessibilityLabel("\(EdgeSlot.title(key)): \(action.label)")
-        .help("\(action.label) · click to configure")
+    }
+
+    private func isLive(_ key: String) -> Bool {
+        guard showsTouches else { return false }
+        let zone = telemetry.activeZone
+        return zone == key || (key == "top" && (zone == "topLeft" || zone == "topRight"))
+    }
+
+    /// What an edge's label says: one action, or the top's two halves.
+    private func labels(_ key: String) -> [ZoneAction] {
+        switch key {
+        case "left": return [settings.leftZoneAction]
+        case "right": return [settings.rightZoneAction]
+        case "bottom": return [settings.bottomEdgeAction]
+        default:
+            return settings.topEdgeSwipeDirection == "horizontal" ? [settings.topLeftAction, settings.topRightAction] : [settings.topEdgeAction]
+        }
+    }
+
+    private func edge(_ key: String, in size: CGSize) -> some View {
+        let frame = edgeFrame(key, in: size)
+        let horizontal = key == "top" || key == "bottom"
+        let on = selectedZone == key
+        let live = isLive(key)
+        let lit = hovered == key && onSelect != nil
+        let side: Edge.Set = key == "left" ? .leading : key == "right" ? .trailing : key == "top" ? .top : .bottom
+        let alignment: Alignment = key == "left" ? .leading : key == "right" ? .trailing : key == "top" ? .top : .bottom
+        let actions = labels(key)
+        return ZStack(alignment: alignment) {
+            Color.clear
+            Capsule()
+                .fill(on || live ? Color.accentColor : Color.primary.opacity(lit ? 0.3 : 0.15))
+                .frame(width: horizontal ? frame.width : 4, height: horizontal ? 4 : frame.height)
+                .shadow(color: on || live ? Color.accentColor.opacity(0.9) : .clear, radius: 5)
+                .shadow(color: on || live ? Color.accentColor.opacity(0.45) : .clear, radius: 14)
+                .padding(side, 6)
+            Group {
+                if horizontal && actions.count == 2 {
+                    HStack(spacing: 0) {
+                        Spacer(minLength: 0)
+                        chip(actions[0], on: on, lit: lit)
+                        Spacer(minLength: 0)
+                        Spacer(minLength: 0)
+                        chip(actions[1], on: on, lit: lit)
+                        Spacer(minLength: 0)
+                    }
+                } else {
+                    chip(actions[0], on: on, lit: lit)
+                }
+            }
+            .padding(side, horizontal ? 16 : 18)
+        }
+        .frame(width: frame.width, height: frame.height)
+        .contentShape(Rectangle())
+        .onTapGesture { onSelect?(key) }
+        .onHover { inside in hover(key, inside) }
+        .offset(x: frame.minX, y: frame.minY)
+        .allowsHitTesting(onSelect != nil)
+        .accessibilityElement()
+        .accessibilityLabel("\(EdgeSlot.title(key)): \(actions.map(\.label).joined(separator: ", "))")
+        .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction { onSelect?(key) }
+        .help("\(EdgeSlot.title(key)) · click to change")
+    }
+
+    private func chip(_ action: ZoneAction, on: Bool, lit: Bool) -> some View {
+        let assigned = action != .disabled
+        return HStack(spacing: 5) {
+            Image(systemName: assigned ? action.icon : "plus").font(.system(size: 10, weight: .semibold))
+            Text(assigned ? action.label : "Add").font(.system(size: 11.5, weight: .medium)).lineLimit(1)
+        }
+        .foregroundStyle(on ? Color.white : assigned ? Color.primary : Color.secondary)
+        .padding(.horizontal, 9).frame(height: 24)
+        .frame(maxWidth: 132)
+        .background(Capsule().fill(on ? Color.accentColor : Color.primary.opacity(lit ? 0.12 : 0.065)))
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(on ? 0 : 0.06), lineWidth: 1))
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    // MARK: Corners
+
+    private func corner(_ key: String, in size: CGSize) -> some View {
+        let tap = settings.baseBinding(EdgeSlot.tap(key, "doubleTap")).action
+        let hold = settings.baseBinding(EdgeSlot.tap(key, "tapHold")).action
+        let shown = tap != .disabled ? tap : hold
+        let assigned = shown != .disabled
+        let on = selectedZone == key
+        let lit = hovered == key && onSelect != nil
+        let x = key.contains("Right") ? size.width - inset - button : inset
+        let y = key.hasPrefix("bottom") ? size.height - inset - button : inset
+        return Image(systemName: assigned ? shown.icon : "plus")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(on ? Color.white : assigned ? Color.primary.opacity(0.85) : Color.secondary.opacity(lit ? 1 : 0.55))
+            .frame(width: button, height: button)
+            .background(Circle().fill(on ? Color.accentColor
+                                      : Color.primary.opacity(assigned ? (lit ? 0.15 : 0.085) : (lit ? 0.09 : 0.035))))
+            .overlay(Circle().strokeBorder(Color.primary.opacity(on ? 0 : 0.07), lineWidth: 1))
+            .shadow(color: on ? Color.accentColor.opacity(0.75) : .clear, radius: 8)
+            .contentShape(Circle().inset(by: -6))
+            .onTapGesture { onSelect?(key) }
+            .onHover { inside in hover(key, inside) }
+            .offset(x: x, y: y)
+            .allowsHitTesting(onSelect != nil)
+            .accessibilityElement()
+            .accessibilityLabel("\(EdgeSlot.title(key)): \(shown.label)")
+            .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction { onSelect?(key) }
+            .help("\(EdgeSlot.title(key)) · click to set its taps")
+    }
+
+    // MARK: Footprint, caption, touches
+
+    /// Where the chosen spot really is on your trackpad, at its real size.
+    @ViewBuilder private func footprint(in size: CGSize) -> some View {
+        if let spot = selectedZone, let rect = area(of: spot, in: size) {
+            RoundedRectangle(cornerRadius: min(12, rect.width / 2, rect.height / 2), style: .continuous)
+                .fill(Color.accentColor.opacity(scheme == .dark ? 0.2 : 0.11))
+                .frame(width: rect.width, height: rect.height)
+                .offset(x: rect.minX, y: rect.minY)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private func area(of spot: String, in size: CGSize) -> CGRect? {
+        let top = settings.topEdgeEnabled ? size.height * settings.topEdgeHeight : 0
+        let bottom = settings.bottomEdgeEnabled ? size.height * settings.bottomEdgeHeight : 0
+        switch spot {
+        case "left":
+            return CGRect(x: 0, y: top, width: max(3, size.width * settings.leftZoneWidth), height: size.height - top - bottom)
+        case "right":
+            let width = max(3, size.width * settings.rightZoneWidth)
+            return CGRect(x: size.width - width, y: top, width: width, height: size.height - top - bottom)
+        case "top":
+            return CGRect(x: 0, y: 0, width: size.width, height: max(3, top))
+        case "bottom":
+            return CGRect(x: 0, y: size.height - max(3, bottom), width: size.width, height: max(3, bottom))
+        default:
+            guard spot.hasSuffix("Corner") else { return nil }
+            let width = size.width * settings.tapCornerSize, height = size.height * settings.tapCornerSize
+            return CGRect(x: spot.contains("Right") ? size.width - width : 0, y: spot.hasPrefix("bottom") ? size.height - height : 0,
+                          width: width, height: height)
+        }
+    }
+
+    private var caption: some View {
+        VStack(spacing: 3) {
+            if let key = hovered {
+                Text(EdgeSlot.title(key)).font(.system(size: 12, weight: .semibold))
+                Text(summary(key)).font(.system(size: 11)).foregroundStyle(.secondary)
+            } else {
+                Text("Point & scroll").font(.system(size: 11, weight: .medium)).foregroundStyle(.tertiary)
+            }
+        }
+        .multilineTextAlignment(.center)
+        .animation(.easeOut(duration: 0.12), value: hovered)
+    }
+
+    private func summary(_ key: String) -> String {
+        if key.hasSuffix("Corner") {
+            let tap = settings.baseBinding(EdgeSlot.tap(key, "doubleTap")).action
+            let hold = settings.baseBinding(EdgeSlot.tap(key, "tapHold")).action
+            if tap != .disabled { return "Double-tap: \(tap.label)" }
+            if hold != .disabled { return "Tap and hold: \(hold.label)" }
+            return "Nothing yet"
+        }
+        let actions = labels(key).filter { $0 != .disabled }
+        return actions.isEmpty ? "Nothing yet" : "Slide: " + actions.map(\.label).joined(separator: " · ")
+    }
+
+    @ViewBuilder private func touches(in size: CGSize) -> some View {
+        Path { path in
+            for (index, point) in trail.enumerated() {
+                let position = CGPoint(x: point.x * size.width, y: (1 - point.y) * size.height)
+                if index == 0 { path.move(to: position) } else { path.addLine(to: position) }
+            }
+        }
+        .stroke(Color.accentColor.opacity(0.5), style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+        .allowsHitTesting(false)
+        if telemetry.fingerCount > 0 {
+            Circle().fill(Color.accentColor).frame(width: 12, height: 12)
+                .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                .shadow(color: Color.accentColor.opacity(0.6), radius: 6)
+                .position(x: telemetry.x * size.width, y: (1 - telemetry.y) * size.height)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private func hover(_ key: String, _ inside: Bool) {
+        withAnimation(.easeOut(duration: 0.12)) {
+            if inside { hovered = key } else if hovered == key { hovered = nil }
+        }
+    }
+}
+
+/// A chosen spot, drawn small: a white trackpad on an accent tile, the spot lit.
+private struct SpotGlyph: View {
+    let spot: String
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(LinearGradient(colors: [Color.accentColor.opacity(0.85), Color.accentColor], startPoint: .top, endPoint: .bottom))
+            ZStack(alignment: alignment) {
+                RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Color.white.opacity(0.75), lineWidth: 1.4)
+                mark.padding(3.5)
+            }
+            .frame(width: 26, height: 18)
+        }
+        .frame(width: 38, height: 38)
+        .accessibilityHidden(true)
+    }
+    private var alignment: Alignment {
+        switch spot {
+        case "left": return .leading
+        case "right": return .trailing
+        case "top": return .top
+        case "bottom": return .bottom
+        case "topLeftCorner": return .topLeading
+        case "topRightCorner": return .topTrailing
+        case "bottomLeftCorner": return .bottomLeading
+        default: return .bottomTrailing
+        }
+    }
+    @ViewBuilder private var mark: some View {
+        switch spot {
+        case "left", "right": Capsule().fill(Color.white).frame(width: 2.5, height: 9)
+        case "top", "bottom": Capsule().fill(Color.white).frame(width: 13, height: 2.5)
+        default: Circle().fill(Color.white).frame(width: 4.5, height: 4.5)
+        }
     }
 }
 
 // MARK: - Consistent settings primitives
 
-private struct PageTitle: View {
-    let title: String
-    let subtitle: String
-    let icon: String?
-    init(_ title: String, subtitle: String, icon: String? = nil) { self.title = title; self.subtitle = subtitle; self.icon = icon }
-    var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            if let icon {
-                Image(systemName: icon).font(.system(size: 18, weight: .semibold))
-                    .frame(width: 40, height: 40)
-                    .foregroundStyle(Color(nsColor: .windowBackgroundColor))
-                    .background(Color.primary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 22, weight: .bold))
-                Text(subtitle).font(.system(size: 12.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
+/// The page behind the grouped cards: Apple's grouped background, a step
+/// darker than the cards in light mode and a step darker still in dark.
+private struct GroupedBackground: View {
+    @Environment(\.colorScheme) private var scheme
+    var body: some View { scheme == .dark ? Color(white: 0.115) : Color(white: 0.955) }
 }
 
-/// One surface for every card: continuous corners, a hairline, and in light
-/// mode a barely-there lift, so cards read as objects without decoration.
+/// One surface for every card: the grouped cell color, continuous corners and a hairline.
 private struct CardSurface: ViewModifier {
     @Environment(\.colorScheme) private var scheme
     func body(content: Content) -> some View {
         content
-            .background(scheme == .dark ? Color.white.opacity(0.05) : Color.white, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(Color.primary.opacity(scheme == .dark ? 0.09 : 0.06), lineWidth: 1))
-            .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.04), radius: 3, y: 1)
+            .background(scheme == .dark ? Color(white: 0.17) : Color.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(scheme == .dark ? 0.07 : 0.06), lineWidth: 1))
     }
 }
 
@@ -2090,6 +2538,115 @@ private struct CardModifier: ViewModifier {
 
 private extension View { func swayCard() -> some View { modifier(CardModifier()) } }
 
+/// The sidebar's own translucent material, as in System Settings.
+private struct SidebarMaterial: View {
+    let preview: Bool
+    var body: some View {
+        if preview {
+            // Offscreen captures can't see behind the window; this is the material's resting tone.
+            Color.primary.opacity(0.035)
+        } else {
+            SidebarEffect()
+        }
+    }
+}
+
+private struct SidebarEffect: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .sidebar
+        view.blendingMode = .behindWindow
+        view.state = .followsWindowActiveState
+        return view
+    }
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+}
+
+/// A page's sidebar icon: a white symbol on its own colored tile.
+private struct PaneIcon: View {
+    let pane: SettingsPane
+    var size: CGFloat = 22
+    var body: some View {
+        Image(systemName: pane.icon)
+            .font(.system(size: size * 0.5, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(RoundedRectangle(cornerRadius: size * 0.27, style: .continuous)
+                .fill(LinearGradient(colors: [pane.colors.top, pane.colors.bottom], startPoint: .top, endPoint: .bottom)))
+            .overlay(RoundedRectangle(cornerRadius: size * 0.27, style: .continuous).strokeBorder(Color.white.opacity(0.16), lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.12), radius: 0.5, y: 0.5)
+    }
+}
+
+/// A status in one glance: a white symbol on a colored disc.
+private struct StatusGlyph: View {
+    let icon: String
+    let color: Color
+    var size: CGFloat = 32
+    var body: some View {
+        Image(systemName: icon)
+            .font(.system(size: size * 0.42, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(Circle().fill(LinearGradient(colors: [color.opacity(0.8), color], startPoint: .top, endPoint: .bottom)))
+    }
+}
+
+private struct SearchField: View {
+    @Binding var text: String
+    @FocusState private var focused: Bool
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "magnifyingglass").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+            TextField("Search", text: $text).textFieldStyle(.plain).font(.system(size: 13))
+                .focused($focused).accessibilityLabel("Find a setting")
+            if !text.isEmpty {
+                Button { text = "" } label: { Image(systemName: "xmark.circle.fill").font(.system(size: 11)) }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.primary.opacity(0.06)))
+        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
+            .strokeBorder(focused ? Color.accentColor.opacity(0.55) : Color.primary.opacity(0.05), lineWidth: focused ? 1.5 : 1))
+        .contentShape(RoundedRectangle(cornerRadius: 7))
+        .onTapGesture { focused = true }
+        // Opening Settings shouldn't put the cursor in the search field.
+        .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { focused = false } }
+    }
+}
+
+/// Options most people never need, in a sheet of their own.
+private struct AdvancedSheet<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: () -> Content
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 15, weight: .semibold))
+                Text("Advanced").font(.system(size: 12)).foregroundStyle(.secondary)
+            }.padding(.horizontal, 22).padding(.top, 18).padding(.bottom, 12)
+            Divider()
+            ScrollView {
+                content().padding(.horizontal, 22).padding(.vertical, 16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Divider()
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction).controlSize(.large)
+            }.padding(.horizontal, 22).padding(.vertical, 12)
+        }
+        .frame(width: 560, height: 580)
+        .background(GroupedBackground())
+    }
+}
+
+private struct ScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
 
 private struct Notice: View {
     let text: String
@@ -2099,7 +2656,7 @@ private struct Notice: View {
     var body: some View {
         Label { Text(text).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true) } icon: { Image(systemName: icon).foregroundStyle(tint) }
             .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-            .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 11))
+            .background(tint.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 
@@ -2108,21 +2665,72 @@ private struct SettingsCard<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0, content: content)
             .frame(maxWidth: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .modifier(CardSurface())
     }
 }
 
+/// A heading, one card of rows, and an optional note under it.
 private struct SettingsSection<Content: View>: View {
     let title: String
+    let footer: String?
     @ViewBuilder let content: () -> Content
-    init(_ title: String, @ViewBuilder content: @escaping () -> Content) { self.title = title; self.content = content }
+    init(_ title: String, footer: String? = nil, @ViewBuilder content: @escaping () -> Content) {
+        self.title = title; self.footer = footer; self.content = content
+    }
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).padding(.leading, 4)
+        VStack(alignment: .leading, spacing: 7) {
+            if !title.isEmpty {
+                Text(title).font(.system(size: 13, weight: .semibold)).padding(.leading, 2)
+            }
             SettingsCard(content: content)
+            if let footer, !footer.isEmpty {
+                Text(footer).font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true).padding(.horizontal, 2)
+            }
         }
     }
+}
+
+/// Rows are separated by an inset hairline, as in System Settings.
+/// The light's colours as swatches, like macOS's own accent colour picker:
+/// the chosen one has a dot, and its name sits beside the row.
+private struct EdgeLightSwatches: View {
+    @Binding var selection: EdgeLightColor
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(selection.label).font(.system(size: 12)).foregroundStyle(.secondary)
+            ForEach(EdgeLightColor.allCases) { option in
+                Button { selection = option } label: {
+                    Circle().fill(Self.fill(option))
+                        .overlay(Circle().strokeBorder(Color.primary.opacity(0.18), lineWidth: 0.5))
+                        .overlay(Circle().fill(option == .mono ? Color.black.opacity(0.55) : Color.white)
+                            .frame(width: 6, height: 6).opacity(selection == option ? 1 : 0))
+                        .frame(width: 18, height: 18)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .help(option.label)
+                .accessibilityLabel("\(option.label) light")
+                .accessibilityAddTraits(selection == option ? .isSelected : [])
+            }
+        }
+    }
+
+    private static func fill(_ option: EdgeLightColor) -> AnyShapeStyle {
+        if option == .byAction {
+            // Each action's own colour: sound, brightness, the microphone, media.
+            let tints: [NSColor] = [.systemBlue, .systemYellow, .systemGreen, .systemPink, .systemBlue]
+            return AnyShapeStyle(AngularGradient(colors: tints.map { Color(nsColor: $0) }, center: .center))
+        }
+        let colors = option.colors().map { Color(nsColor: $0) }
+        return colors.count == 1 ? AnyShapeStyle(colors[0])
+                                 : AnyShapeStyle(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing))
+    }
+}
+
+private struct RowDivider: View {
+    var body: some View { Divider().padding(.leading, 12) }
 }
 
 private struct SettingRow<Control: View>: View {
@@ -2131,64 +2739,70 @@ private struct SettingRow<Control: View>: View {
     @ViewBuilder let control: () -> Control
     init(_ title: String, detail: String? = nil, @ViewBuilder control: @escaping () -> Control) { self.title = title; self.detail = detail; self.control = control }
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            // Side by side when it fits; otherwise the control moves under
-            // its title instead of running past the card's edge.
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 12) {
-                    Text(title).font(.system(size: 13.5, weight: .medium)).fixedSize()
-                    Spacer(minLength: 12)
-                    control().labelsHidden()
-                }
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(title).font(.system(size: 13.5, weight: .medium))
-                    control().labelsHidden()
-                }
+        // Side by side when it fits; otherwise the control moves under its
+        // title instead of running past the card's edge.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                label.fixedSize(horizontal: true, vertical: false)
+                Spacer(minLength: 12)
+                control().labelsHidden()
             }
-            if let detail { Text(detail).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
-        }.padding(.horizontal, 16).padding(.vertical, 13)
+            VStack(alignment: .leading, spacing: 8) {
+                label
+                control().labelsHidden()
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8).frame(minHeight: 38)
+    }
+    private var label: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.system(size: 13))
+            if let detail { Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+        }
     }
 }
 
 private struct ToggleRow: View {
     let title: String
-    let detail: String
+    let detail: String?
     @Binding var value: Bool
-    init(_ title: String, detail: String, value: Binding<Bool>) { self.title = title; self.detail = detail; _value = value }
+    init(_ title: String, detail: String? = nil, value: Binding<Bool>) { self.title = title; self.detail = detail; _value = value }
     var body: some View {
-        HStack(alignment: .center, spacing: 16) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 13.5, weight: .medium))
-                Text(detail).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 13))
+                if let detail { Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
             }
-            Spacer(minLength: 8)
+            Spacer(minLength: 12)
             // The switch sits at the trailing edge, like System Settings.
-            Toggle(title, isOn: $value).labelsHidden().toggleStyle(.switch).controlSize(.small)
-        }.padding(.horizontal, 16).padding(.vertical, 13)
+            Toggle(title, isOn: $value).labelsHidden().toggleStyle(.switch).controlSize(.mini)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8).frame(minHeight: 38)
     }
 }
 
 private struct LabeledSlider: View {
     let title: String
-    let detail: String
+    let detail: String?
     @Binding var value: Double
     let range: ClosedRange<Double>
     let display: String
-    init(_ title: String, detail: String, value: Binding<Double>, range: ClosedRange<Double>, display: String) {
+    init(_ title: String, detail: String? = nil, value: Binding<Double>, range: ClosedRange<Double>, display: String) {
         self.title = title; self.detail = detail; _value = value; self.range = range; self.display = display
     }
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack {
-                Text(title).font(.system(size: 13.5, weight: .medium))
-                Spacer()
-                Text(display).font(.system(size: 12.5, weight: .semibold, design: .rounded)).monospacedDigit()
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(Color.primary.opacity(0.07), in: Capsule())
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 12) {
+                Text(title).font(.system(size: 13)).fixedSize()
+                Spacer(minLength: 12)
+                Slider(value: $value, in: range).controlSize(.small).frame(maxWidth: 220)
+                    .accessibilityLabel(title).accessibilityValue(display)
+                Text(display).font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
+                    .frame(minWidth: 44, alignment: .trailing)
             }
-            Text(detail).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            Slider(value: $value, in: range).accessibilityLabel(title).accessibilityValue(display)
-        }.padding(.horizontal, 16).padding(.vertical, 13)
+            if let detail { Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8).frame(minHeight: 38)
     }
 }
 
@@ -2197,102 +2811,237 @@ private struct ActionPicker: View {
     let label: String
     var tapOnly = false
     @State private var showsLibrary = false
+    @State private var hovering = false
     var body: some View {
         Button { showsLibrary = true } label: {
-            HStack(spacing: 7) {
+            HStack(spacing: 6) {
+                if action != .disabled {
+                    Image(systemName: action.icon).font(.system(size: 11, weight: .medium)).frame(width: 14)
+                }
                 Text(action.label).lineLimit(1)
-                Spacer(minLength: 2)
-                Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .semibold))
-            }.frame(width: 160)
-        }.buttonStyle(.bordered).accessibilityLabel("\(label): \(action.label)")
-            .help("Choose an edge action")
-            .sheet(isPresented: $showsLibrary) { EdgeActionLibrary(action: $action, edgeName: label, tapOnly: tapOnly) }
+                Image(systemName: "chevron.up.chevron.down").font(.system(size: 8.5, weight: .bold)).foregroundStyle(.secondary)
+            }
+            .font(.system(size: 13))
+            .foregroundStyle(action == .disabled ? Color.secondary : Color.primary)
+            .padding(.leading, 9).padding(.trailing, 7).padding(.vertical, 4)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.primary.opacity(hovering ? 0.1 : 0.055)))
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .accessibilityLabel("\(label): \(action.label)")
+        .help("Choose what this does")
+        .popover(isPresented: $showsLibrary, arrowEdge: .bottom) {
+            EdgeActionLibrary(action: $action, edgeName: label, tapOnly: tapOnly, close: { showsLibrary = false })
+        }
     }
 }
 
+/// Every action in a compact grid, one category at a time, like the Shortcuts
+/// action library. It opens on the current action's category, search reaches
+/// all of them, and pointing at a tile says what it does. A click chooses and closes.
 struct EdgeActionLibrary: View {
     @Binding var action: ZoneAction
     let edgeName: String
     var tapOnly = false
     var preview = false
+    var close: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var search = ""
+    @State private var category: String
+    @State private var hovered: ZoneAction?
     @State private var unavailable: [ZoneAction: String] = [:]
-    private var matching: [ZoneAction] {
-        ZoneAction.allCases.filter { item in
-            (!tapOnly || item.worksAsTap) && search.split(whereSeparator: \.isWhitespace).allSatisfy {
+    @FocusState private var searching: Bool
+
+    static let categories = ZoneAction.categories.filter { $0 != "Other" }
+
+    init(action: Binding<ZoneAction>, edgeName: String, tapOnly: Bool = false, preview: Bool = false, close: (() -> Void)? = nil) {
+        _action = action
+        self.edgeName = edgeName
+        self.tapOnly = tapOnly
+        self.preview = preview
+        self.close = close
+        let current = action.wrappedValue.category
+        _category = State(initialValue: Self.categories.contains(current) ? current : Self.categories[0])
+    }
+
+    private var shown: [ZoneAction] {
+        let terms = search.split(whereSeparator: \.isWhitespace)
+        guard !terms.isEmpty else { return ZoneAction.allCases.filter { $0.category == category } }
+        return ZoneAction.allCases.filter { item in
+            item != .disabled && terms.allSatisfy {
                 "\(item.label) \(item.category) \(item.guidance)".localizedCaseInsensitiveContains(String($0))
             }
         }
     }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Choose an action").font(.system(size: 23, weight: .semibold))
-                    Text(edgeName).font(.system(size: 13)).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
+        VStack(spacing: 0) {
+            header
+            Divider()
+            HStack(spacing: 0) {
+                sidebar.frame(width: 160)
+                Divider()
+                grid
             }
-            TextField("Search actions, apps, or controls", text: $search).textFieldStyle(.roundedBorder)
-                .accessibilityLabel("Search edge actions")
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 16) {
-                    if matching.isEmpty {
-                        Text("No matching actions. Try microphone, tabs, zoom, or shortcuts.")
-                            .foregroundStyle(.secondary).padding(.vertical, 30)
-                    }
-                    ForEach(ZoneAction.categories, id: \.self) { category in
-                        let items = matching.filter { $0.category == category }
-                        if !items.isEmpty {
-                            Text(category).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
-                            VStack(spacing: 0) {
-                                ForEach(items) { item in
-                                    Button {
-                                        action = item
-                                        dismiss()
-                                    } label: {
-                                        HStack(alignment: .top, spacing: 12) {
-                                            Image(systemName: item.icon).font(.system(size: 17)).frame(width: 24).padding(.top, 2)
-                                            VStack(alignment: .leading, spacing: 5) {
-                                                Text(item.label).font(.system(size: 14, weight: .medium))
-                                                Text(unavailable[item] ?? item.guidance).font(.system(size: 12)).foregroundStyle(.secondary)
-                                                    .fixedSize(horizontal: false, vertical: true)
-                                            }
-                                            Spacer(minLength: 0)
-                                            if action == item { Image(systemName: "checkmark.circle.fill").accessibilityLabel("Selected") }
-                                            else if unavailable[item] != nil { Image(systemName: "exclamationmark.circle").foregroundStyle(.secondary) }
-                                        }.padding(13).frame(maxWidth: .infinity, alignment: .leading)
-                                            .background(action == item ? Color.primary.opacity(0.07) : .clear)
-                                            .contentShape(Rectangle())
-                                    }.buttonStyle(.plain).disabled(unavailable[item] != nil)
-                                    if item != items.last { Divider().padding(.leading, 49) }
-                                }
-                            }.background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 12))
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
+            Divider()
+            footer
+        }
+        .frame(width: 620, height: 470)
+        .onAppear {
+            guard !preview else { return }
+            DispatchQueue.main.async { searching = true }
+            VolumeController.microphone.refresh()
+            KeyboardBacklightCapability.shared.refresh()
+            refreshAvailability()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .swayInputStateChanged)) { _ in refreshAvailability() }
+        .onReceive(NotificationCenter.default.publisher(for: .swayAudioStateChanged)) { _ in refreshAvailability() }
+        .onReceive(NotificationCenter.default.publisher(for: .swayKeyboardCapabilityChanged)) { _ in refreshAvailability() }
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            Text(edgeName).font(.system(size: 13, weight: .semibold))
+            Spacer(minLength: 8)
+            HStack(spacing: 5) {
+                Image(systemName: "magnifyingglass").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                TextField("Search actions", text: $search).textFieldStyle(.plain).font(.system(size: 13))
+                    .focused($searching)
+                    .accessibilityLabel("Search edge actions")
+                    // Return takes the first match.
+                    .onSubmit { if let first = shown.first(where: { unavailable[$0] == nil }) { choose(first) } }
+                if !search.isEmpty {
+                    Button { search = "" } label: { Image(systemName: "xmark.circle.fill").font(.system(size: 11)) }
+                        .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel("Clear search")
+                }
+            }
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.primary.opacity(0.06)))
+            .frame(width: 250)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 11)
+    }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Self.categories, id: \.self) { item in
+                let on = search.isEmpty && category == item
+                Button {
+                    search = ""
+                    category = item
+                } label: {
+                    HStack(spacing: 8) {
+                        CategoryTile(category: item)
+                        Text(CategoryTile.name(item)).font(.system(size: 13)).lineLimit(1)
+                            .foregroundStyle(on ? Color.white : Color.primary)
+                        Spacer(minLength: 0)
+                        // Where the current choice lives.
+                        if action.category == item && action != .disabled {
+                            Circle().fill(on ? Color.white : Color.accentColor).frame(width: 5, height: 5)
                         }
                     }
-                }.padding(.trailing, 5)
+                    .padding(.horizontal, 6).padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(on ? Color.accentColor : Color.clear))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(on ? [.isSelected] : [])
             }
-            Text("App actions use standard macOS shortcuts. Availability depends on the active app, keyboard layout, and your shortcut settings. One-shot actions require lifting before they can run again.")
-                .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-        }.padding(24).frame(width: 590, height: 600)
-            .onAppear {
-                guard !preview else { return }
-                VolumeController.microphone.refresh()
-                KeyboardBacklightCapability.shared.refresh()
-                refreshAvailability()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .swayInputStateChanged)) { _ in refreshAvailability() }
-            .onReceive(NotificationCenter.default.publisher(for: .swayAudioStateChanged)) { _ in refreshAvailability() }
-            .onReceive(NotificationCenter.default.publisher(for: .swayKeyboardCapabilityChanged)) { _ in refreshAvailability() }
+            Spacer(minLength: 0)
+        }
+        .padding(8)
+        .background(Color.primary.opacity(0.025))
     }
+
+    private var grid: some View {
+        ScrollView {
+            if shown.isEmpty {
+                VStack(spacing: 6) {
+                    Text("No actions match “\(search)”").font(.system(size: 13, weight: .semibold))
+                    Text("Try microphone, tabs, zoom or paste.").font(.system(size: 12)).foregroundStyle(.secondary)
+                }.frame(maxWidth: .infinity).padding(.top, 90)
+            }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                ForEach(shown) { item in tile(item) }
+            }
+            .padding(12)
+        }
+    }
+
+    private func tile(_ item: ZoneAction) -> some View {
+        let on = action == item
+        let blocked = unavailable[item] != nil
+        let lit = hovered == item && !blocked
+        return Button { choose(item) } label: {
+            VStack(spacing: 7) {
+                Image(systemName: item.icon).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 34, height: 34)
+                    .background(Circle().fill(LinearGradient(colors: [CategoryTile.colors(item.category).top, CategoryTile.colors(item.category).bottom],
+                                                             startPoint: .top, endPoint: .bottom)))
+                Text(item.label).font(.system(size: 11.5, weight: .medium))
+                    .multilineTextAlignment(.center).lineLimit(2)
+                    .frame(maxWidth: .infinity, minHeight: 28, alignment: .top)
+            }
+            .padding(.top, 12).padding(.bottom, 8).padding(.horizontal, 6)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(on ? Color.accentColor.opacity(0.14) : Color.primary.opacity(lit ? 0.08 : 0.035)))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(on ? Color.accentColor : Color.clear, lineWidth: 1.5))
+            .overlay(alignment: .topTrailing) {
+                if on {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 13)).foregroundStyle(Color.accentColor).padding(6)
+                } else if blocked {
+                    Image(systemName: "exclamationmark.circle").font(.system(size: 12)).foregroundStyle(.secondary).padding(6)
+                }
+            }
+            .opacity(blocked ? 0.45 : 1)
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+        .onHover { inside in
+            withAnimation(.easeOut(duration: 0.1)) {
+                if inside { hovered = item } else if hovered == item { hovered = nil }
+            }
+        }
+        .accessibilityLabel(item.label)
+        .accessibilityHint(unavailable[item] ?? item.guidance)
+        .accessibilityAddTraits(on ? [.isSelected] : [])
+    }
+
+    /// What the action under the pointer does, or the current choice.
+    private var footer: some View {
+        let item = hovered ?? (action != .disabled ? action : nil)
+        return HStack(spacing: 10) {
+            if let item {
+                Image(systemName: item.icon).font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary).frame(width: 20)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.label).font(.system(size: 12.5, weight: .semibold))
+                    Text(unavailable[item] ?? item.guidance).font(.system(size: 11)).foregroundStyle(.secondary)
+                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
+                Text("Point at an action to see what it does.").font(.system(size: 11.5)).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 12)
+            if action != .disabled {
+                Button("Turn Off") { choose(.disabled) }
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 60)
+    }
+
+    private func choose(_ item: ZoneAction) {
+        guard unavailable[item] == nil else { return }
+        action = item
+        if let close { close() } else { dismiss() }
+    }
+
     private func refreshAvailability() {
         guard !preview else { return }
         var next: [ZoneAction: String] = [:]
         if !VolumeController.microphone.isAvailable { next[.microphoneLevel] = "The current input has no writable gain control. Select a compatible input in macOS Sound settings." }
-        if !VolumeController.microphone.supportsMute { next[.microphoneMute] = "The current input has no verified hardware mute control. Sway never substitutes gain zero or claims to mute other microphones." }
+        if !VolumeController.microphone.supportsMute { next[.microphoneMute] = "The current input has no verified hardware mute control. Kinara never substitutes gain zero or claims to mute other microphones." }
         if !VolumeController.shared.supportsMute { next[.outputMute] = "The current output has no hardware mute control. Volume remains available on compatible outputs." }
         if !KeyboardBacklightCapability.shared.isAvailable { next[.keyboardBrightness] = KeyboardBacklightCapability.shared.checked ? "No supported backlit keyboard detected. This uses a private read-only capability API that can change with macOS." : "Checking keyboard support…" }
         if !AppVolumeController.isSupported {
@@ -2307,56 +3056,76 @@ struct EdgeActionLibrary: View {
     }
 }
 
-private struct ZoneEditor: View {
-    let title: String
-    let slot: String
-    @ObservedObject var settings: TrackpadSettings
-    @Binding var width: Double
-    let selected: Bool
-    private var binding: Binding<EdgeBinding> {
-        Binding(get: { settings.baseBinding(slot) }, set: { settings.setBaseBinding($0, for: slot) })
-    }
+/// An action category's own color and symbol, as in the Shortcuts library.
+private struct CategoryTile: View {
+    let category: String
+    var size: CGFloat = 20
     var body: some View {
-        let action = settings.baseBinding(slot).action
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Label(title, systemImage: action.icon).font(.system(size: 14, weight: .semibold)).foregroundStyle(action.tint)
-                    Spacer()
-                    ActionPicker(action: binding.action, label: "\(title) action").labelsHidden()
-                }
-                Text(action.guidance).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                EdgeWidthSlider(title: "\(title) width", value: $width, range: TrackpadSettings.sideZoneWidthRange)
-            }.padding(14)
-            BindingExtras(binding: binding, sharedFallback: true)
-        }.background(selected ? action.tint.opacity(0.045) : .clear)
+        Image(systemName: Self.icon(category))
+            .font(.system(size: size * 0.5, weight: .semibold)).foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(RoundedRectangle(cornerRadius: size * 0.27, style: .continuous)
+                .fill(LinearGradient(colors: [Self.colors(category).top, Self.colors(category).bottom], startPoint: .top, endPoint: .bottom)))
+    }
+    /// One word each, so the list reads at a glance.
+    static func name(_ category: String) -> String {
+        switch category {
+        case "Display & keyboard": return "Display"
+        case "Audio & microphone": return "Sound"
+        case "Windows & desktops": return "Windows"
+        case "Tools & shortcuts": return "Tools"
+        default: return category
+        }
+    }
+    static func icon(_ category: String) -> String {
+        switch category {
+        case "Display & keyboard": return "sun.max.fill"
+        case "Audio & microphone": return "speaker.wave.2.fill"
+        case "Media": return "play.fill"
+        case "Editing": return "doc.on.clipboard.fill"
+        case "Navigation": return "arrow.left.arrow.right"
+        case "Windows & desktops": return "macwindow.on.rectangle"
+        case "Tools & shortcuts": return "wrench.and.screwdriver.fill"
+        default: return "circle.slash"
+        }
+    }
+    static func colors(_ category: String) -> (top: Color, bottom: Color) {
+        switch category {
+        case "Display & keyboard": return (Color(red: 1, green: 0.78, blue: 0.25), Color(red: 1, green: 0.57, blue: 0.02))
+        case "Audio & microphone": return (Color(red: 1, green: 0.45, blue: 0.55), Color(red: 0.96, green: 0.19, blue: 0.34))
+        case "Media": return (Color(red: 0.86, green: 0.5, blue: 1), Color(red: 0.69, green: 0.27, blue: 0.92))
+        case "Editing": return (Color(red: 0.36, green: 0.64, blue: 1), Color(red: 0.04, green: 0.45, blue: 0.98))
+        case "Navigation": return (Color(red: 0.32, green: 0.83, blue: 0.79), Color(red: 0.08, green: 0.64, blue: 0.62))
+        case "Windows & desktops": return (Color(red: 0.52, green: 0.54, blue: 1), Color(red: 0.34, green: 0.33, blue: 0.91))
+        case "Tools & shortcuts": return (Color(red: 0.4, green: 0.84, blue: 0.5), Color(red: 0.16, green: 0.67, blue: 0.32))
+        default: return (Color(white: 0.68), Color(white: 0.52))
+        }
     }
 }
 
-/// A square quick-setting: tap to flip, with its current state underneath.
+/// A Control Center–style switch: a disc that fills with the accent color when on.
 private struct QuickTile: View {
     let title: String
     let value: String
     let icon: String
     let isOn: Bool
     let action: () -> Void
-    @Environment(\.colorScheme) private var scheme
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 10) {
-                Image(systemName: icon).font(.system(size: 14, weight: .semibold))
-                    .frame(width: 30, height: 30)
-                    .foregroundStyle(isOn ? Color(nsColor: .windowBackgroundColor) : .primary)
-                    .background(isOn ? Color.primary : Color.primary.opacity(0.08), in: Circle())
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 13, weight: .semibold))
-                    Text(value).font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
+            HStack(spacing: 10) {
+                Image(systemName: icon).font(.system(size: 12, weight: .semibold))
+                    .frame(width: 28, height: 28)
+                    .foregroundStyle(isOn ? Color.white : Color.primary)
+                    .background(Circle().fill(isOn ? Color.accentColor : Color.primary.opacity(0.09)))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
+                    Text(value).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }
+                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(13)
+            .padding(10)
             .modifier(CardSurface())
-            .contentShape(RoundedRectangle(cornerRadius: 13))
+            .contentShape(RoundedRectangle(cornerRadius: 10))
             .animation(.easeInOut(duration: 0.2), value: isOn)
         }
         .buttonStyle(PressableButtonStyle())
@@ -2371,18 +3140,22 @@ private struct SlotEditor: View {
     @Binding var binding: EdgeBinding
     var detail: String? = nil
     var tapOnly = false
+    /// Side edges set to Custom shortcut fall back to the shared pair.
+    var sharedFallback = false
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Label(title, systemImage: binding.action.icon).font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(binding.action == .disabled ? .secondary : .primary)
-                    Spacer()
-                    ActionPicker(action: $binding.action, label: title, tapOnly: tapOnly).labelsHidden()
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: 13))
+                    if let detail = detail ?? (tapOnly && binding.action.slidesAfterTap ? "Tap, then slide along that side to adjust." : nil) {
+                        Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
                 }
-                if let detail { Text(detail).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
-            }.padding(14)
-            BindingExtras(binding: $binding, sharedFallback: false, tap: tapOnly)
+                Spacer(minLength: 12)
+                ActionPicker(action: $binding.action, label: title, tapOnly: tapOnly)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8).frame(minHeight: 38)
+            BindingExtras(binding: $binding, sharedFallback: sharedFallback, tap: tapOnly)
         }
     }
 }
@@ -2405,7 +3178,7 @@ private struct BindingExtras: View {
             VStack(alignment: .leading, spacing: 8) {
                 ShortcutNameField(title: tap ? "Shortcut" : "Up / right", name: $binding.shortcut)
                 if !tap { ShortcutNameField(title: "Down / left", name: $binding.downShortcut, placeholder: "Same as up / right") }
-            }.padding(.horizontal, 14).padding(.bottom, 12)
+            }.padding(.horizontal, 12).padding(.bottom, 10)
         }
     }
 }
@@ -2436,7 +3209,7 @@ private struct FavoriteLevelRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle(isOn: Binding(get: { favorite >= 0 }, set: { favorite = $0 ? max(0, min(1, current)) : -1 })) {
-                Label("Favorite \(action.label.lowercased())", systemImage: action.icon).font(.system(size: 14, weight: .medium))
+                Text("Favorite \(action.label.lowercased())").font(.system(size: 13))
             }.toggleStyle(.switch).controlSize(.small)
             if favorite >= 0 {
                 HStack {
@@ -2446,7 +3219,7 @@ private struct FavoriteLevelRow: View {
                     Button("Use current") { favorite = max(0, min(1, (current * 100).rounded() / 100)) }.buttonStyle(.bordered).controlSize(.small)
                 }
             }
-        }.padding(14)
+        }.padding(.horizontal, 12).padding(.vertical, 9)
     }
 }
 
@@ -2527,7 +3300,7 @@ private struct ProfileSlotRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Toggle(isOn: Binding(get: { override != nil }, set: { override = $0 ? (tapOnly && !everyday.action.worksAsTap ? EdgeBinding(.disabled) : everyday) : nil })) {
+                Toggle(isOn: Binding(get: { override != nil }, set: { override = $0 ? everyday : nil })) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(title).font(.system(size: 13, weight: .medium))
                         Text(override == nil ? "Everyday: \(everyday.action.label)" : "Changed in this profile")
@@ -2558,45 +3331,51 @@ private struct EdgeWidthSlider: View {
     }
     var body: some View {
         HStack(spacing: 10) {
-            Text(title == "Top height" ? "Height" : "Width").font(.system(size: 12)).foregroundStyle(.secondary)
+            Text(title).font(.system(size: 13)).fixedSize()
+            Spacer(minLength: 12)
             // Snap to half-percent changes without drawing dozens of tick marks.
             // The text field still accepts finer values such as 1.2%.
             Slider(value: Binding(get: { value }, set: {
                 value = min(range.upperBound, max(range.lowerBound, ($0 * 200).rounded() / 200))
             }), in: range)
+                .controlSize(.small).frame(maxWidth: 200)
                 .accessibilityLabel(title)
                 .accessibilityValue("\(value * 100, specifier: "%.1f") percent")
-            HStack(spacing: 3) {
+            HStack(spacing: 2) {
                 TextField(title, value: percent, format: .number.precision(.fractionLength(0...1)))
                     .textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing)
-                    .frame(width: 43).accessibilityLabel("Exact \(title.lowercased()) in percent")
+                    .frame(width: 42).accessibilityLabel("Exact \(title.lowercased()) in percent")
                 Text("%").foregroundStyle(.secondary)
             }.font(.system(size: 12)).monospacedDigit()
         }
+        .padding(.horizontal, 12).padding(.vertical, 7).frame(minHeight: 38)
         .help("\(Int(range.lowerBound * 100))–\(Int(range.upperBound * 100))%. Type an exact value, including decimals.")
     }
 }
 
+/// A level's lowest and highest points, one row each.
 private struct LimitEditor: View {
     let action: ZoneAction
     @Binding var lower: Double
     @Binding var upper: Double
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label(action.label, systemImage: action.icon).font(.system(size: 14, weight: .semibold)).foregroundStyle(action.tint)
-                Spacer()
-                Text("\(Int(lower * 100))–\(Int(upper * 100))%").font(.system(size: 13, weight: .semibold)).monospacedDigit()
-            }
-            HStack {
-                Text("Min").font(.system(size: 12)).foregroundStyle(.secondary).frame(width: 30, alignment: .leading)
-                Slider(value: Binding(get: { lower }, set: { lower = min($0, upper - 0.05) }), in: 0...0.95, step: 0.01).accessibilityLabel("Minimum \(action.label)")
-            }
-            HStack {
-                Text("Max").font(.system(size: 12)).foregroundStyle(.secondary).frame(width: 30, alignment: .leading)
-                Slider(value: Binding(get: { upper }, set: { upper = max($0, lower + 0.05) }), in: 0.05...1, step: 0.01).accessibilityLabel("Maximum \(action.label)")
-            }
-        }.padding(14).tint(action.tint)
+        VStack(spacing: 0) {
+            row("Lowest", value: Binding(get: { lower }, set: { lower = min($0, upper - 0.05) }), range: 0...0.95)
+            RowDivider()
+            row("Highest", value: Binding(get: { upper }, set: { upper = max($0, lower + 0.05) }), range: 0.05...1)
+        }
+    }
+    private func row(_ title: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
+        HStack(spacing: 12) {
+            Text(title).font(.system(size: 13)).fixedSize()
+            Spacer(minLength: 12)
+            Slider(value: Binding(get: { value.wrappedValue }, set: { value.wrappedValue = ($0 * 100).rounded() / 100 }), in: range)
+                .controlSize(.small).frame(maxWidth: 220)
+                .accessibilityLabel("\(title) \(action.label.lowercased())")
+            Text("\(Int((value.wrappedValue * 100).rounded()))%").font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
+                .frame(minWidth: 44, alignment: .trailing)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8).frame(minHeight: 38)
     }
 }
 
@@ -2684,10 +3463,12 @@ private struct HotkeyRecorder: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title).font(.system(size: 14, weight: .medium))
-                    Text(recording ? "Press a shortcut. Escape cancels." : detail)
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: 13))
+                    if recording || !detail.isEmpty {
+                        Text(recording ? "Press a shortcut. Escape cancels." : detail)
+                            .font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
                 }
                 Spacer()
                 Button(recording ? "Cancel" : hotkey.isEmpty ? "Record…" : hotkey.displayString) {
@@ -2699,9 +3480,9 @@ private struct HotkeyRecorder: View {
                 }
             }
             if let message = hint ?? (usesCheatSheetError ? manager.cheatSheetError : showsRegistrationError ? manager.registrationError : nil) {
-                Text(message).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(message).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-        }.padding(14).onDisappear(perform: stop)
+        }.padding(.horizontal, 12).padding(.vertical, 8).frame(minHeight: 38).onDisappear(perform: stop)
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("swayPopoverClosed"))) { _ in stop() }
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("swaySettingsClosed"))) { _ in stop() }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in stop() }
@@ -2747,7 +3528,7 @@ struct AppPickerSheet: View {
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Excluded apps").font(.system(size: 21, weight: .semibold))
-                    Text("Sway pauses gestures whenever these apps are active.")
+                    Text("Kinara pauses gestures whenever these apps are active.")
                         .font(.system(size: 13)).foregroundStyle(.secondary)
                 }
                 Spacer()

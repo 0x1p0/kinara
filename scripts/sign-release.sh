@@ -7,7 +7,7 @@ project_directory="$(cd -- "$script_directory/.." && pwd)"
 cd "$project_directory"
 version="$(bash scripts/release-version.sh "${2:-}")"
 release_directory="$(cd -- "$1" && pwd)"
-archive="Sway-$version-macos-universal.zip"
+archive="Kinara-$version-macos-universal.zip"
 test -s "$release_directory/$archive"
 if [[ -e "$release_directory/appcast.xml" ]]; then
     printf 'Refusing to replace an existing signed feed.\n' >&2

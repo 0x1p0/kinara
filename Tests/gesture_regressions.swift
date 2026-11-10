@@ -582,5 +582,69 @@ enum GestureRegressionTests {
         stale = nil
         for i in 0...60 { stale = tapper.process(contacts: [touch(1, 0.05, 0.95)], timestamp: 34.21 + Double(i) * 0.011, configuration: taps) ?? stale }
         expect(stale == nil, "cancelling for late input forgets the pending tap entirely")
+
+        // Corners win: a touch that starts where a tap action lives must travel
+        // further than any tap before it adjusts anything.
+        var cornerTaps = TapConfiguration()
+        cornerTaps.requiredFingers = 1
+        cornerTaps.slots = ["topRightCorner.doubleTap"]
+        taps = cornerTaps
+        var guarded = one
+        guarded.tapGuard = cornerTaps // the top-right corner has a double-tap
+        var corner = EdgeGestureRecognizer()
+        for i in 0...24 { _ = feed(&corner, guarded, 50 + Double(i) * 0.01, [touch(1, 0.95, 0.95 - Double(i) * 0.001)]) }
+        expect(corner.decision.phase != .accepted, "a corner tap that drifts never becomes a volume slide")
+        _ = feed(&corner, guarded, 50.3, [])
+        corner = EdgeGestureRecognizer()
+        for i in 0...24 { _ = feed(&corner, guarded, 51 + Double(i) * 0.01, [touch(1, 0.95, 0.95 - Double(i) * 0.004)]) }
+        expect(corner.decision.phase == .accepted && corner.decision.region == .right, "a real slide out of the corner still adjusts")
+        var plain = EdgeGestureRecognizer()
+        for i in 0...24 { _ = feed(&plain, one, 52 + Double(i) * 0.01, [touch(1, 0.95, 0.95 - Double(i) * 0.001)]) }
+        expect(plain.decision.phase == .accepted, "without a tap action there, the edge stays as quick as before")
+        var mid = EdgeGestureRecognizer()
+        for i in 0...24 { _ = feed(&mid, guarded, 53 + Double(i) * 0.01, [touch(1, 0.95, 0.5 - Double(i) * 0.001)]) }
+        expect(mid.decision.phase == .accepted, "the rest of the edge, away from the corner, is unchanged")
+
+        // The first tap of a pair is visible to the monitor until its partner lands.
+        tapper = EdgeTapRecognizer()
+        _ = tap(0.95, 0.95, at: 60)
+        expect(tapper.pendingTap?.region == .topRightCorner, "a first tap waits, armed, in its corner")
+        expect(tap(0.95, 0.95, at: 60.2) == TapEvent(region: .topRightCorner, gesture: .doubleTap) && tapper.pendingTap == nil,
+               "the second tap fires and clears the waiting tap")
+
+        // Resting a finger on a tap zone previews it; anything else doesn't.
+        var rest = TapRestDetector()
+        var change: TapRestDetector.Change?
+        for i in 0...80 { change = rest.process(contacts: [touch(1, 0.95, 0.95)], timestamp: 70 + Double(i) * 0.01, configuration: taps) ?? change }
+        expect(change == .show(.topRightCorner) && rest.showing == .topRightCorner, "a still finger in the corner shows its preview")
+        expect(rest.process(contacts: [], timestamp: 70.9, configuration: taps) == .hide, "lifting hides it")
+        rest = TapRestDetector()
+        change = nil
+        for i in 0...80 { change = rest.process(contacts: [touch(1, 0.95, 0.95 - Double(i) * 0.001)], timestamp: 71 + Double(i) * 0.01, configuration: taps) ?? change }
+        expect(change == nil, "a moving finger is never a rest")
+        rest = TapRestDetector()
+        change = nil
+        for i in 0...80 { change = rest.process(contacts: [touch(1, 0.5, 0.5)], timestamp: 72 + Double(i) * 0.01, configuration: taps) ?? change }
+        expect(change == nil, "resting where there's no tap action shows nothing")
+        rest = TapRestDetector()
+        for i in 0...80 { _ = rest.process(contacts: [touch(1, 0.95, 0.95)], timestamp: 73 + Double(i) * 0.01, configuration: taps) }
+        expect(rest.interrupt() == .hide, "a click hides the preview")
+        change = nil
+        for i in 81...160 { change = rest.process(contacts: [touch(1, 0.95, 0.95)], timestamp: 73 + Double(i) * 0.01, configuration: taps) ?? change }
+        expect(change == nil, "and that touch stays a click, not a rest")
+        rest = TapRestDetector()
+        _ = rest.interrupt(at: 74)
+        change = nil
+        for i in 0...80 { change = rest.process(contacts: [touch(1, 0.95, 0.95)], timestamp: 74.1 + Double(i) * 0.01, configuration: taps) ?? change }
+        expect(change == nil, "a finger landing while typing is a resting hand, not a question")
+
+        // A disabled event tap comes back only while trusted, and only now and then:
+        // otherwise every click and key would wait behind it and the Mac would freeze.
+        var recovery = TapRecovery()
+        expect(!recovery.mayResume(trusted: false, at: 100), "without Accessibility a tap is never switched back on")
+        expect(recovery.mayResume(trusted: true, at: 101) && recovery.mayResume(trusted: true, at: 101.5), "an occasional timeout recovers")
+        expect(!recovery.mayResume(trusted: true, at: 102), "timing out again and again, it stands down instead")
+        expect(recovery.mayResume(trusted: true, at: 104), "after a quiet moment it may recover again")
+        expect(!recovery.mayResume(trusted: true, at: .nan), "a bad clock never re-enables a tap")
     }
 }

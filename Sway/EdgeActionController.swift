@@ -7,10 +7,18 @@ import ObjectiveC
 /// A reversal discards residual travel, and stale frames are rejected by the
 /// monitor before reaching this gate. No timer runs while idle.
 struct GestureActionStepper {
+    /// A level macOS lets apps move only a notch at a time (the keyboard
+    /// backlight): notches come as fast as the finger travels, as any level
+    /// would. Commands such as tabs and zoom keep a deliberate pace instead.
+    var levelLike = false
     private var travel = 0.0
     private var direction = 0
     private var lastFire = -Double.infinity
     private var didFire = false
+
+    // Spelled out: with private state, older Swift (Xcode 26, as on CI) makes
+    // the generated initializer private to this file.
+    init(levelLike: Bool = false) { self.levelLike = levelLike }
 
     mutating func consume(delta: Double, sensitivity: Double, inverted: Bool,
                           repeats: Bool, at time: Double) -> Bool? {
@@ -20,12 +28,18 @@ struct GestureActionStepper {
         guard movement != 0 else { return nil }
         let sign = movement > 0 ? 1 : -1
         if sign != direction { travel = 0; direction = sign }
-        travel = min(0.07, travel + abs(movement))
-        let threshold = didFire ? 0.07 : 0.025
+        let step = levelLike ? 0.035 : 0.07
+        travel = min(step, travel + abs(movement))
+        let threshold = didFire ? step : 0.025
         guard travel >= threshold else { return nil }
-        // Drop motion during the refractory period instead of replaying it.
-        travel = 0
-        guard time - lastFire >= 0.22 else { return nil }
+        if levelLike {
+            // Every notch the finger covers counts; nothing is dropped.
+            travel -= threshold
+        } else {
+            // Drop motion during the refractory period instead of replaying it.
+            travel = 0
+            guard time - lastFire >= 0.22 else { return nil }
+        }
         lastFire = time
         didFire = true
         return sign > 0
@@ -82,8 +96,8 @@ enum EdgeCommand: Equatable {
             return .key(UInt16(custom.keyCode), flags, global: true)
         case .brightness, .volume, .microphoneLevel, .outputMute, .microphoneMute, .disabled: return nil
         // Performed directly (Accessibility, Core Audio, Shortcuts, HUDs), not as keys.
-        case .appVolume, .muteApp, .soloApp, .audioOutput, .seek, .nowPlaying, .tileWindow, .nightShift, .trueTone,
-             .extraDim, .runShortcut, .cheatSheet, .pastePrevious, .clipboardHistory, .sleepDisplay: return nil
+        case .appVolume, .muteApp, .soloApp, .audioApps, .audioOutput, .seek, .nowPlaying, .tileWindow, .nightShift, .trueTone,
+             .extraDim, .runShortcut, .cheatSheet, .ambientLight, .pastePrevious, .clipboardHistory, .sleepDisplay: return nil
         }
     }
 }
@@ -99,12 +113,22 @@ enum EdgeActionController {
     /// Construct first, then post as a complete sequence. Explicit modifier
     /// release dismisses system switchers such as Command-Tab. Physical keys
     /// the user is actually holding are preserved, never synthetically lifted.
+    /// Real arrow keys carry the number-pad and function flags, and F-keys and
+    /// Home/End/Page keys the function flag. macOS's system shortcuts (Mission
+    /// Control, App Exposé, switching desktops, Show Desktop) only match keys
+    /// that carry them, so synthetic keys must too.
+    static func hardwareFlags(for code: UInt16) -> UInt64 {
+        if (123...126).contains(code) { return CGEventFlags.maskNumericPad.rawValue | CGEventFlags.maskSecondaryFn.rawValue }
+        let functionKeys: Set<UInt16> = [122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111, 105, 107, 113, 106, 64, 79, 80, 90, 115, 119, 116, 121]
+        return functionKeys.contains(code) ? CGEventFlags.maskSecondaryFn.rawValue : 0
+    }
+
     static func keyboardEvents(code: UInt16, flags: UInt64, physicalFlags: CGEventFlags) -> [CGEvent]? {
         guard let source = CGEventSource(stateID: .privateState),
               let down = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: true),
               let up = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: false) else { return nil }
-        down.flags = CGEventFlags(rawValue: flags)
-        up.flags = CGEventFlags(rawValue: flags)
+        down.flags = CGEventFlags(rawValue: flags | hardwareFlags(for: code))
+        up.flags = CGEventFlags(rawValue: flags | hardwareFlags(for: code))
         var events = [down, up]
         let modifiers: [(CGEventFlags, UInt16)] = [(.maskShift, 56), (.maskAlternate, 58), (.maskControl, 59), (.maskCommand, 55)]
         for (mask, key) in modifiers where flags & mask.rawValue != 0 && !physicalFlags.contains(mask) {
@@ -125,7 +149,8 @@ enum EdgeActionController {
         case let .key(code, flags, global):
             guard let events = keyboardEvents(code: code, flags: flags, physicalFlags: CGEventSource.flagsState(.hidSystemState)) else { return false }
             for event in events {
-                if global { event.post(tap: .cgSessionEventTap) }
+                // System shortcuts are matched where hardware keys arrive.
+                if global { event.post(tap: .cghidEventTap) }
                 else { event.postToPid(expectedApplication) }
             }
         case let .media(code):

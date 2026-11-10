@@ -16,12 +16,12 @@ with DSStore.open(str(volume / ".DS_Store"), "r") as store:
     assert view["backgroundImageAlias"]
     assert view["iconSize"] == 96
     assert view["arrangeBy"] == "none"
-    for name, position in {"Sway.app": (205, 218), "Applications": (515, 218),
+    for name, position in {"Kinara.app": (205, 218), "Applications": (515, 218),
                            "First Launch.txt": (625, 373)}.items():
         assert tuple(store[name]["Iloc"]) == position, name
     assert store["."]["icvl"] == (b"type", b"icnv")
 assert (volume / ".background.tiff").stat().st_size > 0
 assert (volume / ".VolumeIcon.icns").stat().st_size > 0
-with (volume / "Sway.app/Contents/Info.plist").open("rb") as file:
-    assert plistlib.load(file)["CFBundleExecutable"] == "Sway"
+with (volume / "Kinara.app/Contents/Info.plist").open("rb") as file:
+    assert plistlib.load(file)["CFBundleExecutable"] == "Kinara"
 print("Verified Finder window, background, volume icon, and all three file positions.")

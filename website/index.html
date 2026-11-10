@@ -4,20 +4,20 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f7f7f5" />
-    <title>Sway — A lighter touch for your Mac.</title>
+    <title>Kinara — A lighter touch for your Mac.</title>
     <link rel="canonical" href="https://sway-application.vercel.app/">
     <meta property="og:url" content="https://sway-application.vercel.app/">
     <meta
       name="description"
       content="51 ways to control your Mac from your trackpad’s edges. Volume, brightness, microphone, media, windows, and custom shortcuts. Free for macOS, by 0x1p0."
     />
-    <meta property="og:title" content="Sway — A lighter touch for your Mac." />
+    <meta property="og:title" content="Kinara — A lighter touch for your Mac." />
     <meta
       property="og:description"
-      content="A lighter touch. More possibilities. Explore 51 edge actions in Sway, the macOS menu bar app by 0x1p0."
+      content="A lighter touch. More possibilities. Explore 51 edge actions in Kinara, the macOS menu bar app by 0x1p0."
     />
     <meta property="og:type" content="website" />
-    <link rel="icon" type="image/png" href="/assets/sway-icon.png" />
+    <link rel="icon" type="image/png" href="/assets/kinara-icon.png" />
     <link rel="stylesheet" href="/styles.css" />
     <script src="/app.js" type="module"></script>
   </head>
@@ -25,19 +25,19 @@
     <a class="skip-link" href="#main">Skip to content</a>
     <header class="site-header">
       <nav class="navigation wrap" aria-label="Main navigation">
-        <a class="brand" href="#" aria-label="Sway home"
+        <a class="brand" href="#" aria-label="Kinara home"
           ><img
-            src="/assets/sway-icon.png"
+            src="/assets/kinara-icon.png"
             width="34"
             height="34"
             alt=""
-          /><span>Sway</span></a
+          /><span>Kinara</span></a
         >
         <div class="nav-links">
           <a href="#actions">The controls</a><a href="#details">The details</a
           ><a href="https://github.com/0x1p0/sway-application">GitHub</a>
         </div>
-        <a class="button button-small button-dark" href="#download">Get Sway</a>
+        <a class="button button-small button-dark" href="#download">Get Kinara</a>
       </nav>
     </header>
     <main id="main">
@@ -57,7 +57,7 @@
         <div class="hero-actions">
           <a
             class="button button-dark download-link"
-            href="https://github.com/0x1p0/sway-application/releases/download/v1.0.0/Sway-1.0.0-macos-universal.dmg"
+            href="https://github.com/0x1p0/sway-application/releases/download/v1.0.0/Kinara-1.0.0-macos-universal.dmg"
             ><svg
               class="icon"
               viewBox="0 0 24 24"
@@ -78,7 +78,7 @@
           Free · macOS 13+ · Apple silicon & Intel ·
           <span class="release-version">v1.0.0</span>
         </p>
-        <a class="release-highlight" href="#actions">Introducing Sway 1.0 <span>Meet all 51 actions</span><span aria-hidden="true">↗</span></a>
+        <a class="release-highlight" href="#actions">Introducing Kinara 1.0 <span>Meet all 51 actions</span><span aria-hidden="true">↗</span></a>
         <div class="hero-demo" id="experience">
           <div class="demo-toolbar">
             <span class="demo-label"
@@ -220,14 +220,14 @@
               <div data-action-id="keyboardBrightness" data-keywords="keyboard lighting illumination"><dt>Keyboard backlight</dt><dd>Up brightens; down dims a supported backlit keyboard. macOS and ambient-light conditions can limit changes.</dd></div>
               <div data-action-id="nightShift" data-keywords="warm color temperature"><dt>Night Shift warmth</dt><dd>Up warms the display; down cools it, and zero turns Night Shift off. Uses a private macOS interface that can change.</dd></div>
               <div data-action-id="trueTone" data-keywords="color ambient"><dt>True Tone</dt><dd>Up turns True Tone on; down turns it off. Only on displays that support it.</dd></div>
-              <div data-action-id="extraDim" data-keywords="darker night"><dt>Extra dim</dt><dd>Dim below the lowest backlight level for late nights. Quitting Sway always restores normal brightness.</dd></div>
+              <div data-action-id="extraDim" data-keywords="darker night"><dt>Extra dim</dt><dd>Dim below the lowest backlight level for late nights. Quitting Kinara always restores normal brightness.</dd></div>
             </dl>
           </details>
           <details class="action-group" data-category="audio">
             <summary><span class="category-mark" aria-hidden="true">♪</span><span class="category-title">Audio & microphone<small>A little more control over your sound.</small></span><span class="category-count">08</span><span class="detail-plus" aria-hidden="true"></span></summary>
             <dl class="action-list">
               <div data-action-id="volume"><dt>Output volume</dt><dd>Up raises; down lowers the default audio output. Requires a device with software volume control.</dd></div>
-              <div data-action-id="appVolume" data-keywords="mixer per-app"><dt>App volume</dt><dd>Change only the sound of the app in front. macOS asks once for System Audio Recording; Sway never records or saves audio. macOS 14.2+.</dd></div>
+              <div data-action-id="appVolume" data-keywords="mixer per-app"><dt>App volume</dt><dd>Change only the sound of the app in front. macOS asks once for System Audio Recording; Kinara never records or saves audio. macOS 14.2+.</dd></div>
               <div data-action-id="muteApp" data-keywords="mixer per-app silence"><dt>Mute app in front</dt><dd>Down mutes only the app in front; up unmutes it. A tap toggles. It stays muted until you unmute it. macOS 14.2+.</dd></div>
               <div data-action-id="soloApp" data-keywords="mixer per-app focus only"><dt>Solo app in front</dt><dd>Up plays only the app in front and silences the rest; down ends solo. A tap toggles. macOS 14.2+.</dd></div>
               <div data-action-id="audioOutput" data-keywords="airpods speakers device switch"><dt>Switch audio output</dt><dd>Up picks the next output, down the previous one. The indicator names the new device.</dd></div>
@@ -252,7 +252,7 @@
               <div data-action-id="cut" data-keywords="clipboard"><dt>Cut</dt><dd>Either direction cuts the selection with Command-X.</dd></div>
               <div data-action-id="paste" data-keywords="clipboard"><dt>Paste</dt><dd>Either direction pastes with Command-V. Perfect for a corner double-tap.</dd></div>
               <div data-action-id="pastePlain" data-keywords="clipboard formatting"><dt>Paste as plain text</dt><dd>Paste without formatting, in apps that support Option-Shift-Command-V.</dd></div>
-              <div data-action-id="pastePrevious" data-keywords="clipboard history"><dt>Paste previous item</dt><dd>Paste what you copied before the current item, from Sway’s in-memory history.</dd></div>
+              <div data-action-id="pastePrevious" data-keywords="clipboard history"><dt>Paste previous item</dt><dd>Paste what you copied before the current item, from Kinara’s in-memory history.</dd></div>
               <div data-action-id="clipboardHistory" data-keywords="clipboard recent"><dt>Clipboard history</dt><dd>Swipe through recent copies and lift to paste. Kept in memory only, never saved; password managers’ items are skipped.</dd></div>
               <div data-action-id="undoRedo" data-keywords="undo redo"><dt>Undo / redo</dt><dd>Down undoes and up redoes, repeating as you keep swiping.</dd></div>
               <div data-action-id="selectAll" data-keywords="selection"><dt>Select all</dt><dd>Either direction selects everything with Command-A.</dd></div>
@@ -292,18 +292,18 @@
               <div data-action-id="spotlight" data-keywords="search"><dt>Spotlight</dt><dd>Swipe either way to send Command-Space. Requires the standard Spotlight shortcut.</dd></div>
               <div data-action-id="lockScreen" data-keywords="security away"><dt>Lock screen</dt><dd>Lock your Mac with Control-Command-Q.</dd></div>
               <div data-action-id="sleepDisplay" data-keywords="display off"><dt>Sleep displays</dt><dd>Turn your displays off right away while your Mac stays awake.</dd></div>
-              <div data-action-id="screenshotTools" data-keywords="capture"><dt>Screenshot tools</dt><dd>Open the macOS screenshot toolbar with Command-Shift-5. You choose what to capture; Sway records nothing.</dd></div>
+              <div data-action-id="screenshotTools" data-keywords="capture"><dt>Screenshot tools</dt><dd>Open the macOS screenshot toolbar with Command-Shift-5. You choose what to capture; Kinara records nothing.</dd></div>
               <div data-action-id="emojiPicker" data-keywords="characters"><dt>Emoji & symbols</dt><dd>Open the character picker with Control-Command-Space. Either swipe direction works.</dd></div>
               <div data-action-id="runShortcut" data-keywords="shortcuts automation smart home"><dt>Run a Shortcut</dt><dd>Run the Shortcut you choose for each direction, from smart lights to whole routines.</dd></div>
               <div data-action-id="cheatSheet" data-keywords="map help edges"><dt>Show edge map</dt><dd>See what every edge does in the app you’re using. Changes nothing.</dd></div>
-              <div data-action-id="customShortcut" data-keywords="keyboard hotkey"><dt>Custom shortcuts</dt><dd>Record an up/right and down/left shortcut for each edge in Sway. Each runs once per swipe in the starting app.</dd></div>
+              <div data-action-id="customShortcut" data-keywords="keyboard hotkey"><dt>Custom shortcuts</dt><dd>Record an up/right and down/left shortcut for each edge in Kinara. Each runs once per swipe in the starting app.</dd></div>
             </dl>
           </details>
         </div>
         <div class="action-empty" id="action-empty" hidden><h3>No matching actions.</h3><p>Try another word or browse the complete library.</p><button class="button button-light" id="clear-action-search" type="button">Show all actions</button></div>
         <div class="library-notes">
           <p><strong>Your edges, independently.</strong> Open Settings → Gestures and select either edge’s action. Optional top edges use the same library. Choose Off to leave an edge alone. Your existing assignments stay unchanged after updating.</p>
-          <p><strong>A preview, not a remote control.</strong> Browsing here doesn’t change Sway. Directions shown are the defaults; reversing a gesture reverses its action. For horizontal top edges, right maps to up and left to down. Shortcuts depend on the app, keyboard layout, and macOS settings.</p>
+          <p><strong>A preview, not a remote control.</strong> Browsing here doesn’t change Kinara. Directions shown are the defaults; reversing a gesture reverses its action. For horizontal top edges, right maps to up and left to down. Shortcuts depend on the app, keyboard layout, and macOS settings.</p>
         </div>
       </section>
       <section class="feature-grid wrap" id="details" aria-label="Thoughtful by design">
@@ -317,10 +317,10 @@
           <div
             class="menu-preview"
             role="img"
-            aria-label="Illustrated Sway menu bar panel with brightness and volume sliders, a gestures switch, and Settings"
+            aria-label="Illustrated Kinara menu bar panel with brightness and volume sliders, a gestures switch, and Settings"
           >
             <div class="menu-top">
-              <strong>Sway</strong
+              <strong>Kinara</strong
               ><span>Gestures <i class="mini-toggle"></i></span>
             </div>
             <div class="menu-line">
@@ -423,7 +423,7 @@
             <p class="eyebrow">THOUGHTFULLY OUT OF THE WAY</p>
             <h2>Less app.<br /><span>More Mac.</span></h2>
             <p>
-              Sway lives in your menu bar, not in your way. There when you need
+              Kinara lives in your menu bar, not in your way. There when you need
               it. Quiet when you don’t.
             </p>
             <a class="text-link" href="#all-features"
@@ -447,7 +447,7 @@
                 <h3>Take a pause.</h3>
                 <p>
                   Pause for 5, 15, or 60 minutes. Set a keyboard shortcut, or
-                  exclude the apps where you want Sway to sit out.
+                  exclude the apps where you want Kinara to sit out.
                 </p>
               </div>
             </article>
@@ -456,7 +456,7 @@
               <div>
                 <h3>Stay up to date.</h3>
                 <p>
-                  Check, download, and install signed updates from inside Sway.
+                  Check, download, and install signed updates from inside Kinara.
                   Optional daily checks. You choose when to install.
                 </p>
               </div>
@@ -501,7 +501,7 @@
             </summary>
             <div class="detail-content">
               <p>
-                Sway checks starting position, finger count, movement, timing,
+                Kinara checks starting position, finger count, movement, timing,
                 and typing activity before accepting a gesture. Tune the intent
                 checks and typing protection to suit your hands.
               </p>
@@ -545,14 +545,14 @@
             <div class="detail-content">
               <p>
                 Follow the system theme or choose light or dark. Show an icon,
-                Sway’s name, volume, or brightness in the menu bar, and
+                Kinara’s name, volume, or brightness in the menu bar, and
                 customize the on-screen indicator. Native Liquid Glass is used
                 on macOS 26+, with translucent materials on earlier versions and
                 support for Reduce Motion and Reduce Transparency.
               </p>
               <p>
                 Launch at login, exclude apps, set a pause shortcut, and choose
-                whether Sway appears in the Dock while windows are open. Closing
+                whether Kinara appears in the Dock while windows are open. Closing
                 the last window can hide its Dock icon while menu bar controls
                 keep running. Reopen from Spotlight if your menu bar is crowded.
               </p>
@@ -592,8 +592,8 @@
             <span class="step-number">1</span>
             <h3>Make yourself at home.</h3>
             <p>
-              Download the DMG, drag Sway into Applications, and eject the
-              installer. Then open Sway.
+              Download the DMG, drag Kinara into Applications, and eject the
+              installer. Then open Kinara.
             </p>
           </li>
           <li>
@@ -627,7 +627,7 @@
             <path d="M12 11v6m0-10v1" />
           </svg>
           <p>
-            <strong>A note for your first launch.</strong> Sway is self-signed,
+            <strong>A note for your first launch.</strong> Kinara is self-signed,
             not notarized by Apple, so macOS may show a warning. Only if you
             trust the download, use System Settings → Privacy & Security → Open
             Anyway.
@@ -650,14 +650,14 @@
         <div class="faq-list">
           <details>
             <summary>
-              Will Sway work on my Mac?<span
+              Will Kinara work on my Mac?<span
                 class="detail-plus"
                 aria-hidden="true"
               ></span>
             </summary>
             <div class="detail-content">
               <p>
-                Sway supports macOS 13 Ventura and later on Apple silicon and
+                Kinara supports macOS 13 Ventura and later on Apple silicon and
                 Intel Macs, with a compatible Apple Multi-Touch trackpad.
                 Haptics require a Force Touch trackpad. Touch support uses
                 Apple’s private MultitouchSupport framework, so compatibility
@@ -686,7 +686,7 @@
               Does microphone mute work everywhere?<span class="detail-plus" aria-hidden="true"></span>
             </summary>
             <div class="detail-content">
-              <p>No. Sway controls only the current default input, and hardware mute is offered only when its driver supports reading and changing it. Other inputs and a meeting app’s mute button are separate. Setting input gain to zero is not the same as muting. Sway never opens a recording stream, and adjusting gain never unmutes the device.</p>
+              <p>No. Kinara controls only the current default input, and hardware mute is offered only when its driver supports reading and changing it. Other inputs and a meeting app’s mute button are separate. Setting input gain to zero is not the same as muting. Kinara never opens a recording stream, and adjusting gain never unmutes the device.</p>
             </div>
           </details>
           <details>
@@ -707,9 +707,9 @@
             </summary>
             <div class="detail-content">
               <p>
-                Accessibility lets Sway recognize edge swipes and prevent
+                Accessibility lets Kinara recognize edge swipes and prevent
                 accepted gestures from also scrolling your page. It also lets
-                Sway send the keyboard shortcuts you assign. You can use the
+                Kinara send the keyboard shortcuts you assign. You can use the
                 menu bar sliders without it. The setup guide is always available
                 in Settings → About & help.
               </p>
@@ -724,7 +724,7 @@
             </summary>
             <div class="detail-content">
               <p>
-                Yes, Sway is free to download. Touch data is processed locally
+                Yes, Kinara is free to download. Touch data is processed locally
                 and isn’t stored. There’s no app account. Optional update checks
                 contact GitHub for release information; they do not upload your
                 gestures. The source is available on GitHub.
@@ -746,7 +746,7 @@
             </summary>
             <div class="detail-content">
               <p>
-                Open Software updates in Sway to check and install a signed
+                Open Software updates in Kinara to check and install a signed
                 update. You can also download a fresh copy from GitHub Releases.
                 For setup help, reopen Getting Started from the menu or
                 Settings. Found something off?
@@ -761,10 +761,10 @@
       <section class="download-section wrap section-space" id="download">
         <img
           class="download-icon"
-          src="/assets/sway-icon.png"
+          src="/assets/kinara-icon.png"
           width="92"
           height="92"
-          alt="Sway app icon"
+          alt="Kinara app icon"
           loading="lazy"
         />
         <p class="eyebrow">MAKE ROOM FOR A LITTLE LESS.</p>
@@ -772,8 +772,8 @@
         <p>Free to download. Easy to make your own.</p>
         <a
           class="button button-dark download-link"
-          href="https://github.com/0x1p0/sway-application/releases/download/v1.0.0/Sway-1.0.0-macos-universal.dmg"
-          >Download Sway for Mac</a
+          href="https://github.com/0x1p0/sway-application/releases/download/v1.0.0/Kinara-1.0.0-macos-universal.dmg"
+          >Download Kinara for Mac</a
         >
         <p class="compatibility">
           macOS 13+ · Apple silicon & Intel ·
@@ -781,7 +781,7 @@
         </p>
         <p class="release-notes-link"><a href="https://github.com/0x1p0/sway-application/releases/tag/v1.0.0">Read the 1.0.0 release notes <span aria-hidden="true">↗</span></a></p>
         <p class="download-caveat">
-          Sway is self-signed, not notarized by Apple.<br />Read the
+          Kinara is self-signed, not notarized by Apple.<br />Read the
           <a href="https://github.com/0x1p0/sway-application#install"
             >first-launch guide</a
           >
@@ -791,8 +791,8 @@
     </main>
     <footer class="site-footer wrap">
       <a class="brand" href="#"
-        ><img src="/assets/sway-icon.png" width="28" height="28" alt="" /><span
-          >Sway</span
+        ><img src="/assets/kinara-icon.png" width="28" height="28" alt="" /><span
+          >Kinara</span
         ></a
       >
       <p>Made with care by <a href="https://github.com/0x1p0">0x1p0</a>.</p>

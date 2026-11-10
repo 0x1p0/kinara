@@ -219,16 +219,19 @@ enum ShortcutsRunner {
 
 // MARK: - URL commands
 
-/// `sway://` commands for Shortcuts, scripts and launchers. Deliberately
+/// `kinara://` commands for Shortcuts, scripts and launchers. Deliberately
 /// small: pausing, levels within your comfort limits, and showing windows.
 /// Nothing here can change assignments, install anything, or run Shortcuts.
+/// `sway://`, the scheme from before the Kinara name, still works.
 enum SwayURLCommand: Equatable {
     case pause(minutes: Double?), resume, toggle
     case volume(Double), brightness(Double)
     case settings, controls, edgeMap
+    /// nil toggles it.
+    case ambient(Bool?)
 
     static func parse(_ url: URL) -> SwayURLCommand? {
-        guard url.scheme?.lowercased() == "sway" else { return nil }
+        guard let scheme = url.scheme?.lowercased(), scheme == "kinara" || scheme == "sway" else { return nil }
         let command = (url.host ?? url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))).lowercased()
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         func number(_ name: String) -> Double? {
@@ -243,12 +246,18 @@ enum SwayURLCommand: Equatable {
         case "resume": return .resume
         case "toggle": return .toggle
         case "volume", "brightness":
-            // Percent, like the indicator: sway://volume?level=40
+            // Percent, like the indicator: kinara://volume?level=40
             guard let level = number("level"), (0...100).contains(level) else { return nil }
             return command == "volume" ? .volume(level / 100) : .brightness(level / 100)
         case "settings": return .settings
         case "controls": return .controls
         case "edge-map", "edgemap": return .edgeMap
+        case "ambient":
+            // kinara://ambient toggles; ?on=1 starts it, ?on=0 stops it.
+            guard let raw = items.first(where: { $0.name.lowercased() == "on" })?.value?.lowercased() else { return .ambient(nil) }
+            if ["1", "true", "yes"].contains(raw) { return .ambient(true) }
+            if ["0", "false", "no"].contains(raw) { return .ambient(false) }
+            return nil
         default: return nil
         }
     }

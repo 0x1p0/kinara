@@ -6,7 +6,7 @@ import ImageIO
 let width: CGFloat = 720
 let height: CGFloat = 470
 guard CommandLine.arguments.count == 3 else {
-    fatalError("Usage: render-dmg output-directory /path/to/Sway.app")
+    fatalError("Usage: render-dmg output-directory /path/to/Kinara.app")
 }
 let output = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
 let bundle = CommandLine.arguments[2]
@@ -34,7 +34,7 @@ func artwork() {
                ending: NSColor(white: 0.9, alpha: 1))!
         .draw(in: NSRect(x: 0, y: 0, width: width, height: height), angle: -90)
 
-    label("Sway", x: 56, y: 35, width: 460, size: 43, weight: .semibold, gray: 0.12)
+    label("Kinara", x: 56, y: 35, width: 460, size: 43, weight: .semibold, gray: 0.12)
     label("A lighter touch for your Mac.", x: 58, y: 91, width: 450,
           size: 16, gray: 0.38)
 
@@ -74,7 +74,7 @@ func artwork() {
     box(56, 326, 608, 1).fill()
     label("Make yourself at home.", x: 58, y: 352, width: 455,
           size: 21, weight: .medium, gray: 0.2)
-    label("Drag Sway into Applications. Eject this disk,\nthen open Sway from Applications.",
+    label("Drag Kinara into Applications. Eject this disk,\nthen open Kinara from Applications.",
           x: 58, y: 388, width: 445, size: 13, gray: 0.37)
 }
 
@@ -91,7 +91,7 @@ func render(scale: Int, preview: Bool = false) -> NSBitmapImageRep {
     if preview {
         // Layout proof only: Finder draws the real icons and labels in the DMG.
         let items: [(String, CGFloat, CGFloat, NSImage)] = [
-            ("Sway", 205, 218, NSImage(contentsOfFile: bundle + "/Contents/Resources/AppIcon.icns")!),
+            ("Kinara", 205, 218, NSImage(contentsOfFile: bundle + "/Contents/Resources/AppIcon.icns")!),
             ("Applications", 515, 218, NSWorkspace.shared.icon(forFile: "/Applications")),
             ("First Launch", 625, 373, NSWorkspace.shared.icon(for: .plainText)),
         ]

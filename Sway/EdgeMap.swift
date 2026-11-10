@@ -140,7 +140,7 @@ private struct EdgeMapView: View {
         .frame(width: 400)
         .modifier(EdgeMapSurface(reduceTransparency: reduceTransparency))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Sway edge map")
+        .accessibilityLabel("Kinara edge map")
     }
 
     private var trackpad: some View {

@@ -1,37 +1,52 @@
-// 87.5–96 s. The end card: the icon lands once more, the swipe rises, and
-// the name settles in before everything fades to black.
-import { h, at, tf, words, reveal, fade, swayIcon } from "../ui.js";
-import { prog, ease, lerp, spring, ep, SCENES, END, FILM } from "../timeline.js";
+// The promises, and the name. The studio goes quiet, the ambient light laps
+// the screen, and two lines say what Kinara costs you: almost no battery, and
+// nothing of your privacy. Then the trackpad as the logo, and the word.
+import { h, at, words, reveal, fade } from "../ui.js";
+import { musicPlayer, quietWindow } from "../windows.js";
+import { logoPad } from "./title.js";
+import { prog, ease, lerp, END, FILM, scene } from "../timeline.js";
 
-const S = SCENES.find((s) => s.id === "end");
-const ICON = 300 * (1024 / 824);
+const S = scene("end");
 
 export default {
   id: "end",
-  pre: 0.4,
-  post: 0,
-  mount(root) {
-    this.halo = at(h("div", { style: { width: "1500px", height: "1500px", borderRadius: "50%", background: "radial-gradient(circle, rgba(214,226,255,0.2) 0%, rgba(160,180,230,0.06) 28%, transparent 62%)" } }), 960, 400);
-    this.icon = at(swayIcon(ICON), 960, 400);
-    this.word = at(words("Sway", "h1 grad center", { fontSize: "150px", fontWeight: 700, letterSpacing: "-0.045em" }), 960, 668);
-    this.tag = at(words("The edges of your trackpad, as controls.", "sub center", { fontSize: "38px" }), 960, 772);
-    this.foot = at(h("div", { class: "eyebrow center" }, "For Mac  ·  macOS 13 or later"), 960, 900);
-    root.append(this.halo, this.icon, this.word, this.tag, this.foot);
+  mount(root, ctx, screen) {
+    screen.append(quietWindow({ x: 640, y: 150, w: 420, ht: 320, title: "Notes" }), musicPlayer({ x: 190, y: 250, w: 540, ht: 280 }));
+    this.battery = at(words("Almost no battery.", "h0 grad center shadowed"), 960, 470);
+    this.batterySub = at(h("div", { class: "sub center shadowed", style: { fontSize: "40px", color: "#b4b6be" } }, "0.014% CPU at rest."), 960, 600);
+    this.private = at(words("Private by design.", "h0 grad center shadowed"), 960, 470);
+    this.privateSub = at(h("div", { class: "sub center shadowed", style: { fontSize: "40px", color: "#b4b6be" } }, "No analytics. No tracking. Nothing leaves your Mac."), 960, 600);
+    this.word = at(words("Kinara", "mega grad center"), 960, 792);
+    this.line = at(h("div", { class: "sub center", style: { fontSize: "38px", color: "#a0a2aa" } }, "The edges of your trackpad, as controls."), 960, 962);
+    this.platform = at(h("div", { class: "eyebrow center" }, "For Mac  ·  macOS 13 or later"), 960, 1030);
+    root.append(this.battery, this.batterySub, this.private, this.privateSub, this.word, this.line, this.platform);
   },
-  update(t, { bg }) {
-    const local = t - S.start;
-    const out = ease.inOut(prog(t, END.fade, FILM.duration - 0.6));
-    const drift = lerp(1, 1.035, ease.smooth(prog(t, S.start, FILM.duration)));
-    const land = spring(local + 0.05, 0.6, 0.62);
-    tf(this.icon, { s: lerp(0.86, 1, land) * drift, o: ep(t, S.start - 0.12, S.start + 0.2) * (1 - out), blur: (1 - ep(t, S.start - 0.12, S.start + 0.35)) * 18 });
-    this.icon.__finger(lerp(0, 1, spring(local - 0.25, 0.9, 0.78)), ep(t, S.start + 0.1, S.start + 0.5));
-    const flash = local >= 0 ? Math.exp(-local * 2.2) : 0;
-    tf(this.halo, { s: lerp(0.6, 1.05, ep(t, S.start, S.start + 1.6)) * drift, o: (0.5 + flash) * ep(t, S.start - 0.2, S.start + 0.2) * (1 - out) });
-    reveal(this.word, t, END.word, END.fade, { stagger: 0, dur: 1.1, rise: 0.22, blur: 22, outDur: 1.2 });
-    this.word.style.letterSpacing = `${lerp(0.02, -0.045, ease.settle(prog(t, END.word, END.word + 1.8)))}em`;
-    reveal(this.tag, t, END.word + 0.45, END.fade, { stagger: 0.04, outDur: 1.0 });
-    fade(this.foot, t, END.line, END.fade, { outDur: 1.0 });
-    bg.style.setProperty("--by", "40%");
-    bg.style.setProperty("--ba", String(0.55 * (1 - out)));
+  update(t, { pad, d }) {
+    if (t < END.card) {
+      d.app = "Music";
+      d.mood = 1;
+      d.brightness = 0.42;
+      pad.env = 0.3;
+      pad.rim = 0.1;
+      pad.exposure = 0.85;
+      pad.labels.o = 0;
+      d.ambient = { o: ease.out(prog(t, S.start, S.start + 0.6)), lap: 0.3 + (t - S.start) / 5.2, palette: "aurora" };
+      reveal(this.battery, t, END.battery[0], END.battery[1], { rise: 0.25, dur: 0.9, outDur: 0.3 });
+      fade(this.batterySub, t, END.battery[0] + 0.45, END.battery[1] + 0.05, { rise: 14 });
+      reveal(this.private, t, END.private[0], END.private[1], { rise: 0.25, dur: 0.9, outDur: 0.25 });
+      fade(this.privateSub, t, END.private[0] + 0.45, END.private[1], { rise: 14, outDur: 0.25 });
+      reveal(this.word, t, Infinity);
+      fade(this.line, t, Infinity);
+      fade(this.platform, t, Infinity);
+      return;
+    }
+    // The card: the trackpad is the logo, as in the title.
+    logoPad(pad, d, ease.out(prog(t, END.card, END.card + 1.1)), ease.out(prog(t, END.card, END.card + 0.15)));
+    pad.bloom = lerp(1.5, 0.9, ease.out(prog(t, END.card, END.card + 0.9)));
+    for (const el of [this.battery, this.private]) reveal(el, t, Infinity);
+    for (const el of [this.batterySub, this.privateSub]) fade(el, t, Infinity);
+    reveal(this.word, t, END.word, FILM.duration + 1, { stagger: 0, dur: 1.1, rise: 0.22, blur: 22 });
+    fade(this.line, t, END.line, FILM.duration + 1, { rise: 16 });
+    fade(this.platform, t, END.line + 0.5, FILM.duration + 1, { rise: 10 });
   },
 };

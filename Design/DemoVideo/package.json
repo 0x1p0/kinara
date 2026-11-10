@@ -1,15 +1,15 @@
 {
-  "name": "sway-demo-video",
+  "name": "kinara-demo-video",
   "private": true,
   "type": "module",
-  "description": "Sway's demo film: deterministic HTML/WebGL scenes rendered frame by frame to video.",
+  "description": "Kinara's demo film: deterministic HTML/WebGL scenes rendered frame by frame to video.",
   "scripts": {
     "preview": "node render.mjs --serve",
     "stills": "node render.mjs --stills",
     "render": "node render.mjs"
   },
   "dependencies": {
-    "puppeteer-core": "24.10.0",
+    "puppeteer-core": "25.16.0",
     "three": "0.170.0"
   }
 }

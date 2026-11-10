@@ -31,20 +31,20 @@ with tempfile.TemporaryDirectory(prefix="sway-archive-tests.") as temporary:
             assert accepted, "unsafe archive accepted"
 
     file, directory, link = stat.S_IFREG | 0o644, stat.S_IFDIR | 0o755, stat.S_IFLNK | 0o777
-    base = [("Sway.app/", directory, ""), ("Sway.app/Contents/file", file, "safe")]
+    base = [("Kinara.app/", directory, ""), ("Kinara.app/Contents/file", file, "safe")]
     check(base, True)
-    check(base + [("Sway.app/alias", link, "Contents/file")], True)
+    check(base + [("Kinara.app/alias", link, "Contents/file")], True)
     for entry in [
         ("../outside", file, "bad"), ("/absolute", file, "bad"), ("Other.app/file", file, "bad"),
-        ("Sway.app/../outside", file, "bad"), ("Sway.app//duplicate", file, "bad"),
-        ("Sway.app/CONTENTS/FILE", file, "bad"), ("Sway.app/pipe", stat.S_IFIFO | 0o644, "bad"),
-        ("Sway.app/setuid", file | stat.S_ISUID, "bad"), ("Sway.app/link", link, "/Applications"),
-        ("Sway.app/link", link, "../../outside"), ("Sway.app/link", link, "missing"),
+        ("Kinara.app/../outside", file, "bad"), ("Kinara.app//duplicate", file, "bad"),
+        ("Kinara.app/CONTENTS/FILE", file, "bad"), ("Kinara.app/pipe", stat.S_IFIFO | 0o644, "bad"),
+        ("Kinara.app/setuid", file | stat.S_ISUID, "bad"), ("Kinara.app/link", link, "/Applications"),
+        ("Kinara.app/link", link, "../../outside"), ("Kinara.app/link", link, "missing"),
     ]:
         check(base + [entry], False)
-    check(base + [("Sway.app/link", link, "Contents"), ("Sway.app/link/file2", file, "bad")], False)
-    check(base + [("Sway.app/one", link, "two"), ("Sway.app/two", link, "one")], False)
-    check([("Sway.app", link, "elsewhere")], False)
+    check(base + [("Kinara.app/link", link, "Contents"), ("Kinara.app/link/file2", file, "bad")], False)
+    check(base + [("Kinara.app/one", link, "two"), ("Kinara.app/two", link, "one")], False)
+    check([("Kinara.app", link, "elsewhere")], False)
     check([], False)
 
 print(f"{checks} bounded-archive assertions passed; no app code executed.")

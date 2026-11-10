@@ -27,7 +27,7 @@ app_checkout = app_steps.find { |step| step['uses'].to_s.start_with?('actions/ch
 expect.call(app_checkout.fetch('with').fetch('ref') == 'main' && app_checkout.fetch('with').fetch('persist-credentials') == false, 'app signer uses protected source without persisted credentials')
 expect.call(app_steps.any? { |step| step['run'].to_s.include?('test "$(git rev-parse HEAD)" = "$GITHUB_SHA"') }, 'app signer requires current main')
 app_secret_steps = app_steps.select { |step| step.fetch('env', {}).key?('SWAY_APP_SIGNING_IDENTITY') }
-expect.call(app_secret_steps.length == 1 && app_secret_steps.first.fetch('run') == 'python3 scripts/app-signing.py sign "$RUNNER_TEMP/sway-app/Sway.app"', 'only the dependency-free app signer receives the identity')
+expect.call(app_secret_steps.length == 1 && app_secret_steps.first.fetch('run') == 'python3 scripts/app-signing.py sign "$RUNNER_TEMP/kinara-app/Kinara.app"', 'only the dependency-free app signer receives the identity')
 expect.call(!app_sign.to_s.include?('SPARKLE_PRIVATE_KEY') && !sign.to_s.include?('SWAY_APP_SIGNING_IDENTITY'), 'separate app and update signing steps/runners')
 expect.call(app_steps.map { |step| step['run'] }.join("\n") !~ /pip|setup-dmg|setup-sparkle|test-updater|package-release|xcodebuild/, 'app signer must not run build dependencies or artifact code')
 expect.call(sign.fetch('environment').fetch('name') == 'release', 'release approval environment required')
@@ -38,11 +38,11 @@ expect.call(checkout.fetch('with').fetch('persist-credentials') == false, 'do no
 expect.call(steps.any? { |step| step['run'].to_s.include?('test "$(git rev-parse HEAD)" = "$GITHUB_SHA"') }, 'release source must equal protected main')
 download = steps.find { |step| step['uses'].to_s.start_with?('actions/download-artifact@') }
 expect.call(download.fetch('with').fetch('artifact-ids') == '${{ needs.package.outputs.artifact-id }}', 'download exact artifact ID from packaging')
-expect.call(download.fetch('with').fetch('path') == '${{ runner.temp }}/sway-release', 'artifacts must not overwrite signing sources or executables')
+expect.call(download.fetch('with').fetch('path') == '${{ runner.temp }}/kinara-release', 'artifacts must not overwrite signing sources or executables')
 expect.call(download.fetch('with').fetch('digest-mismatch') == 'error', 'artifact integrity failures must stop the release')
 secret_steps = steps.select { |step| step.fetch('env', {}).key?('SPARKLE_PRIVATE_KEY') }
 expect.call(secret_steps.length == 1, 'only one step receives the signing key')
-expect.call(secret_steps.first.fetch('run').include?('"$RUNNER_TEMP/sway-sign-update"'), 'invoke the precompiled signer')
+expect.call(secret_steps.first.fetch('run').include?('"$RUNNER_TEMP/kinara-sign-update"'), 'invoke the precompiled signer')
 expect.call(secret_steps.first.fetch('run') !~ /xcrun|swiftc|pip|bash|unzip|ditto|curl/, 'do not build, download, or unpack while holding the key')
 verification = steps.find { |step| step['run'].to_s.include?('scripts/verify-release-downloads.py') }
 expect.call(verification && steps.index(verification) < steps.index(secret_steps.first), 'verify app/DMG before update-key access')

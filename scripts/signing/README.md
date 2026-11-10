@@ -1,10 +1,13 @@
 # Persistent app identity
 
-`Sway.cer` is the public DER certificate for release app signing. Its subject is
-`CN=Sway`. It is safe to publish; it contains no private key, personal name, or
-email. It is a self-issued, code-signing-only root (path length zero), not an
-Apple Developer ID certificate. Users do not need to install this certificate
-or change their trust settings. It does not remove Gatekeeper's warning.
+`Sway.cer` is the public DER certificate for Kinara's release app signing. Its
+subject is `CN=Sway`, kept from before the app was named Kinara: a new
+certificate changes the designated requirement, so macOS would ask for
+permissions again. It is safe to publish; it contains no private key,
+personal name, or email. It is a self-issued, code-signing-only root (path
+length zero), not an Apple Developer ID certificate. Users do not need to
+install this certificate or change their trust settings. It does not remove
+Gatekeeper's warning.
 
 The private PKCS#12 identity and wrapping password are stored as one protected
 item in the maintainer's login Keychain:
@@ -42,14 +45,16 @@ feed and ZIP. Local release packaging reads both identities from Keychain;
 `SWAY_DEFER_UPDATE_SIGNING=1` skips only the update signature, not app signing.
 `scripts/build.sh` remains a key-free ad-hoc development build and is not a
 permission-preserving release. Never replace the installed release with it
-when testing permission continuity.
+when testing permission continuity. To try local changes without losing the
+permission, run `bash scripts/install-local.sh`: it builds, signs with this
+identity, moves the installed copy to the Trash and installs the new one.
 
 To inspect the public identity:
 
 ```sh
 openssl x509 -inform DER -in scripts/signing/Sway.cer -noout -subject -issuer -dates -fingerprint -sha256
-codesign --display -r - /Applications/Sway.app
-python3 scripts/app-signing.py verify build/Sway.app
+codesign --display -r - /Applications/Kinara.app
+python3 scripts/app-signing.py verify build/Kinara.app
 ```
 
 The two-version signing regression uses disposable certificates and never
@@ -62,12 +67,12 @@ ad-hoc build, or install a certificate during that test.
 # Optional: Developer ID and notarization
 
 The self-signed identity above keeps Accessibility permission across updates,
-but it cannot remove Gatekeeper's "Apple could not verify Sway" warning. Only a
+but it cannot remove Gatekeeper's "Apple could not verify Kinara" warning. Only a
 **Developer ID Application** certificate plus Apple notarization can. That
 needs an Apple Developer Program membership, which only the maintainer can
 enroll in.
 
-`scripts/notarize.sh` signs a copy of `build/Sway.app` with Developer ID
+`scripts/notarize.sh` signs a copy of `build/Kinara.app` with Developer ID
 (Sparkle's nested code first), submits it to Apple's notary service, staples
 the ticket, and checks it with `spctl`. It never touches the input app or the
 release workflow. Instructions are at the top of the script.
@@ -76,7 +81,7 @@ Before switching releases over, weigh the trade-off:
 
 - **One more Accessibility grant.** A Developer ID signature has a different
   designated requirement than `CN=Sway`, so macOS treats the first Developer ID
-  build as a new app. Users re-enable Sway in Accessibility once; after that,
+  build as a new app. Users re-enable Kinara in Accessibility once; after that,
   Developer ID builds keep the permission as reliably as the current identity.
 - **Update signing is unchanged.** Sparkle's EdDSA key is separate from app
   signing, so existing installs keep receiving verified updates.

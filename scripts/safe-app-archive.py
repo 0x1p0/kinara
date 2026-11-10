@@ -25,7 +25,7 @@ def extract(archive, destination):
             path = PurePosixPath(name)
             if (not name or name.startswith("/") or "\\" in name or ":" in name
                     or any(ord(c) < 32 for c in name) or ".." in path.parts
-                    or str(path) != name or path.parts[0] != "Sway.app"):
+                    or str(path) != name or path.parts[0] != "Kinara.app"):
                 raise ValueError("Unsafe archive path")
             folded = unicodedata.normalize("NFC", name).casefold()
             if folded in seen or entry.flag_bits & 1 or entry.compress_type not in (0, 8):
@@ -46,10 +46,10 @@ def extract(archive, destination):
                     raise ValueError("Unsafe link target")
                 # Lexical containment, before anything is written to disk.
                 resolved = os.path.normpath(str(path.parent / target))
-                if resolved != "Sway.app" and not resolved.startswith("Sway.app/"):
+                if resolved != "Kinara.app" and not resolved.startswith("Kinara.app/"):
                     raise ValueError("Link escapes app")
                 links[name] = target
-        if kinds.get("Sway.app", "dir") != "dir":
+        if kinds.get("Kinara.app", "dir") != "dir":
             raise ValueError("App root must be a directory")
         for name in kinds:
             for parent in PurePosixPath(name).parents:
@@ -73,12 +73,12 @@ def extract(archive, destination):
             output = destination / name
             output.parent.mkdir(parents=True, exist_ok=True)
             output.symlink_to(target)
-        root = (destination / "Sway.app").resolve(strict=True)
+        root = (destination / "Kinara.app").resolve(strict=True)
         for name in links:
             resolved = (destination / name).resolve(strict=True)
             if resolved != root and root not in resolved.parents:
                 raise ValueError("Resolved link escapes app")
-    return destination / "Sway.app"
+    return destination / "Kinara.app"
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 #!/bin/bash
-# Sign a COPY of a built Sway.app with a Developer ID Application identity,
+# Sign a COPY of a built Kinara.app with a Developer ID Application identity,
 # notarize it with Apple, staple the ticket, and verify Gatekeeper accepts it.
-# This removes the "Apple could not verify Sway" first-launch warning.
+# This removes the "Apple could not verify Kinara" first-launch warning.
 #
 # Requires an Apple Developer Program membership. One-time setup:
 #   1. Create a "Developer ID Application" certificate in your developer
@@ -11,14 +11,14 @@
 #
 # Then:
 #   SWAY_DEVELOPER_ID="Developer ID Application: Your Name (TEAMID)" \
-#   SWAY_NOTARY_PROFILE=sway-notary bash scripts/notarize.sh [build/Sway.app]
+#   SWAY_NOTARY_PROFILE=sway-notary bash scripts/notarize.sh [build/Kinara.app]
 #
 # The input app is never modified. Read scripts/signing/README.md first:
-# switching from the persistent self-signed identity changes Sway's code
+# switching from the persistent self-signed identity changes Kinara's code
 # identity, so users re-grant Accessibility once after that update.
 set -euo pipefail
 
-source_app="${1:-build/Sway.app}"
+source_app="${1:-build/Kinara.app}"
 identity="${SWAY_DEVELOPER_ID:-}"
 profile="${SWAY_NOTARY_PROFILE:-}"
 script_directory="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -45,7 +45,7 @@ fi
 output_directory="$project_directory/build/Notarized"
 mkdir -p "$output_directory"
 work="$(mktemp -d "$output_directory/Work.XXXXXX")"
-app="$work/Sway.app"
+app="$work/Kinara.app"
 /usr/bin/ditto "$source_app" "$app"
 
 sign() { /usr/bin/codesign --force --options runtime --timestamp --sign "$identity" "$@"; }
@@ -64,7 +64,7 @@ sign --entitlements "$entitlements" "$app"
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$app"
 bash "$script_directory/verify-runtime.sh" "$app"
 
-archive="$work/Sway-notarization.zip"
+archive="$work/Kinara-notarization.zip"
 /usr/bin/ditto -c -k --keepParent "$app" "$archive"
 printf 'Submitting to Apple’s notary service. This usually takes a few minutes.\n'
 /usr/bin/xcrun notarytool submit "$archive" --keychain-profile "$profile" --wait
@@ -72,7 +72,7 @@ printf 'Submitting to Apple’s notary service. This usually takes a few minutes
 /usr/bin/xcrun stapler validate "$app"
 /usr/sbin/spctl --assess --type execute --verbose=4 "$app"
 
-final="$output_directory/Sway.app"
+final="$output_directory/Kinara.app"
 if [[ -e "$final" ]]; then
     printf 'Keeping the existing %s; the new notarized app is at %s\n' "$final" "$app"
 else

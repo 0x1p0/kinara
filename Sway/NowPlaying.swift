@@ -311,6 +311,33 @@ enum NowPlayingAppleScript {
     return stateName & fieldSeparator & trackName & fieldSeparator & trackArtist & fieldSeparator & trackAlbum & fieldSeparator & trackDuration & fieldSeparator & trackPosition & fieldSeparator & trackKey
     """
 
+    /// "playing", "paused" or "off". The player's own state, with none of the
+    /// lag of watching its audio output.
+    static func stateSource(for player: NowPlayingPlayer) -> String {
+        """
+        if application id "\(player.bundleID)" is not running then return "off"
+        tell application id "\(player.bundleID)"
+            with timeout of 2 seconds
+                if player state is playing then return "playing"
+            end timeout
+        end tell
+        return "paused"
+        """
+    }
+
+    /// An explicit pause or play, never a toggle, so repeating it is harmless.
+    static func transportSource(for player: NowPlayingPlayer, play: Bool) -> String {
+        """
+        if application id "\(player.bundleID)" is not running then return false
+        tell application id "\(player.bundleID)"
+            with timeout of 2 seconds
+                \(play ? "play" : "pause")
+            end timeout
+        end tell
+        return true
+        """
+    }
+
     static let musicArtwork = """
     if application id "com.apple.Music" is not running then return missing value
     tell application id "com.apple.Music"
@@ -325,6 +352,97 @@ enum NowPlayingAppleScript {
     end tell
     return missing value
     """
+}
+
+// MARK: - Play/pause with several apps playing
+
+/// macOS sends the play/pause key to whichever app it last considered "now
+/// playing", and since macOS 15.4 an app can't ask which one that is. With
+/// two apps playing, the key pauses one of them, seemingly at random. Kinara
+/// pauses Music and Spotify itself, sends the key only for the rest, checks
+/// what it landed on, and remembers what it paused so the next press brings
+/// back exactly that.
+struct PlaybackSnapshot: Equatable {
+    /// Music and Spotify, when running and readable: playing or not.
+    var players: [String: Bool] = [:]
+    /// Other apps sending sound out, not counting apps in a call.
+    var others: Set<String> = []
+    var playing: Set<String> { Set(players.filter(\.value).keys) }
+}
+
+/// What one press paused, for the next press to bring back.
+struct PlaybackHold: Equatable {
+    /// Paused by Kinara itself.
+    var players: Set<String> = []
+    /// The play/pause key paused another app (a browser, usually).
+    var keyPaused = false
+    /// Apps the key couldn't reach, held silent in the mixer instead.
+    var muted: Set<String> = []
+    var isEmpty: Bool { players.isEmpty && !keyPaused && muted.isEmpty }
+}
+
+enum PlaybackPlan: Equatable {
+    /// One app, or nothing to bring back: the key, exactly as macOS sends it.
+    case key
+    /// Pause these players; `key` sends the key first for the other apps.
+    case pause(players: Set<String>, key: Bool)
+    case resume(PlaybackHold)
+}
+
+enum PlaybackRules {
+    static func plan(_ snapshot: PlaybackSnapshot, hold: PlaybackHold?) -> PlaybackPlan {
+        let playing = snapshot.playing
+        // Apps Kinara is holding silent are not "playing", though their sound still flows.
+        let others = snapshot.others.subtracting(hold?.muted ?? [])
+        if playing.isEmpty && others.isEmpty {
+            if let hold, !hold.isEmpty { return .resume(hold) }
+            return .key
+        }
+        if playing.isEmpty {
+            // Only other apps: the key is safe unless a paused Music or Spotify could catch it.
+            return snapshot.players.isEmpty ? .key : .pause(players: [], key: true)
+        }
+        return .pause(players: playing, key: !others.isEmpty)
+    }
+
+    /// Which app the key reached, judged by the players' state before and after
+    /// it: a player that changed caught it; otherwise another app did.
+    enum Landing: Equatable { case other, player(String) }
+    static func landing(before: [String: Bool], after: [String: Bool]) -> Landing {
+        for id in before.keys.sorted() where after[id] != nil && after[id] != before[id] { return .player(id) }
+        return .other
+    }
+
+    /// The hold after a pause: what Kinara paused, whether the key paused
+    /// another app, and which apps the key missed, to hold silent instead.
+    static func hold(after plan: (players: Set<String>, key: Bool), landing: Landing?, snapshot: PlaybackSnapshot,
+                     previous: PlaybackHold?) -> (hold: PlaybackHold, pause: Set<String>, mute: Set<String>) {
+        var hold = PlaybackHold(players: plan.players, muted: previous?.muted ?? [])
+        var pause = plan.players
+        var mute: Set<String> = []
+        if plan.key {
+            switch landing ?? .other {
+            case .other:
+                hold.keyPaused = true
+            case let .player(id):
+                // The key paused (or started) a player, so it missed the other apps.
+                pause.insert(id)
+                mute = snapshot.others.subtracting(hold.muted)
+            }
+        }
+        hold.muted.formUnion(mute)
+        return (hold, pause, mute)
+    }
+
+    /// Safari puts a hidden, paused page to sleep a few minutes after it
+    /// pauses, and the play key (anyone's) waits until the page is shown
+    /// again. When a press meant to start something left everything quiet, a
+    /// Safari that has played sound is the likely sleeper.
+    static let sleepingPageApps = ["com.apple.Safari", "com.apple.SafariTechnologyPreview"]
+    static func sleepingPage(audioApps: Set<String>, sounding: Set<String>) -> String? {
+        guard sounding.isEmpty else { return nil }
+        return sleepingPageApps.first(where: audioApps.contains)
+    }
 }
 
 enum NowPlayingArtworkPolicy {

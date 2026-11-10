@@ -98,7 +98,7 @@ final class AppVolumeController {
         guard Self.isSupported, let gain = Self.clampedGain(mix.gain, maximum: maximumGain),
               !bundleID.isEmpty, bundleID != Bundle.main.bundleIdentifier else {
             let message = !Self.isSupported ? "Per-app volume needs macOS 14.2 or later."
-                : mix.gain.isNaN ? "That volume level isn't valid." : "Sway can't change this app's volume."
+                : mix.gain.isNaN ? "That volume level isn't valid." : "Kinara can't change this app's volume."
             DispatchQueue.main.async { completion(.failed(message)) }
             return
         }
@@ -262,7 +262,7 @@ final class AppVolumeController {
     }
 
     private static func permissionMessage(_ name: String) -> String {
-        "Allow Sway in System Settings → Privacy & Security → Screen & System Audio Recording to change \(name)'s volume."
+        "Allow Kinara in System Settings → Privacy & Security → Screen & System Audio Recording to change \(name)'s volume."
     }
 
     private static func failureMessage(_ name: String, _ status: OSStatus) -> String {
@@ -298,7 +298,7 @@ final class AppVolumeController {
     private static func tapDescription(of processes: [AudioObjectID], uuid: UUID) -> CATapDescription {
         let description = CATapDescription(stereoMixdownOfProcesses: processes)
         description.uuid = uuid
-        description.name = "Sway app volume"
+        description.name = "Kinara app volume"
         description.muteBehavior = .mutedWhenTapped
         description.isPrivate = true
         return description
@@ -335,7 +335,7 @@ final class AppVolumeController {
         // tap and output share a clock: drift compensation would only add
         // periodic sample slips (Bluetooth). A routed app crosses clocks.
         let description: [String: Any] = [
-            kAudioAggregateDeviceNameKey: "Sway App Volume",
+            kAudioAggregateDeviceNameKey: "Kinara App Volume",
             kAudioAggregateDeviceUIDKey: "com.sway.app-volume.\(UUID().uuidString)",
             kAudioAggregateDeviceMainSubDeviceKey: output.uid,
             kAudioAggregateDeviceIsPrivateKey: true,

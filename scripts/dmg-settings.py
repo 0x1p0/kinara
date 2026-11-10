@@ -10,7 +10,7 @@ icon = os.path.join(application, "Contents", "Resources", "AppIcon.icns")
 background = defines["background"]
 window_rect = ((160, 160), (720, 470))
 icon_locations = {
-    "Sway.app": (205, 218),
+    "Kinara.app": (205, 218),
     "Applications": (515, 218),
     "First Launch.txt": (625, 373),
 }

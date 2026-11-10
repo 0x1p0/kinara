@@ -41,7 +41,7 @@ do {
           let archiveSignature = Data(base64Encoded: archiveSignatureText) else {
         throw NSError(domain: "Sway.UpdateFeed", code: 5, userInfo: [NSLocalizedDescriptionKey: "Missing signed archive"])
     }
-    let expectedURL = "https://github.com/0x1p0/sway-application/releases/download/v\(version)/Sway-\(version)-macos-universal.zip"
+    let expectedURL = "https://github.com/0x1p0/kinara/releases/download/v\(version)/Kinara-\(version)-macos-universal.zip"
     try require(enclosure.attribute(forName: "url")?.stringValue == expectedURL, "Unexpected download URL")
     try require(enclosure.attribute(forName: "length")?.stringValue == String(archive.count), "Archive length mismatch")
     try require(item.elements(forName: "sparkle:version").first?.stringValue == build, "Build version mismatch")

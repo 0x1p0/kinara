@@ -15,13 +15,13 @@ if [[ "${1:-}" == "--live" ]]; then
     # Match the production app's bundle/lifecycle. The fixture starts its
     # checks from a real button click because recent macOS can deny unsolicited
     # activation by a terminal's child process.
-    test_bundle="$test_directory/Sway Presentation Test.app"
+    test_bundle="$test_directory/Kinara Presentation Test.app"
     mkdir -p "$test_bundle/Contents/MacOS"
     cp "$test_directory/presentation-regressions" "$test_bundle/Contents/MacOS/PresentationTest"
     test_plist="$test_bundle/Contents/Info.plist"
     plutil -create xml1 "$test_plist"
     plutil -insert CFBundleIdentifier -string com.sway.presentationtest "$test_plist"
-    plutil -insert CFBundleName -string 'Sway Presentation Test' "$test_plist"
+    plutil -insert CFBundleName -string 'Kinara Presentation Test' "$test_plist"
     plutil -insert CFBundleExecutable -string PresentationTest "$test_plist"
     plutil -insert CFBundlePackageType -string APPL "$test_plist"
     plutil -insert LSUIElement -bool YES "$test_plist"

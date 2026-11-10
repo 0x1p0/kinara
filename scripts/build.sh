@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build a local, ad-hoc signed app without changing an installed copy of Sway.
+# Build a local, ad-hoc signed app without changing an installed copy of Kinara.
 set -euo pipefail
 
 script_directory="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,7 +10,7 @@ build_method="${1:---xcode}"
 sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
 
 if [[ "${sdk_version%%.*}" -lt 26 ]]; then
-    printf 'Building Sway requires Xcode 26 or later (macOS 26 SDK). The built app still supports macOS 13+.\n' >&2
+    printf 'Building Kinara requires Xcode 26 or later (macOS 26 SDK). The built app still supports macOS 13+.\n' >&2
     exit 2
 fi
 
@@ -35,7 +35,7 @@ esac
 mkdir -p "$output_directory"
 cd "$project_directory"
 package_directory="$(mktemp -d "$output_directory/Package.XXXXXX")"
-bundle_directory="$package_directory/Sway.app"
+bundle_directory="$package_directory/Kinara.app"
 sparkle_directory="$(bash scripts/setup-sparkle.sh)"
 sparkle_frameworks="$sparkle_directory/Sparkle.xcframework/macos-arm64_x86_64"
 
@@ -48,7 +48,7 @@ if [[ "$build_method" == "--xcode" ]]; then
         ARCHS="$xcode_archs" ONLY_ACTIVE_ARCH="$only_active_arch" \
         CODE_SIGNING_ALLOWED=NO \
         GCC_TREAT_WARNINGS_AS_ERRORS=YES SWIFT_TREAT_WARNINGS_AS_ERRORS=YES build
-    ditto "$output_directory/DerivedData/Build/Products/Release/Sway.app" \
+    ditto "$output_directory/DerivedData/Build/Products/Release/Kinara.app" \
         "$bundle_directory"
 elif [[ "$build_method" == "--direct" ]]; then
     # Useful when an installed Xcode build service is broken. This still uses
@@ -62,7 +62,7 @@ elif [[ "$build_method" == "--direct" ]]; then
         -Wall -Wextra -Werror -c Sway/MultitouchBridge.c \
         -o "$intermediate_directory/MultitouchBridge.o"
     xcrun swiftc -target "$build_arch-apple-macos13.0" -sdk "$sdk_path" \
-        -swift-version 5 -warnings-as-errors -O \
+        -swift-version 5 -warnings-as-errors -O -module-name Sway \
         -module-cache-path "$intermediate_directory/ModuleCache" \
         -import-objc-header Sway/Sway-Bridging-Header.h \
         Sway/*.swift "$intermediate_directory/MultitouchBridge.o" \
@@ -70,7 +70,7 @@ elif [[ "$build_method" == "--direct" ]]; then
         -framework IOKit -framework Carbon -framework ServiceManagement \
         -F "$sparkle_frameworks" -framework Sparkle \
         -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
-        -o "$bundle_directory/Contents/MacOS/Sway"
+        -o "$bundle_directory/Contents/MacOS/Kinara"
 
     mkdir -p "$bundle_directory/Contents/Frameworks"
     ditto "$sparkle_frameworks/Sparkle.framework" "$bundle_directory/Contents/Frameworks/Sparkle.framework"
@@ -78,9 +78,9 @@ elif [[ "$build_method" == "--direct" ]]; then
     cp Sway/Info.plist "$bundle_directory/Contents/Info.plist"
     plist_tool=/usr/libexec/PlistBuddy
     "$plist_tool" -c 'Set :CFBundleDevelopmentRegion en' "$bundle_directory/Contents/Info.plist"
-    "$plist_tool" -c 'Set :CFBundleExecutable Sway' "$bundle_directory/Contents/Info.plist"
+    "$plist_tool" -c 'Set :CFBundleExecutable Kinara' "$bundle_directory/Contents/Info.plist"
     "$plist_tool" -c 'Set :CFBundleIdentifier com.trackpadcontrol.app' "$bundle_directory/Contents/Info.plist"
-    "$plist_tool" -c 'Set :CFBundleName Sway' "$bundle_directory/Contents/Info.plist"
+    "$plist_tool" -c 'Set :CFBundleName Kinara' "$bundle_directory/Contents/Info.plist"
     "$plist_tool" -c 'Set :CFBundlePackageType APPL' "$bundle_directory/Contents/Info.plist"
     "$plist_tool" -c 'Set :LSMinimumSystemVersion 13.0' "$bundle_directory/Contents/Info.plist"
     "$plist_tool" -c 'Set :CFBundleIconFile AppIcon' "$bundle_directory/Contents/Info.plist"
@@ -108,7 +108,7 @@ ditto "$sparkle_frameworks/Sparkle.framework" "$bundle_directory/Contents/Framew
 codesign --verify --deep --strict "$bundle_directory/Contents/Frameworks/Sparkle.framework"
 test -f "$bundle_directory/Contents/Frameworks/Sparkle.framework/Sparkle"
 cp "$sparkle_directory/LICENSE" "$bundle_directory/Contents/Resources/Sparkle-LICENSE.txt"
-xcrun strip -S "$bundle_directory/Contents/MacOS/Sway"
+xcrun strip -S "$bundle_directory/Contents/MacOS/Kinara"
 codesign --force --sign - --options runtime --timestamp=none \
     --entitlements Sway/Sway.entitlements "$bundle_directory"
 codesign --verify --deep --strict "$bundle_directory"
@@ -117,10 +117,10 @@ plutil -lint "$bundle_directory/Contents/Info.plist"
 
 # Replace the generated bundle as a whole, so a Release build cannot inherit a
 # stale Debug dylib or obsolete resources. Preserve the previous local build.
-if [[ -e "$output_directory/Sway.app" ]]; then
+if [[ -e "$output_directory/Kinara.app" ]]; then
     previous_directory="$(mktemp -d "$output_directory/Previous.XXXXXX")"
-    mv "$output_directory/Sway.app" "$previous_directory/Sway.app"
+    mv "$output_directory/Kinara.app" "$previous_directory/Kinara.app"
 fi
-mv "$bundle_directory" "$output_directory/Sway.app"
+mv "$bundle_directory" "$output_directory/Kinara.app"
 rmdir "$package_directory"
-printf '\nBuilt %s app: %s\n' "$build_arch" "$output_directory/Sway.app"
+printf '\nBuilt %s app: %s\n' "$build_arch" "$output_directory/Kinara.app"

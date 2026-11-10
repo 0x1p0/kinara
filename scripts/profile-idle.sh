@@ -10,7 +10,7 @@ profile_arch="$(uname -m)"
 sdk_path="$(xcrun --sdk macosx --show-sdk-path)"
 sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
 if [[ "${sdk_version%%.*}" -lt 26 ]]; then
-    printf 'Profiling Sway requires Xcode 26 or later (macOS 26 SDK).\n' >&2
+    printf 'Profiling Kinara requires Xcode 26 or later (macOS 26 SDK).\n' >&2
     exit 2
 fi
 mkdir -p "$profile_directory/ModuleCache"

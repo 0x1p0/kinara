@@ -5,7 +5,7 @@ set -euo pipefail
 script_directory="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_directory="$(cd -- "$script_directory/.." && pwd)"
 if [[ "$#" -ne 2 || ! -d "$1/Contents" || "$2" != *.dmg ]]; then
-    printf 'Usage: bash scripts/create-dmg.sh /path/to/Sway.app /path/to/output.dmg\n' >&2
+    printf 'Usage: bash scripts/create-dmg.sh /path/to/Kinara.app /path/to/output.dmg\n' >&2
     exit 2
 fi
 bundle="$(cd -- "$1" && pwd)"
@@ -42,13 +42,13 @@ xcrun swiftc -O -warnings-as-errors "$script_directory/render-dmg.swift" -o "$st
     -D "app=$bundle" \
     -D "instructions=$project_directory/releases/INSTALL.txt" \
     -D "background=$staging/artwork/Installer.tiff" \
-    "Sway $version" "$disk_image"
+    "Kinara $version" "$disk_image"
 hdiutil verify "$disk_image"
 hdiutil attach "$disk_image" -readonly -nobrowse -noautoopen -mountpoint "$mountpoint" -quiet
 mounted=true
-codesign --verify --deep --strict "$mountpoint/Sway.app"
-cmp "$bundle/Contents/MacOS/Sway" "$mountpoint/Sway.app/Contents/MacOS/Sway"
-cmp "$bundle/Contents/Info.plist" "$mountpoint/Sway.app/Contents/Info.plist"
+codesign --verify --deep --strict "$mountpoint/Kinara.app"
+cmp "$bundle/Contents/MacOS/Kinara" "$mountpoint/Kinara.app/Contents/MacOS/Kinara"
+cmp "$bundle/Contents/Info.plist" "$mountpoint/Kinara.app/Contents/Info.plist"
 [[ "$(readlink "$mountpoint/Applications")" == "/Applications" ]]
 cmp "$project_directory/releases/INSTALL.txt" "$mountpoint/First Launch.txt"
 cmp "$staging/artwork/Installer.tiff" "$mountpoint/.background.tiff"

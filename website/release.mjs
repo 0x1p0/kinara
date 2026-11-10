@@ -12,7 +12,7 @@ export function getReleaseDownload(release) {
   )
     return null;
   const version = release.tag_name.slice(1);
-  const filename = `Sway-${version}-macos-universal.dmg`;
+  const filename = `Kinara-${version}-macos-universal.dmg`;
   const expected = `${DOWNLOAD_ROOT}${release.tag_name}/${filename}`;
   const asset = release.assets.find(
     (item) => item?.name === filename && item.browser_download_url === expected,

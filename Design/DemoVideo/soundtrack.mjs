@@ -2,10 +2,14 @@
 // and locked to the picture: every UI sound comes from the same cue list the
 // visuals use (src/timeline.js). 48 kHz stereo, written as 16-bit WAV.
 //
-// Music: a warm pad over D major (Dmaj9 · Bm9 · Gmaj9 · A add9) at 96 BPM,
+// Music: a warm pad over D major (Dmaj9 · Bm9 · Gmaj9 · A add9) at 100 BPM,
 // a plucked arpeggio, sub bass, soft kick, hats and claps, with sidechain
 // pumping. Sound design: haptic ticks, taps, pops, whooshes, risers, impacts.
-import { FILM, BEAT, SCENES, MIX, DUCK, cues, seeded, clamp } from "./src/timeline.js";
+//
+// The score follows the film's own gestures (musicLevel and musicTone in the
+// timeline): it rises with the first volume slide, brightens with the first
+// brightness slide, stops when the film's music is paused, and ducks for its call.
+import { FILM, BEAT, SCENES, MIX, musicLevel, musicTone, cues, seeded, clamp } from "./src/timeline.js";
 
 const SR = 48000;
 const TAU = Math.PI * 2;
@@ -19,10 +23,10 @@ const CHORDS = {
   Aadd9: [33, [57, 61, 64, 71, 69]],
   Asus: [33, [57, 62, 64, 71, 69]],
 };
-// Tension under the cold open, resolving to Dmaj9 as the logo lands; then a
-// two-bar cycle, and Dmaj9 again for the end card.
+// Tension under the open, resolving to Dmaj9 as the title lands; then a
+// two-bar cycle, and Dmaj9 again for the end.
 function chordTimeline() {
-  const logo = SCENES.find((s) => s.id === "logo").start, last = SCENES.find((s) => s.id === "end").start;
+  const logo = SCENES.find((s) => s.id === "title").start, last = SCENES.find((s) => s.id === "end").start;
   const list = [[0, "Bm9"], [logo / 2, "Asus"]];
   const cycle = ["Dmaj9", "Bm9", "Gmaj9", "Aadd9"];
   for (let t = logo, i = 0; t < last; t += BEAT * 8, i++) list.push([t, cycle[i % 4]]);
@@ -166,7 +170,7 @@ export function renderSoundtrack({ from = 0, to = FILM.duration } = {}) {
     const fl = [svf(), svf()];
     for (let i = 0; i < N; i++) {
       const t = i / SR;
-      const intensity = layerGain("pad", t) * clamp(t / 5 + 0.15);
+      const intensity = layerGain("pad", t) * musicTone(t);
       const cutoff = 650 + 2700 * intensity * intensity + 350 * Math.sin(t * 0.4);
       for (let c = 0; c < 2; c++) {
         // Keep the sub bass (already in the bus) mostly intact by mixing low and band.
@@ -245,14 +249,21 @@ export function renderSoundtrack({ from = 0, to = FILM.duration } = {}) {
       }
     }
   }
-  // Sidechain pumping, and the film's own call ducking: while the mixer scene's
-  // video call is on, the music really does drop, like every other app would.
-  for (let i = 0; i < N; i++) {
-    const t = i / SR;
-    const call = clamp((t - DUCK.from) / 0.3) * clamp((DUCK.to - t) / 0.35);
-    const gain = duck[i] * (1 - (1 - DUCK.level) * call);
-    music[0][i] *= gain;
-    music[1][i] *= gain;
+  // Sidechain pumping, and the film hearing itself: the music's level and
+  // brightness follow what the picture is doing to volume, brightness and playback.
+  {
+    const low = [0, 0];
+    for (let i = 0; i < N; i++) {
+      const t = i / SR;
+      const gain = duck[i] * musicLevel(t);
+      const tone = musicTone(t);
+      // Fully open above 0.98; below that, a one-pole lowpass closes over everything.
+      const a = tone > 0.98 ? 1 : 1 - Math.exp((-TAU * (180 + 9000 * tone * tone)) / SR);
+      for (let c = 0; c < 2; c++) {
+        low[c] += a * (music[c][i] * gain - low[c]);
+        music[c][i] = low[c];
+      }
+    }
   }
   // A share of the music goes to the reverb too.
   for (let i = 0; i < N; i++) { send[0][i] += music[0][i] * 0.18; send[1][i] += music[1][i] * 0.18; }
@@ -380,7 +391,7 @@ export function renderSoundtrack({ from = 0, to = FILM.duration } = {}) {
       peak = Math.max(peak, Math.abs(y));
     }
   }
-  const gain = peak > 0 ? 0.89 / peak : 1;
+  const gain = peak > 0 ? 0.84 / peak : 1;
 
   // Slice and write a 16-bit stereo WAV.
   const a = Math.floor(from * SR), b = Math.min(N, Math.floor(to * SR));

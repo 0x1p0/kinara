@@ -50,13 +50,13 @@ enum SettingsRegressionTests {
             try expect(near(settings.leftZoneWidth, 0.2) && near(settings.rightZoneWidth, 0.2), "default zones leave free center space")
             try expect(near(settings.brightnessMin, 0.05) && near(settings.brightnessMax, 1), "default brightness protects against a black screen")
             try expect(near(settings.volumeMin, 0) && near(settings.volumeMax, 1), "fresh audio uses its full range")
-            try expect(!settings.topEdgeEnabled && !settings.cursorFreezeOnOneFinger, "fresh setup does not add top zones or freeze the pointer")
+            try expect(!settings.topEdgeEnabled && settings.cursorFreezeOnOneFinger, "fresh setup adds no top zones and holds the pointer during one-finger gestures")
             try expect(settings.palmRejectionMode == "balanced" && near(settings.typingCooldown, 0.45), "typing protection is enabled by default")
             try expect(settings.toggleHotkey.isEmpty && !settings.launchAtLogin, "no system shortcut or login registration is implied")
             try expect(settings.excludedApps.isEmpty && settings.appearanceMode == "system", "fresh app scope and appearance")
             try expect(settings.osdStyle == "horizontal" && near(settings.osdHorizontalWidth, 240), "fresh indicator uses the readable pill")
             try expect(settings.hapticConfiguration == HapticConfiguration(), "fresh haptics use standard 5% steps and an activation tap")
-            try expect(!settings.showDockIcon, "menu-bar-only appearance stays the default")
+            try expect(settings.showDockIcon, "open windows are in the Dock and ⌘-Tab by default")
         }
 
         try isolated("Dock discoverability persists independently") { defaults, _ in
@@ -78,6 +78,16 @@ enum SettingsRegressionTests {
         }
         try isolated("unknown haptic preferences recover safely", seed: ["hapticStyle": "strongest", "hapticSpacing": "invalid", "hapticOnStart": "invalid"]) { defaults, _ in
             try expect(TrackpadSettings(defaults: defaults).hapticConfiguration == HapticConfiguration(), "unknown styles, spacing, and start values fall back")
+        }
+        try isolated("edge light colour starts as the accent and persists", seed: ["edgeLightColor": "rainbow"]) { defaults, suite in
+            let settings = TrackpadSettings(defaults: defaults)
+            try expect(settings.edgeLightColor == .accent, "an unknown colour falls back to the accent")
+            for option in EdgeLightColor.allCases {
+                settings.edgeLightColor = option
+                defaults.synchronize()
+                try expect(TrackpadSettings(defaults: UserDefaults(suiteName: suite)!).edgeLightColor == option, "\(option.rawValue) survives relaunch")
+            }
+            try expect(TrackpadSettings.exportedKeys.contains("edgeLightColor"), "the colour travels with exported settings")
         }
         for style in HapticStyle.allCases {
             for spacing in HapticSpacing.allCases {
@@ -174,7 +184,7 @@ enum SettingsRegressionTests {
                 settings.rightZoneAction = .brightness
                 settings.invertScrollDirection = true
                 settings.topEdgeEnabled = true
-                settings.cursorFreezeOnOneFinger = true
+                settings.cursorFreezeOnOneFinger = false
                 settings.brightnessMin = 0.2
                 settings.volumeMax = 0.6
                 settings.applyGesturePreset(preset)
@@ -185,7 +195,7 @@ enum SettingsRegressionTests {
                 try expect(near(settings.activationThreshold, preset == .precise ? 7 : 4), "precise preset requires additional travel")
                 try expect(settings.palmRejectionMode == (preset == .precise ? "strict" : "balanced"), "preset applies its intent policy")
                 try expect(near(settings.typingCooldown, preset == .precise ? 0.65 : 0.45), "preset applies its typing delay")
-                try expect(!settings.topEdgeEnabled && !settings.invertScrollDirection && !settings.cursorFreezeOnOneFinger, "preset resets optional gesture modifiers")
+                try expect(!settings.topEdgeEnabled && !settings.invertScrollDirection && settings.cursorFreezeOnOneFinger, "preset resets optional gesture modifiers and holds the pointer")
                 try expect(near(settings.brightnessMin, 0.2) && near(settings.volumeMax, 0.6), "gesture preset preserves comfort limits")
                 try preservedPreferences(settings, shortcut: shortcut)
             }
@@ -222,7 +232,7 @@ enum SettingsRegressionTests {
             settings.topEdgeEnabled = true; settings.topEdgeHeight = 0.11
             settings.topEdgeSwipeDirection = "vertical"; settings.topEdgeAction = .brightness
             settings.typingCooldown = 0.7; settings.palmRejectionMode = "strict"
-            settings.invertScrollDirection = true; settings.cursorFreezeOnOneFinger = true
+            settings.invertScrollDirection = true; settings.cursorFreezeOnOneFinger = false
             settings.hapticFeedback = false; settings.muteAtZero = false
             defaults.synchronize()
             guard let reopened = UserDefaults(suiteName: suite) else { throw Failure.preferencesUnavailable }
@@ -234,7 +244,7 @@ enum SettingsRegressionTests {
             try expect(near(restored.volumeMin, 0.08) && near(restored.volumeMax, 0.74), "audio range persists")
             try expect(near(restored.topEdgeHeight, 0.11) && restored.topEdgeSwipeDirection == "vertical" && restored.topEdgeAction == .brightness, "top configuration persists")
             try expect(restored.palmRejectionMode == "strict" && near(restored.typingCooldown, 0.7), "intent configuration persists")
-            try expect(restored.invertScrollDirection && restored.cursorFreezeOnOneFinger && !restored.hapticFeedback && !restored.muteAtZero, "gesture modifiers persist")
+            try expect(restored.invertScrollDirection && !restored.cursorFreezeOnOneFinger && !restored.hapticFeedback && !restored.muteAtZero, "gesture modifiers persist")
             try expect(reopened.persistentDomain(forName: suite)?["leftZoneAction"] as? String == "volume", "changes are written to the isolated persistent domain")
             try preservedPreferences(restored, shortcut: shortcut)
             restored.resetGestureSettings()
@@ -263,12 +273,16 @@ enum SettingsRegressionTests {
             let settings = TrackpadSettings(defaults: defaults)
             try expect(!settings.bottomEdgeEnabled && settings.bindings.isEmpty && settings.appProfiles.isEmpty, "no new zones, layers, taps or profiles are implied")
             try expect(!settings.dockedProfileEnabled && settings.dockedProfile.bindings.isEmpty, "docked profile starts off and empty")
-            try expect(settings.precisionEnabled && settings.accelerationEnabled && settings.notchesEnabled, "feel improvements start on")
+            try expect(settings.precisionEnabled && settings.accelerationEnabled, "feel improvements start on")
+            try expect(!settings.midpointNotch, "the 50% notch is opt-in")
             try expect(settings.volumeFavorite < 0 && settings.brightnessFavorite < 0, "no favorite level is assumed")
             try expect(settings.brightnessFollowsPointer && !settings.extraDimBelowMinimum, "brightness follows the pointer; extra dim is opt-in")
             try expect(settings.volumeFeedbackSound == "system" && settings.nowPlayingHUD && settings.menuBarScroll, "feedback follows macOS and the menu bar scrolls")
+            try expect(settings.cornerEffects && settings.edgeLight && settings.seenGestureHints.isEmpty, "corner feedback and the edge light start on, with every first-time hint still to show")
+            settings.seenGestureHints.insert("topRightCorner.doubleTap")
+            try expect(TrackpadSettings(defaults: defaults).seenGestureHints == ["topRightCorner.doubleTap"], "a hint shown once stays shown")
             try expect(settings.cheatSheetHotkey.isEmpty && settings.urlCommandsEnabled, "no global cheat-sheet hotkey is registered by default")
-            try expect(settings.notches(for: .volume) == [0.5], "the middle notch is the only default notch")
+            try expect(settings.notches(for: .volume).isEmpty, "no notch is felt by default")
             try expect(settings.cornerTapFingers == 0, "corner taps follow the swipe finger count by default")
             settings.cornerTapFingers = 1
             try expect(TrackpadSettings(defaults: defaults).cornerTapFingers == 1, "one-finger corner taps persist")
@@ -316,14 +330,59 @@ enum SettingsRegressionTests {
             try expect(settings.customShortcut(for: own, increasing: false).isEmpty, "a half-recorded pair never borrows the other half")
         }
 
+        try isolated("app profiles choose their own finger count") { defaults, _ in
+            let settings = TrackpadSettings(defaults: defaults)
+            settings.minimumFingers = 2
+            settings.appProfiles["com.example.draw"] = ActionProfile(name: "Draw", fingers: 1)
+            settings.appProfiles["com.example.game"] = ActionProfile(name: "Game", fingers: 7)
+            try expect(settings.requiredFingers(appBundleID: "com.example.draw") == 1, "a profile can ask for one finger")
+            try expect(settings.requiredFingers(appBundleID: "com.example.game") == 2, "an invalid count follows the everyday setting")
+            try expect(settings.requiredFingers(appBundleID: nil) == 2 && settings.requiredFingers(appBundleID: "com.example.other") == 2, "other apps use the everyday setting")
+            let reloaded = TrackpadSettings(defaults: defaults)
+            try expect(reloaded.appProfiles["com.example.draw"]?.fingers == 1, "a profile's finger count persists")
+            settings.minimumFingers = 1
+            settings.appProfiles["com.example.draw"]?.fingers = 2
+            try expect(settings.requiredFingers(appBundleID: "com.example.draw") == 2 && settings.requiredFingers(appBundleID: nil) == 1, "two fingers in one app, one everywhere else")
+            let old = try JSONDecoder().decode(ActionProfile.self, from: Data(#"{"name":"Old","bindings":{}}"#.utf8))
+            try expect(old.fingers == nil, "profiles saved before finger counts follow the everyday setting")
+        }
+
+        try isolated("the recommended setup and its tour") { defaults, _ in
+            let settings = TrackpadSettings(defaults: defaults)
+            try expect(settings.offersRecommendedSetup, "a fresh install is offered Kinara's picks")
+            settings.applyRecommendedSetup(appAudio: true)
+            try expect(settings.minimumFingers == 1 && settings.rightZoneAction == .volume && settings.leftZoneAction == .brightness, "one finger: volume right, brightness left")
+            try expect(settings.binding("bottomRightCorner.doubleTap", appBundleID: nil, docked: false).action == .clipboardHistory
+                       && settings.binding("bottomLeftCorner.doubleTap", appBundleID: nil, docked: false).action == .audioApps
+                       && settings.binding("topRightCorner.doubleTap", appBundleID: nil, docked: false).action == .playPause
+                       && settings.binding("topLeftCorner.doubleTap", appBundleID: nil, docked: false).action == .missionControl, "four corners are set")
+            try expect(settings.binding("topRightCorner.tapHold", appBundleID: nil, docked: false).action == .cheatSheet
+                       && settings.binding("right.doubleTap", appBundleID: nil, docked: false).action == .outputMute, "tap and hold, and an edge double-tap, are set too")
+            try expect(!settings.offersRecommendedSetup && !TrackpadSettings(defaults: defaults).offersRecommendedSetup, "it's applied once, never over someone's own setup")
+            let steps = settings.tourSteps()
+            try expect(steps.map(\.slot) == ["right", "left", "bottomRightCorner.doubleTap", "bottomLeftCorner.doubleTap", "topRightCorner.doubleTap",
+                                              "topLeftCorner.doubleTap", "topRightCorner.tapHold", "right.doubleTap"], "the tour shows every gesture the setup has")
+            try expect(steps.map(\.place) == ["the right edge", "the left edge", "the bottom-right corner", "the bottom-left corner", "the top-right corner",
+                                               "the top-left corner", "the top-right corner", "the right edge"], "each stop names where it is")
+            try expect(steps[6].kind == .tapHold("topRightCorner") && steps[7].kind == .doubleTap("right"), "tap and hold, and an edge tap, are their own stops")
+            settings.applyRecommendedSetup(appAudio: false)
+            try expect(settings.binding("bottomLeftCorner.doubleTap", appBundleID: nil, docked: false).action == .showDesktop, "without the mixer, that corner shows the desktop")
+            let other = TrackpadSettings(defaults: UserDefaults(suiteName: "com.sway.tests.tour.\(UUID().uuidString)")!)
+            other.setBaseBinding(EdgeBinding(.paste), for: "topRightCorner.doubleTap")
+            try expect(!other.offersRecommendedSetup, "someone who already set a tap keeps their setup")
+        }
+
         try isolated("notches and favorites") { defaults, _ in
             let settings = TrackpadSettings(defaults: defaults)
             settings.volumeFavorite = 0.3
+            try expect(settings.notches(for: .volume) == [0.3] && settings.notches(for: .brightness).isEmpty, "a favorite notches its own level, even with the 50% notch off")
+            settings.midpointNotch = true
+            try expect(TrackpadSettings(defaults: defaults).midpointNotch, "the 50% notch persists once turned on")
             try expect(settings.notches(for: .volume) == [0.5, 0.3] && settings.notches(for: .brightness) == [0.5], "favorites add a notch to their own level only")
             settings.brightnessFavorite = 0.51
             try expect(settings.notches(for: .brightness) == [0.5], "a favorite on top of the middle notch is not doubled")
-            settings.notchesEnabled = false
-            try expect(settings.notches(for: .volume).isEmpty, "notches can be turned off")
+            settings.midpointNotch = false
+            try expect(settings.notches(for: .volume) == [0.3], "turning the 50% notch off keeps favorites")
         }
 
         try isolated("corrupt and out-of-range expansion data", seed: [
@@ -360,9 +419,9 @@ enum SettingsRegressionTests {
             settings.setBaseBinding(EdgeBinding(.customShortcut, up: HotkeyCombo(keyCode: 5, modifiers: UInt32(cmdKey))), for: "right")
             settings.setBaseBinding(EdgeBinding(.playPause), for: "right.doubleTap")
             settings.appProfiles["com.example.editor"] = ActionProfile(name: "Editor", bindings: ["left": EdgeBinding(.tabs)])
-            settings.precisionEnabled = false; settings.notchesEnabled = false
+            settings.precisionEnabled = false; settings.midpointNotch = true
             settings.resetGestureSettings()
-            try expect(!settings.bottomEdgeEnabled && settings.precisionEnabled && settings.notchesEnabled, "reset restores zones and feel")
+            try expect(!settings.bottomEdgeEnabled && settings.precisionEnabled && !settings.midpointNotch, "reset restores zones and feel")
             try expect(settings.bindings["right.doubleTap"] == nil && settings.bindings["right"]?.up.keyCode == 5, "reset turns taps off but keeps a recorded shortcut")
             try expect(settings.appProfiles["com.example.editor"] != nil, "app profiles survive a gesture reset")
         }

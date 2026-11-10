@@ -133,7 +133,31 @@ private final class FakeAudioBackend: AudioOutputBackend {
         testLatestPendingAndCancellation()
         testScopedCancellation()
         testRoutesAndAvailability()
+        testPacedLevels()
         print("\(checks) audio regression checks passed (fake backend; no system audio writes).")
+    }
+
+    /// A slide sends a level every trackpad frame (about 120 a second). Each one
+    /// ripples through Control Center and the audio daemon, so writes are paced
+    /// to 30 a second, and the newest value always lands.
+    static func testPacedLevels() {
+        let (controller, backend) = ready()
+        let before = backend.locked { backend.volumeWrites.count }
+        var last: VolumeRequestResult?
+        let start = Date()
+        for step in 1...60 {
+            controller.requestVolume(0.2 + Float(step) * 0.01) { last = $0 }
+            RunLoop.current.run(until: start.addingTimeInterval(Double(step) / 120))
+        }
+        waitFor("the last level lands") { last != nil && backend.locked { backend.volumes[0] ?? 0 } > 0.79 }
+        let written = backend.locked { backend.volumeWrites.count } - before
+        expect(written <= 22, "half a second of a slide writes about 15 times, not 60 (wrote \(written))")
+        expect(abs((backend.locked { backend.volumes[0] ?? 0 }) - 0.8) < 0.001, "the final level is exactly the last one asked for")
+        var muted: VolumeRequestResult?
+        let mutedAt = Date()
+        controller.requestMuted(true) { muted = $0 }
+        waitFor("mute completes") { muted != nil }
+        expect(Date().timeIntervalSince(mutedAt) < 0.03, "mute never waits behind level pacing")
     }
 
     static func testCacheAndExternalChanges() {

@@ -68,6 +68,7 @@ final class VolumeController {
     private let preservesMuteOnGain: Bool
     private let backend: AudioOutputBackend
     private let worker = DispatchQueue(label: "com.sway.audio-output", qos: .userInteractive)
+    static let minimumWriteInterval: TimeInterval = 1.0 / 30
     private let stateLock = NSLock()
     private var snapshot = AudioOutputSnapshot()
     // Worker-only state.
@@ -93,6 +94,8 @@ final class VolumeController {
     private var cancellationEpoch: UInt64 = 0
     private var pending: Request?
     private var drainScheduled = false
+    /// When the last level was written (requestLock), for pacing the next one.
+    private var lastLevelWrite: TimeInterval = -.infinity
     private var scopeRequestCounts: [UUID: Int] = [:]
     private var cancelledScopes = Set<UUID>()
 
@@ -190,9 +193,24 @@ final class VolumeController {
         if let scope { scopeRequestCounts[scope, default: 0] += 1 }
         let needsDrain = !drainScheduled
         drainScheduled = true
+        let wait = pacing(for: change)
         requestLock.unlock()
         if let discarded { finish(discarded, with: .cancelled) }
-        if needsDrain { worker.async { [weak self] in self?.drainNext() } }
+        if needsDrain { scheduleDrain(after: wait) }
+    }
+
+    /// Levels in a stream are paced: every change ripples through Control
+    /// Center, the audio daemon and more, so a slide writes at most 30 times a
+    /// second (newest value wins, the last one always lands). Mute never waits.
+    /// Call with requestLock held.
+    private func pacing(for change: Change) -> TimeInterval {
+        guard case .volume = change else { return 0 }
+        return max(0, Self.minimumWriteInterval - (ProcessInfo.processInfo.systemUptime - lastLevelWrite))
+    }
+
+    private func scheduleDrain(after wait: TimeInterval) {
+        if wait <= 0 { worker.async { [weak self] in self?.drainNext() } }
+        else { worker.asyncAfter(deadline: .now() + wait) { [weak self] in self?.drainNext() } }
     }
 
     private func isCurrent(_ request: Request) -> Bool {
@@ -211,9 +229,15 @@ final class VolumeController {
         guard let request else { return }
         let result = apply(request.change, expectedTarget: request.target,
             isCurrent: { [weak self] in self?.isCurrent(request) == true })
+        requestLock.lock()
+        if case .volume = request.change { lastLevelWrite = ProcessInfo.processInfo.systemUptime }
+        let next = pending
+        if next == nil { drainScheduled = false }
+        let wait = next.map { pacing(for: $0.change) } ?? 0
+        requestLock.unlock()
         finish(request, with: result)
-        // Yield to queued HAL notifications between writes during long gestures.
-        worker.async { [weak self] in self?.drainNext() }
+        // More arrived meanwhile: take the newest, paced; otherwise rest until the next request.
+        if next != nil { scheduleDrain(after: wait) }
     }
 
     private func finish(_ request: Request, with result: VolumeRequestResult) {

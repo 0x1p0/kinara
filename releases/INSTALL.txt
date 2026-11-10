@@ -1,29 +1,30 @@
-Welcome to Sway
+Welcome to Kinara
 
-1. Drag Sway.app onto the Applications shortcut.
-2. Eject this disk image and open Sway from Applications.
+1. Drag Kinara.app onto the Applications shortcut.
+2. Eject this disk image and open Kinara from Applications.
 3. Follow the welcome guide. Choose Allow Accessibility when it asks: macOS
    shows its own prompt, and the guide continues by itself once you switch
-   Sway on. You can skip this and use the sliders until you're ready.
+   Kinara on. You can skip this and use the sliders until you're ready.
 
-Sway lives in the menu bar. If its icon is hidden or your menu bar is crowded,
-reopen Sway from Spotlight or Applications to bring up controls. You can also
-turn on "Show in the Dock while windows are open" in the guide or in
+Kinara lives in the menu bar. If its icon is hidden or your menu bar is
+crowded, reopen Kinara from Spotlight or Applications to bring up controls. You
+can also turn on "Show in the Dock while windows are open" in the guide or in
 Settings > General. Closing the last window hides the Dock icon; the menu bar
 stays available. Revisit the guide anytime from Settings > Getting started.
 
-Sway checks for updates daily; turn this off in Settings > Software updates if
-you prefer. When a newer signed release is available, choose Install update to
-download, verify, install, and restart. Nothing downloads or installs silently.
+Kinara checks for updates daily; turn this off in Settings > Software updates
+if you prefer. When a newer signed release is available, choose Install update
+to download, verify, install, and restart. Nothing downloads or installs
+silently.
 
 ACCESSIBILITY
 
-Sway's releases share one persistent app-signing identity, so macOS keeps your
-Accessibility permission across updates. Keep Sway in Applications. If Sway
-looks switched on but gestures don't work, remove its Accessibility entry with
--, then use + to add Sway from Applications and switch it on. Never install or
-trust a certificate for Sway, reset other apps' permissions, or disable system
-security to use it.
+Kinara's releases share one persistent app-signing identity, so macOS keeps
+your Accessibility permission across updates. Keep Kinara in Applications. If
+Kinara looks switched on but gestures don't work, remove its Accessibility
+entry with -, then use + to add Kinara from Applications and switch it on.
+Never install or trust a certificate for Kinara, reset other apps'
+permissions, or disable system security to use it.
 
 Requires macOS 13 or later. Supports Apple silicon and Intel Macs. Try
 Settings > Palm protection > Test gestures safely to practise without changing
@@ -32,20 +33,20 @@ anything.
 FIRST LAUNCH
 
 This build is self-signed, not Developer ID signed or notarized. macOS may
-show a warning even though Hardened Runtime is enabled. Sway uses three
+show a warning even though Hardened Runtime is enabled. Kinara uses three
 documented entitlements: one so its updater (Sparkle) can load, Apple Events
 for the Now Playing display, and audio input for per-app volume. macOS may say
-Apple could not verify Sway. The preferred option, only for a download you
+Apple could not verify Kinara. The preferred option, only for a download you
 trust: try opening the installed app, then go to System Settings > Privacy &
 Security > Open Anyway and confirm. Managed Macs may prevent this.
 
 TERMINAL ALTERNATIVE - TRUSTED COPIES ONLY
 
-After dragging Sway to Applications, quit Sway, open Terminal, and run:
+After dragging Kinara to Applications, quit Kinara, open Terminal, and run:
 
-xattr -dr com.apple.quarantine "/Applications/Sway.app"
+xattr -dr com.apple.quarantine "/Applications/Kinara.app"
 
-Then open Sway from Applications again. This removes the quarantine marker
+Then open Kinara from Applications again. This removes the quarantine marker
 only from that app and its contents, bypassing the quarantine-based
 first-launch check. It does NOT scan for malware, notarize the app, or prove
 the download is safe. Use it only if you trust the source and have checked
@@ -54,5 +55,10 @@ Do not disable Gatekeeper globally. If access is denied, use Open Anyway or
 contact your Mac's administrator; do not work around a managed-Mac policy.
 "No such xattr" means the specified item had no quarantine marker to remove.
 
-Help and downloads:
-https://sway-application.vercel.app/
+License
+Kinara is free and open source under the MIT License. Its LICENSE file is
+in the source repository, and Sparkle's license ships inside the app as
+Sparkle-LICENSE.txt.
+
+Source, help, bug reports and downloads:
+https://github.com/0x1p0/kinara

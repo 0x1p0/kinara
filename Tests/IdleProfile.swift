@@ -101,7 +101,7 @@ private final class IdleResourceProfiler {
     func start() {
         guard !started else { return }
         started = true
-        print("Sway paused idle profile — optimized production sources, real AppDelegate")
+        print("Kinara paused idle profile — optimized production sources, real AppDelegate")
         print("Conditions: gestures disabled, icon-only menu, no controls opened, no shortcut, read-only device discovery.")
         print("Warm-up: 3 seconds. Sampling: three 5-second intervals. CPU percentages use one CPU core = 100%.")
         print("Physical footprint comes from task_vm_info; this is not virtual address space or an active-gesture benchmark.")

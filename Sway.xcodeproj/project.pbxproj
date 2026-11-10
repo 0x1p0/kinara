@@ -32,6 +32,12 @@
 		A025 /* NowPlaying.swift in Sources */ = {isa = PBXBuildFile; fileRef = B028; };
 		A026 /* AppVolumeController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B029; };
 		A027 /* Clipboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B030; };
+		A031 /* AudioPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = B034; };
+		A032 /* PlaybackHold.swift in Sources */ = {isa = PBXBuildFile; fileRef = B035; };
+		A033 /* CornerBloom.swift in Sources */ = {isa = PBXBuildFile; fileRef = B036; };
+		A034 /* TourGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = B037; };
+		A035 /* KinaraLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = B038; };
+		A038 /* Overlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = B041; };
 		A028 /* HUDMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = B031; };
 		A029 /* Mixer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B032; };
 		A030 /* MixerViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = B033; };
@@ -40,7 +46,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		B000 /* Sway.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sway.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B000 /* Kinara.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kinara.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B001 /* SwayApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwayApp.swift; sourceTree = "<group>"; };
 		B002 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		B003 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -71,6 +77,12 @@
 		B028 /* NowPlaying.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlaying.swift; sourceTree = "<group>"; };
 		B029 /* AppVolumeController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppVolumeController.swift; sourceTree = "<group>"; };
 		B030 /* Clipboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Clipboard.swift; sourceTree = "<group>"; };
+		B034 /* AudioPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPicker.swift; sourceTree = "<group>"; };
+		B035 /* PlaybackHold.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackHold.swift; sourceTree = "<group>"; };
+		B036 /* CornerBloom.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CornerBloom.swift; sourceTree = "<group>"; };
+		B037 /* TourGuide.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TourGuide.swift; sourceTree = "<group>"; };
+		B038 /* KinaraLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KinaraLog.swift; sourceTree = "<group>"; };
+		B041 /* Overlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Overlay.swift; sourceTree = "<group>"; };
 		B031 /* HUDMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HUDMotion.swift; sourceTree = "<group>"; };
 		B032 /* Mixer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mixer.swift; sourceTree = "<group>"; };
 		B033 /* MixerViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MixerViews.swift; sourceTree = "<group>"; };
@@ -98,7 +110,7 @@
 				B010, B011, B012,
 				B013, B014, B015, B016, B017, B018, B019,
 				B020, B021, B022, B023,
-				B024, B025, B026, B027, B028, B029, B030, B031, B032, B033,
+				B024, B025, B026, B027, B028, B029, B030, B031, B032, B033, B034, B035, B036, B037, B038, B041,
 				B008, B009,
 			);
 			path = Sway;
@@ -163,7 +175,7 @@
 		E001 = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = (A001, A002, A003, A004, A005, A006, A007, A008, A009, A010, A011, A012, A013, A014, A015, A016, A017, A019, A021, A022, A023, A024, A025, A026, A027, A028, A029, A030);
+			files = (A001, A002, A003, A004, A005, A006, A007, A008, A009, A010, A011, A012, A013, A014, A015, A016, A017, A019, A021, A022, A023, A024, A025, A026, A027, A028, A029, A030, A031, A032, A033, A034, A035, A038);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
@@ -226,7 +238,8 @@
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks");
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.trackpadcontrol.app;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_MODULE_NAME = Sway;
+				PRODUCT_NAME = Kinara;
 				SWIFT_OBJC_BRIDGING_HEADER = "Sway/Sway-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				OTHER_LDFLAGS = ("-framework", "IOKit", "-framework", "CoreAudio");
@@ -249,7 +262,8 @@
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks");
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.trackpadcontrol.app;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_MODULE_NAME = Sway;
+				PRODUCT_NAME = Kinara;
 				SWIFT_OBJC_BRIDGING_HEADER = "Sway/Sway-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				OTHER_LDFLAGS = ("-framework", "IOKit", "-framework", "CoreAudio");

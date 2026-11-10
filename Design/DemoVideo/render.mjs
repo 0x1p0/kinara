@@ -1,8 +1,8 @@
-// Renders the Sway demo film frame by frame in headless Chrome and encodes it
+// Renders the Kinara demo film frame by frame in headless Chrome and encodes it
 // with ffmpeg. Every frame is a pure function of time (window.__seek), so the
 // output is identical on every run and workers can render ranges in parallel.
 //
-//   node render.mjs                 full film → build/DemoVideo/Sway-Demo.mp4
+//   node render.mjs                 full film → build/DemoVideo/kinara-film.mp4
 //   node render.mjs --stills 3,12.4 PNG stills → build/DemoVideo/stills/
 //   node render.mjs --from 40 --to 60   render only part of the film
 //   node render.mjs --serve         open http://localhost:4173/?scrub to scrub
@@ -28,6 +28,8 @@ const fps = Number(option("fps", FILM.fps));
 const width = Number(option("width", FILM.width));
 const height = Number(option("height", FILM.height));
 const scale = Number(option("scale", 1));
+// Extra page options, e.g. --query "scenes=open,title" to load only some scenes.
+const query = option("query", "");
 
 const types = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".png": "image/png", ".json": "application/json", ".wav": "audio/wav" };
 function serve(port = 0) {
@@ -45,14 +47,37 @@ function serve(port = 0) {
   return new Promise((done) => server.listen(port, "127.0.0.1", () => done(server)));
 }
 
-async function openPage(browser, origin) {
+async function openPage(browser, origin, zoom = 1) {
   const page = await browser.newPage();
   await page.setViewport({ width, height, deviceScaleFactor: scale });
   page.on("pageerror", (error) => console.error("page error:", error.message));
   page.on("console", (message) => { if (message.type() === "error") console.error("console:", message.text()); });
-  await page.goto(`${origin}/?render`, { waitUntil: "load" });
+  await page.goto(`${origin}/?render&zoom=${zoom}${query ? `&${query}` : ""}`, { waitUntil: "load" });
   await page.waitForFunction("window.__ready === true", { timeout: 60000 });
   return page;
+}
+
+/**
+ * The film's screen is laid out larger for close shots (its zoom). A page keeps
+ * one zoom for life, so a camera is a page that is replaced whenever the next
+ * frame needs another zoom.
+ */
+async function camera(browser, origin) {
+  let page = await openPage(browser, origin);
+  const runs = await page.evaluate("window.__runs");
+  const zoomAt = (t) => runs.reduce((z, r) => (r.from <= t + 1e-6 ? r.zoom : z), runs[0].zoom);
+  let zoom = 1;
+  return {
+    async shoot(t) {
+      const wanted = zoomAt(t);
+      if (wanted !== zoom) {
+        await page.close();
+        page = await openPage(browser, origin, wanted);
+        zoom = wanted;
+      }
+      return frame(page, t);
+    },
+  };
 }
 
 function launch() {
@@ -61,13 +86,24 @@ function launch() {
     headless: true,
     // A stalled frame should fail fast so the worker can recover.
     protocolTimeout: 45000,
+    // The compositor must finish every stage, rasterising included, before it
+    // draws: otherwise a frame can be captured with part of a layer not painted
+    // yet, which shows up in the film as a one-frame flicker.
     args: ["--hide-scrollbars", "--force-color-profile=srgb", "--disable-background-timer-throttling",
-      "--disable-renderer-backgrounding", "--enable-gpu-rasterization", "--ignore-gpu-blocklist", "--use-angle=metal"],
+      "--disable-renderer-backgrounding", "--enable-gpu-rasterization", "--ignore-gpu-blocklist", "--use-angle=metal",
+      "--run-all-compositor-stages-before-draw", "--disable-checker-imaging", "--disable-threaded-animation", "--disable-threaded-scrolling",
+      // The screen's layers are large when it is laid out for a close shot. With
+      // Chrome's usual budget some of them are dropped for a few frames at a time.
+      "--force-gpu-mem-available-mb=8192"],
   });
 }
 
-async function frame(page, t) {
-  await page.evaluate((time) => window.__seek(time), t);
+async function frame(page, t, settle = 2) {
+  // Seek, then let the page produce the frame before it is captured.
+  await page.evaluate((time, frames) => {
+    window.__seek(time);
+    return new Promise((done) => { const next = (n) => (n <= 0 ? done() : requestAnimationFrame(() => next(n - 1))); next(frames); });
+  }, t, settle);
   return page.screenshot({ type: "png", optimizeForSpeed: true, captureBeyondViewport: false });
 }
 
@@ -90,11 +126,11 @@ async function stills(times) {
   const server = await serve();
   const origin = `http://127.0.0.1:${server.address().port}`;
   const browser = await launch();
-  const page = await openPage(browser, origin);
+  const cam = await camera(browser, origin);
   await mkdir(join(output, "stills"), { recursive: true });
   for (const t of times) {
     const started = performance.now();
-    const png = await frame(page, t);
+    const png = await cam.shoot(t);
     const file = join(output, "stills", `t${t.toFixed(2).padStart(6, "0")}.png`);
     await writeFile(file, png);
     console.log(`${file}  (${Math.round(performance.now() - started)} ms)`);
@@ -129,7 +165,7 @@ async function film() {
     const file = join(output, "parts", `part-${String(worker).padStart(2, "0")}.mp4`);
     parts[worker] = file;
     let browser = await launch();
-    let page = await openPage(browser, origin);
+    let cam = await camera(browser, origin);
     const sink = encoder(file);
     for (let index = start; index < end; index++) {
       let png;
@@ -137,13 +173,13 @@ async function film() {
       // the same frame. Frames are pure functions of time, so nothing is lost.
       for (let attempt = 1; !png; attempt++) {
         try {
-          png = await frame(page, index / fps);
+          png = await cam.shoot(index / fps);
         } catch (error) {
           if (attempt >= 4) throw error;
           console.error(`\nworker ${worker}: frame ${index} failed (${error.message.split("\n")[0]}); restarting its browser`);
           await browser.close().catch(() => {});
           browser = await launch();
-          page = await openPage(browser, origin);
+          cam = await camera(browser, origin);
         }
       }
       await sink.write(png);
@@ -161,7 +197,7 @@ async function film() {
 
   const list = join(output, "parts", "list.txt");
   await writeFile(list, parts.filter(Boolean).map((file) => `file '${file}'`).join("\n"));
-  const name = option("out", from === 0 && to === FILM.duration ? "Sway-Demo.mp4" : `Sway-Demo-${from}-${to}.mp4`);
+  const name = option("out", from === 0 && to === FILM.duration ? "kinara-film.mp4" : `kinara-film-${from}-${to}.mp4`);
   const result = join(output, name);
   await run("ffmpeg", ["-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", list, "-i", audio,
     "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-b:a", "320k", "-shortest", "-movflags", "+faststart", result]);
@@ -169,7 +205,33 @@ async function film() {
   console.log(result);
 }
 
-if (args.includes("--serve")) {
+// node render.mjs --check 26,40.5   draws each time twice, cold and after other
+// frames, and reports whether the two captures match: they must, exactly.
+async function check(times) {
+  const server = await serve();
+  const browser = await launch();
+  const cam = await camera(browser, `http://127.0.0.1:${server.address().port}`);
+  let bad = 0;
+  for (const t of times) {
+    await cam.shoot((t + 31.7) % FILM.duration);
+    const a = Buffer.from(await cam.shoot(t));
+    await cam.shoot((t + 12.3) % FILM.duration);
+    await cam.shoot(t - 1 / fps);
+    const b = Buffer.from(await cam.shoot(t));
+    // A few pixels a single step apart is the browser's own rounding; more is a bad frame.
+    const same = Math.abs(a.length - b.length) < Math.max(a.length, b.length) * 0.002;
+    if (!same) bad++;
+    console.log(`${t.toFixed(2)} s: ${same ? "same" : `DIFFERENT (${a.length} vs ${b.length} bytes)`}`);
+  }
+  console.log(bad ? `${bad} of ${times.length} frames differ.` : "Every frame came out the same both ways.");
+  await browser.close();
+  server.close();
+}
+
+if (args.includes("--check")) {
+  await check(option("check", "1").split(",").map(Number));
+  process.exit(0);
+} else if (args.includes("--serve")) {
   const server = await serve(4173);
   console.log(`http://127.0.0.1:${server.address().port}/?scrub`);
 } else {

@@ -5,8 +5,8 @@ import Combine
 /// Release metadata only. Never downloads or installs executable code.
 final class UpdateChecker: ObservableObject {
     static let shared = UpdateChecker()
-    static let releasesURL = URL(string: "https://github.com/0x1p0/sway-application/releases")!
-    static let endpoint = URL(string: "https://api.github.com/repos/0x1p0/sway-application/releases/latest")!
+    static let releasesURL = URL(string: "https://github.com/0x1p0/kinara/releases")!
+    static let endpoint = URL(string: "https://api.github.com/repos/0x1p0/kinara/releases/latest")!
     static let checkInterval: TimeInterval = 86_400
     static let retryInterval: TimeInterval = 3_600
 
@@ -69,7 +69,7 @@ final class UpdateChecker: ObservableObject {
     var status: String {
         if isChecking { return "Checking GitHub…" }
         if let checkError { return checkError }
-        if updateAvailable, let latestVersion { return "Sway \(latestVersion) is available." }
+        if updateAvailable, let latestVersion { return "Kinara \(latestVersion) is available." }
         if latestVersion != nil { return "You’re up to date." }
         return "Check GitHub for the latest stable release."
     }
@@ -98,7 +98,7 @@ final class UpdateChecker: ObservableObject {
     func check(automatic: Bool = false) {
         guard !isChecking, !automatic || (started && automaticallyChecks) else { return }
         guard let current, Self.versionParts(current) != nil else {
-            checkError = "Update checks need a versioned build of Sway."
+            checkError = "Update checks need a versioned build of Kinara."
             return
         }
         timer?.invalidate(); timer = nil
@@ -110,7 +110,7 @@ final class UpdateChecker: ObservableObject {
         var request = URLRequest(url: Self.endpoint, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
-        request.setValue("Sway/\(current)", forHTTPHeaderField: "User-Agent")
+        request.setValue("Kinara/\(current)", forHTTPHeaderField: "User-Agent")
         // Persist attempt deadlines too, so offline relaunches cannot flood GitHub.
         defaults.set(now().addingTimeInterval(Self.retryInterval), forKey: "updateNextCheckDate")
         task = session.dataTask(with: request) { [weak self] data, response, error in
@@ -151,7 +151,7 @@ final class UpdateChecker: ObservableObject {
               let current, let local = Self.versionParts(current),
               !release.draft, !release.prerelease,
               Self.isTrustedReleaseURL(release.html_url, tag: release.tag_name) else {
-            checkError = "GitHub did not return a valid stable Sway release."
+            checkError = "GitHub did not return a valid stable Kinara release."
             return false
         }
         latestVersion = release.tag_name.hasPrefix("v") ? String(release.tag_name.dropFirst()) : release.tag_name
@@ -186,7 +186,7 @@ final class UpdateChecker: ObservableObject {
     static func isTrustedReleaseURL(_ url: URL, tag: String) -> Bool {
         url.scheme == "https" && url.host == "github.com" && url.user == nil && url.password == nil
             && (url.port == nil || url.port == 443) && url.query == nil && url.fragment == nil
-            && url.path == "/0x1p0/sway-application/releases/tag/\(tag)"
+            && url.path == "/0x1p0/kinara/releases/tag/\(tag)"
     }
 
     static func versionParts(_ version: String) -> [Int]? {

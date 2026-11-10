@@ -34,15 +34,15 @@ if [[ -n "${2:-}" ]]; then
     signed_archive="$2"
     extraction="$(mktemp -d "$project_directory/build/SignedPackage.XXXXXX")"
     python3 scripts/safe-app-archive.py "$signed_archive" "$extraction/extracted"
-    bundle="$extraction/extracted/Sway.app"
+    bundle="$extraction/extracted/Kinara.app"
 else
     SWAY_ARCH=universal bash scripts/build.sh
-    bundle="$project_directory/build/Sway.app"
+    bundle="$project_directory/build/Kinara.app"
     python3 scripts/app-signing.py sign "$bundle"
     signed_archive=""
 fi
 python3 scripts/app-signing.py verify "$bundle"
-executable="$bundle/Contents/MacOS/Sway"
+executable="$bundle/Contents/MacOS/Kinara"
 plist_tool=/usr/libexec/PlistBuddy
 [[ "$("$plist_tool" -c 'Print :CFBundleShortVersionString' "$bundle/Contents/Info.plist")" == "$version" ]]
 [[ "$("$plist_tool" -c 'Print :CFBundleIdentifier' "$bundle/Contents/Info.plist")" == "com.trackpadcontrol.app" ]]
@@ -52,19 +52,19 @@ plutil -lint "$bundle/Contents/Info.plist"
 
 staging="$(mktemp -d "$project_directory/build/ReleasePackage.XXXXXX")"
 mkdir -p "$staging/artifacts" "$staging/verify" "$project_directory/build/releases"
-archive="Sway-$version-macos-universal.zip"
+archive="Kinara-$version-macos-universal.zip"
 if [[ -n "$signed_archive" ]]; then
     cp "$signed_archive" "$staging/artifacts/$archive"
 else
     ditto -c -k --keepParent --norsrc --noextattr "$bundle" "$staging/artifacts/$archive"
 fi
 ditto -x -k "$staging/artifacts/$archive" "$staging/verify"
-codesign --verify --deep --strict "$staging/verify/Sway.app"
-python3 scripts/app-signing.py verify "$staging/verify/Sway.app"
-verify_universal "$staging/verify/Sway.app/Contents/MacOS/Sway"
-cmp "$executable" "$staging/verify/Sway.app/Contents/MacOS/Sway"
+codesign --verify --deep --strict "$staging/verify/Kinara.app"
+python3 scripts/app-signing.py verify "$staging/verify/Kinara.app"
+verify_universal "$staging/verify/Kinara.app/Contents/MacOS/Kinara"
+cmp "$executable" "$staging/verify/Kinara.app/Contents/MacOS/Kinara"
 
-disk_image="Sway-$version-macos-universal.dmg"
+disk_image="Kinara-$version-macos-universal.dmg"
 bash scripts/create-dmg.sh "$bundle" "$staging/artifacts/$disk_image"
 bash scripts/test-updater-bundle.sh "$bundle"
 

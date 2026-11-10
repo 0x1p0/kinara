@@ -35,6 +35,7 @@ enum NowPlayingRegressionTests {
         mediaRemoteParsing()
         displayModel()
         textCleaning()
+        playbackHold()
         print("\(checks) now-playing assertions passed. Pure logic only; no Apple Events, MediaRemote, network, or windows.")
     }
 
@@ -216,7 +217,15 @@ enum NowPlayingRegressionTests {
 
     private static func scriptSafety() {
         let reads = NowPlayingPlayer.allCases.map { ($0, NowPlayingAppleScript.readSource(for: $0)) }
-        let scripts = reads + [(NowPlayingPlayer.music, NowPlayingAppleScript.musicArtwork)]
+        let transport = NowPlayingPlayer.allCases.flatMap { player in
+            [(player, NowPlayingAppleScript.stateSource(for: player)),
+             (player, NowPlayingAppleScript.transportSource(for: player, play: true)),
+             (player, NowPlayingAppleScript.transportSource(for: player, play: false))]
+        }
+        let scripts = reads + transport + [(NowPlayingPlayer.music, NowPlayingAppleScript.musicArtwork)]
+        for player in NowPlayingPlayer.allCases {
+            expect(!NowPlayingAppleScript.transportSource(for: player, play: false).contains("playpause"), "a pause is never a toggle")
+        }
         for (player, source) in scripts {
             let lines = source.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
             expect(lines.first?.hasPrefix("if application id \"\(player.bundleID)\" is not running then return") == true,
@@ -330,5 +339,50 @@ enum NowPlayingRegressionTests {
         expect(NowPlayingText.clean("\u{7}bell\u{1B}[0m") == "bell [0m", "escape sequences cannot reach a label as controls")
         expect(NowPlayingText.clean(String(repeating: "é", count: 2_000)).count == NowPlayingText.maximumLength, "length cap")
         expect(NowPlayingText.clean("a\u{200D}b") == "a\u{200D}b", "format characters such as ZWJ are kept")
+    }
+
+    private static func playbackHold() {
+        let spotify = "com.spotify.client", music = "com.apple.Music", safari = "com.apple.Safari", chrome = "com.google.Chrome"
+        // One app playing: as before.
+        expect(PlaybackRules.plan(PlaybackSnapshot(others: [safari]), hold: nil) == .key, "a lone video gets the key, as before")
+        expect(PlaybackRules.plan(PlaybackSnapshot(players: [spotify: true]), hold: nil) == .pause(players: [spotify], key: false),
+               "a lone Spotify is paused directly, never by a key that might land elsewhere")
+        // Several playing: everything pauses, the key only for apps Kinara can't pause itself.
+        expect(PlaybackRules.plan(PlaybackSnapshot(players: [spotify: true, music: true]), hold: nil) == .pause(players: [spotify, music], key: false),
+               "two music apps both pause, no key")
+        expect(PlaybackRules.plan(PlaybackSnapshot(players: [spotify: true, music: false], others: [safari]), hold: nil) == .pause(players: [spotify], key: true),
+               "Spotify and a video: pause Spotify, key for the video")
+        expect(PlaybackRules.plan(PlaybackSnapshot(players: [music: false], others: [safari]), hold: nil) == .pause(players: [], key: true),
+               "a video with Music paused in the background: the key, checked against Music")
+        // Nothing playing: bring back exactly what was paused.
+        let held = PlaybackHold(players: [spotify], keyPaused: true)
+        expect(PlaybackRules.plan(PlaybackSnapshot(players: [spotify: false]), hold: held) == .resume(held), "the next press resumes the hold")
+        expect(PlaybackRules.plan(PlaybackSnapshot(players: [spotify: false]), hold: nil) == .key, "with nothing held, the key resumes as macOS chooses")
+        expect(PlaybackRules.plan(PlaybackSnapshot(players: [spotify: false], others: [safari]), hold: PlaybackHold(muted: [safari])) == .resume(PlaybackHold(muted: [safari])),
+               "an app held silent doesn't count as playing")
+        expect(PlaybackRules.plan(PlaybackSnapshot(players: [spotify: true]), hold: held) == .pause(players: [spotify], key: false),
+               "something started again: a press pauses it instead of resuming")
+        // Where the key landed.
+        expect(PlaybackRules.landing(before: [spotify: true], after: [spotify: true]) == .other, "players unchanged: the key reached another app")
+        expect(PlaybackRules.landing(before: [spotify: true, music: false], after: [spotify: false, music: false]) == .player(spotify), "a player that paused caught the key")
+        expect(PlaybackRules.landing(before: [music: false], after: [music: true]) == .player(music), "a player that started caught the key")
+        // The resulting hold.
+        let snapshot = PlaybackSnapshot(players: [spotify: true], others: [safari, chrome])
+        let reached = PlaybackRules.hold(after: ([spotify], true), landing: .other, snapshot: snapshot, previous: nil)
+        expect(reached.hold == PlaybackHold(players: [spotify], keyPaused: true) && reached.pause == [spotify] && reached.mute.isEmpty,
+               "the key paused the video; Kinara pauses Spotify")
+        let missed = PlaybackRules.hold(after: ([spotify], true), landing: .player(spotify), snapshot: snapshot, previous: nil)
+        expect(missed.hold == PlaybackHold(players: [spotify], muted: [safari, chrome]) && missed.mute == [safari, chrome],
+               "the key hit Spotify: the videos are held silent instead")
+        let started = PlaybackRules.hold(after: ([], true), landing: .player(music), snapshot: PlaybackSnapshot(players: [music: false], others: [safari]), previous: nil)
+        expect(started.pause == [music] && !started.hold.players.contains(music) && started.hold.muted == [safari],
+               "a key that started Music is undone, and Music isn't resumed later")
+        let kept = PlaybackRules.hold(after: ([spotify], false), landing: nil, snapshot: PlaybackSnapshot(players: [spotify: true]), previous: PlaybackHold(muted: [safari]))
+        expect(kept.hold.muted == [safari], "a new pause keeps apps already held silent")
+
+        // A press that started nothing: Safari may have put its page to sleep.
+        expect(PlaybackRules.sleepingPage(audioApps: [chrome, safari], sounding: []) == safari, "a quiet Safari that played is the sleeper")
+        expect(PlaybackRules.sleepingPage(audioApps: [chrome], sounding: []) == nil, "other browsers answer the key while hidden")
+        expect(PlaybackRules.sleepingPage(audioApps: [safari], sounding: [music]) == nil, "something started, so nothing slept")
     }
 }

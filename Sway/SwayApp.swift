@@ -17,8 +17,8 @@ enum SwayApp {
         let mainMenu = NSMenu()
         NSApp.mainMenu = mainMenu
 
-        let applicationMenu = submenu("Sway", in: mainMenu)
-        applicationMenu.addItem(withTitle: "About Sway", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        let applicationMenu = submenu("Kinara", in: mainMenu)
+        applicationMenu.addItem(withTitle: "About Kinara", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         applicationMenu.addItem(.separator())
         let settingsItem = applicationMenu.addItem(withTitle: "Settings…", action: #selector(AppDelegate.showSettings), keyEquivalent: ",")
         settingsItem.target = settingsTarget
@@ -31,12 +31,12 @@ enum SwayApp {
         applicationMenu.addItem(.separator())
         NSApp.servicesMenu = submenu("Services", in: applicationMenu)
         applicationMenu.addItem(.separator())
-        applicationMenu.addItem(withTitle: "Hide Sway", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        applicationMenu.addItem(withTitle: "Hide Kinara", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         let hideOthers = applicationMenu.addItem(withTitle: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
         hideOthers.keyEquivalentModifierMask = [.command, .option]
         applicationMenu.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
         applicationMenu.addItem(.separator())
-        applicationMenu.addItem(withTitle: "Quit Sway", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        applicationMenu.addItem(withTitle: "Quit Kinara", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
         let fileMenu = submenu("File", in: mainMenu)
         // A normal responder-chain action handles both the native Settings

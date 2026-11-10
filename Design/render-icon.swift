@@ -1,4 +1,4 @@
-// Renders Sway's app icon from geometry: a graphite macOS tile holding a
+// Renders Kinara's app icon from geometry: a graphite macOS tile holding a
 // quiet trackpad surface whose right edge glows as a live level.
 // Usage: swift Design/render-icon.swift <output.png> [size]
 import AppKit

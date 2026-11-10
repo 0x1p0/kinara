@@ -15,7 +15,7 @@ final class OSDOverlay {
     private var exitGeneration: UInt64 = 0
     private var hideDeadline: TimeInterval = 0
     private var lastDisplayTime: TimeInterval = 0
-    private var pendingValue: (OSDType, Double, Bool)?
+    private var pendingValue: (OSDType, Double)?
     private var configuration: OSDConfiguration
     private var compactStatus = false
     private var placement: OSDPlacement?
@@ -39,15 +39,17 @@ final class OSDOverlay {
             .store(in: &subscriptions)
     }
 
-    /// `placement` is where the finger is, for the Follow finger style;
-    /// `fine` shows a decimal while precision control is engaged.
-    func show(type: OSDType, value: Float, placement: OSDPlacement? = nil, fine: Bool = false) {
+    /// `placement` is where the finger is, for the Follow finger style.
+    func show(type: OSDType, value: Float, placement: OSDPlacement? = nil) {
         guard value.isFinite else { return }
-        if Thread.isMainThread { present(type: type, value: Double(value), placement: placement, fine: fine) }
-        else { DispatchQueue.main.async { [weak self] in self?.present(type: type, value: Double(value), placement: placement, fine: fine) } }
+        if Thread.isMainThread { present(type: type, value: Double(value), placement: placement) }
+        else { DispatchQueue.main.async { [weak self] in self?.present(type: type, value: Double(value), placement: placement) } }
     }
 
-    private func present(type: OSDType, value: Double, placement: OSDPlacement?, fine: Bool) {
+    private func present(type: OSDType, value: Double, placement: OSDPlacement?) {
+        // The result of a tap that just bloomed in its corner belongs in that pill, shown once.
+        let summary = Self.summary(type, value: value)
+        if CornerBloom.shared.absorb(summary.text, icon: summary.icon, placement: placement) { return }
         compactStatus = type.isTextOnly
         self.placement = placement
         refreshConfiguration()
@@ -74,7 +76,7 @@ final class OSDOverlay {
             repositionWindow()
             lastDisplayTime = 0
         }
-        pendingValue = (type, value, fine)
+        pendingValue = (type, value)
         let remaining = 1.0 / 60.0 - (now - lastDisplayTime)
         if remaining <= 0 || isStarting {
             updateTimer?.invalidate()
@@ -93,10 +95,10 @@ final class OSDOverlay {
     }
 
     private func displayPendingValue() {
-        guard let (type, value, fine) = pendingValue else { return }
+        guard let (type, value) = pendingValue else { return }
         pendingValue = nil
         lastDisplayTime = ProcessInfo.processInfo.systemUptime
-        surface?.content.update(type: type, value: value, fine: fine)
+        surface?.content.update(type: type, value: value)
         // Follow finger: move with the touch, at most once per drawn value.
         if configuration.edge != nil { repositionWindow() }
     }
@@ -125,8 +127,8 @@ final class OSDOverlay {
     /// for a side indicator.
     private var entranceOffset: CGVector {
         if configuration.edge != nil { return .zero }
-        if configuration.isHorizontal { return CGVector(dx: 0, dy: -12) }
-        switch configuration.position {
+        guard let side = configuration.side else { return CGVector(dx: 0, dy: -12) }
+        switch side {
         case .left: return CGVector(dx: -14, dy: 0)
         case .right: return CGVector(dx: 14, dy: 0)
         case .center: return CGVector(dx: 0, dy: -12)
@@ -191,18 +193,34 @@ final class OSDOverlay {
             return NSPoint(x: min(max(x, frame.minX + inset), frame.maxX - size.width - inset),
                            y: min(max(y, frame.minY + inset), frame.maxY - size.height - inset))
         }
-        if configuration.isHorizontal {
-            x = frame.midX - size.width / 2
-            y = frame.minY + margin
-        } else {
+        if let side = configuration.side {
+            // Vertical style: levels and messages share one place on screen.
             y = frame.midY - size.height / 2
-            switch configuration.position {
+            switch side {
             case .left: x = frame.minX + margin
             case .center: x = frame.midX - size.width / 2
             case .right: x = frame.maxX - size.width - margin
             }
+        } else {
+            x = frame.midX - size.width / 2
+            y = frame.minY + margin
         }
         return NSPoint(x: x, y: y)
+    }
+
+    /// The indicator in words, for the corner pill.
+    static func summary(_ type: OSDType, value: Double) -> (text: String, icon: String) {
+        let percent = "\(Int((max(0, min(1, value)) * 100).rounded()))%"
+        switch type {
+        case let .message(text, icon): return (text, icon)
+        case .microphoneMute: return value >= 0.5 ? ("Microphone muted", "mic.slash.fill") : ("Microphone on", "mic.fill")
+        case .volume: return value <= 0.001 ? ("Sound muted", "speaker.slash.fill") : ("Volume \(percent)", type.icon)
+        case .brightness: return ("Brightness \(percent)", type.icon)
+        case .microphone: return ("Microphone \(percent)", type.icon)
+        case .appVolume: return ("App volume \(percent)", type.icon)
+        case .nightShift: return ("Night Shift \(percent)", type.icon)
+        case .extraDim: return ("Extra dim \(percent)", type.icon)
+        }
     }
 
     private func scheduledTimer(after delay: TimeInterval, tolerance: TimeInterval = 0,
@@ -221,23 +239,32 @@ struct OSDPlacement: Equatable {
     var y: Double
 }
 
+/// Every indicator for a style appears in the same place: a message (text
+/// only) takes the pill's shape but keeps the style's position, so nothing
+/// jumps between the side of the screen and the bottom.
 private struct OSDConfiguration: Equatable {
     let style: String
     let width: Double
-    let position: OSDPosition
     let appearanceMode: String
-    /// Set only for Follow finger with a known touch; sliders and previews use the pill.
+    /// Text only: always a horizontal pill, wherever the style puts it.
+    let compact: Bool
+    /// Follow finger with a known touch: the screen edge to hug, for levels and messages alike.
     let edge: String?
+    /// Vertical style: the side of the screen shared by levels and messages.
+    let side: OSDPosition?
     init(settings: TrackpadSettings, compactStatus: Bool = false, placement: OSDPlacement? = nil) {
         let follow = settings.osdStyle == "edge"
-        edge = follow && !compactStatus ? placement?.edge : nil
-        style = (compactStatus || (follow && edge == nil)) && settings.osdStyle != "off" ? "horizontal" : settings.osdStyle
+        compact = compactStatus
+        edge = follow ? placement?.edge : nil
+        side = settings.osdStyle == "vertical" ? settings.osdPosition : nil
+        // Follow finger without a touch (the menu bar, a preview) shows the pill.
+        style = follow && edge == nil ? "horizontal" : settings.osdStyle
         width = compactStatus ? 280 : settings.osdHorizontalWidth
-        position = settings.osdPosition
         appearanceMode = settings.appearanceMode
     }
-    var isHorizontal: Bool { edge.map { $0 == "top" || $0 == "bottom" } ?? (style == "horizontal") }
+    var isHorizontal: Bool { compact || (edge.map { $0 == "top" || $0 == "bottom" } ?? (style == "horizontal")) }
     var size: NSSize {
+        if compact { return NSSize(width: width, height: 48) }
         if let edge { return edge == "top" || edge == "bottom" ? NSSize(width: 200, height: 44) : NSSize(width: 44, height: 170) }
         return isHorizontal ? NSSize(width: max(160, min(320, width.isFinite ? width : 240)), height: 48)
                             : NSSize(width: 52, height: 208)
@@ -249,23 +276,6 @@ private struct OSDConfiguration: Equatable {
         default: return nil
         }
     }
-}
-
-final class OSDWindow: NSWindow {
-    init(contentRect: NSRect) {
-        super.init(contentRect: contentRect, styleMask: [.borderless], backing: .buffered, defer: false)
-        isOpaque = false
-        backgroundColor = .clear
-        hasShadow = true
-        level = .statusBar
-        ignoresMouseEvents = true
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
-        isReleasedWhenClosed = false
-        animationBehavior = .none
-        // No opaque backing or clipping parent: AppKit owns glass compositing.
-    }
-    override var canBecomeKey: Bool { false }
-    override var canBecomeMain: Bool { false }
 }
 
 enum OSDType: Equatable {
@@ -383,7 +393,6 @@ final class OSDContentView: NSView {
     private let fill = CALayer()
     private var type: OSDType = .volume
     private var value: Double = 0.5
-    private var fine = false
 
     init(horizontal: Bool) {
         isHorizontal = horizontal
@@ -410,20 +419,20 @@ final class OSDContentView: NSView {
     }
     required init?(coder: NSCoder) { nil }
 
-    func update(type: OSDType, value: Double, fine: Bool = false) {
+    func update(type: OSDType, value: Double) {
         guard value.isFinite else { return }
         let clipped = max(0, min(1, value))
         let iconChanged = self.type != type || (self.value == 0) != (clipped == 0)
-        guard self.type != type || self.fine != fine || abs(self.value - clipped) >= 0.0005 else { return }
+        guard self.type != type || abs(self.value - clipped) >= 0.0005 else { return }
         self.type = type
         self.value = clipped
-        self.fine = fine
         if iconChanged { refreshIcon() }
         let text: String
         switch type {
         case .microphoneMute: text = clipped == 0 ? "Microphone unmuted" : "Microphone muted"
         case let .message(message, _): text = message
-        default: text = fine ? String(format: "%.1f", clipped * 100) : "\(Int((clipped * 100).rounded()))"
+        // Whole percents, always. Precision slows the level down; the bar shows the in-between.
+        default: text = "\(Int((clipped * 100).rounded()))"
         }
         track.isHidden = type.isTextOnly
         fill.isHidden = type.isTextOnly

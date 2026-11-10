@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import CoreAudio
 import CoreGraphics
 
@@ -145,12 +145,16 @@ private final class ModelFixture {
         expect(!ShortcutsRunner.run("   "), "a blank Shortcut name never launches anything")
 
         func command(_ text: String) -> SwayURLCommand? { URL(string: text).flatMap(SwayURLCommand.parse) }
-        expect(command("sway://pause") == .pause(minutes: nil) && command("sway://pause?minutes=15") == .pause(minutes: 15), "pause commands")
-        expect(command("sway://pause?minutes=0") == nil && command("sway://pause?minutes=99999") == nil, "absurd pause lengths are refused")
-        expect(command("sway://volume?level=40") == .volume(0.4) && command("SWAY://Brightness?level=100") == .brightness(1), "levels are percentages")
-        expect(command("sway://volume?level=140") == nil && command("sway://volume?level=nan") == nil && command("sway://volume") == nil, "invalid levels are refused")
-        expect(command("sway://resume") == .resume && command("sway://toggle") == .toggle && command("sway://edge-map") == .edgeMap, "simple commands")
-        expect(command("sway://run-shortcut?name=x") == nil && command("https://example.com/pause") == nil, "unknown commands and other schemes do nothing")
+        expect(command("kinara://pause") == .pause(minutes: nil) && command("kinara://pause?minutes=15") == .pause(minutes: 15), "pause commands")
+        expect(command("kinara://pause?minutes=0") == nil && command("kinara://pause?minutes=99999") == nil, "absurd pause lengths are refused")
+        expect(command("kinara://volume?level=40") == .volume(0.4) && command("KINARA://Brightness?level=100") == .brightness(1), "levels are percentages")
+        expect(command("kinara://volume?level=140") == nil && command("kinara://volume?level=nan") == nil && command("kinara://volume") == nil, "invalid levels are refused")
+        expect(command("kinara://resume") == .resume && command("kinara://toggle") == .toggle && command("kinara://edge-map") == .edgeMap, "simple commands")
+        expect(command("kinara://ambient") == .ambient(nil) && command("kinara://ambient?on=1") == .ambient(true) && command("kinara://Ambient?on=NO") == .ambient(false),
+               "the ambient light toggles, starts and stops")
+        expect(command("kinara://ambient?on=maybe") == nil, "an unclear ambient request does nothing")
+        expect(command("sway://pause?minutes=15") == .pause(minutes: 15) && command("SWAY://Volume?level=40") == .volume(0.4), "links from before the Kinara name keep working")
+        expect(command("kinara://run-shortcut?name=x") == nil && command("https://example.com/pause") == nil && command("kinarax://pause") == nil, "unknown commands and other schemes do nothing")
 
         expect(GammaDimmer.scale(for: 0) == 1 && abs(GammaDimmer.scale(for: 1) - GammaDimmer.darkestScale) < 0.0001, "extra dim spans normal to the darkest safe level")
         expect(GammaDimmer.scale(for: .nan) == 1 && abs(GammaDimmer.scale(for: 7) - GammaDimmer.darkestScale) < 0.0001, "invalid dim levels stay safe")
@@ -170,8 +174,18 @@ private final class ModelFixture {
         let map = EdgeMapEntry.resolve(settings: settings, appBundleID: "com.example.editor", docked: false)
         expect(map.map(\.slot) == ["left", "right", "left.doubleTap"], "the edge map lists swipe edges and only assigned extras")
         expect(map[1].action == .tabs && map[1].source == .app && map[0].source == .everyday, "the edge map explains where each action comes from")
-        for action in ZoneAction.allCases where action.worksAsTap { expect(!action.isContinuous, "\(action.rawValue) tap fires once") }
-        expect(!ZoneAction.volume.worksAsTap && ZoneAction.outputMute.togglesOnTap, "levels cannot be taps; mute toggles")
+        // On a tap, a level or a stepper arms a slide; everything else fires once.
+        for action in ZoneAction.allCases where action.slidesAfterTap {
+            expect(action.isContinuous || action.repeatsWhileSwiping, "\(action.rawValue) slides after a tap because it needs an amount")
+            expect(!action.opensPanel && !action.togglesOnTap, "\(action.rawValue) never both slides and fires")
+        }
+        expect(ZoneAction.volume.slidesAfterTap && ZoneAction.brightness.slidesAfterTap && ZoneAction.keyboardBrightness.slidesAfterTap
+               && ZoneAction.tabs.slidesAfterTap && ZoneAction.seek.slidesAfterTap, "levels and steppers arm a slide on a tap")
+        expect(TrackpadMonitor.armedSides(for: .topLeftCorner) == [.left] && TrackpadMonitor.armedSides(for: .bottomRightCorner) == [.right]
+               && TrackpadMonitor.armedSides(for: .left) == [.left] && TrackpadMonitor.armedSides(for: .top) == [.left, .right],
+               "a tap arms the side edge on its own side, never the whole trackpad")
+        expect(!ZoneAction.clipboardHistory.slidesAfterTap && !ZoneAction.audioApps.slidesAfterTap && !ZoneAction.playPause.slidesAfterTap
+               && ZoneAction.outputMute.togglesOnTap, "panels open, one-shots fire, mute toggles")
 
         let command = CGEventFlags.maskCommand.rawValue, shift = CGEventFlags.maskShift.rawValue
         expect(EdgeCommand.resolve(.paste, increasing: false) == .key(9, command, global: false), "paste is Command-V to the app in front")
@@ -181,9 +195,18 @@ private final class ModelFixture {
         expect(EdgeCommand.resolve(.newCloseTab, increasing: true) == .key(17, command, global: false)
                && EdgeCommand.resolve(.newCloseTab, increasing: false) == .key(13, command, global: false), "up opens a tab, down closes one")
         expect(EdgeCommand.resolve(.lockScreen, increasing: true) == .key(12, command | CGEventFlags.maskControl.rawValue, global: true), "lock screen is a global shortcut")
+        let numericPad = CGEventFlags.maskNumericPad.rawValue, function = CGEventFlags.maskSecondaryFn.rawValue
+        expect(EdgeActionController.hardwareFlags(for: 126) == numericPad | function && EdgeActionController.hardwareFlags(for: 123) == numericPad | function,
+               "arrow keys carry the flags system shortcuts like Mission Control match")
+        expect(EdgeActionController.hardwareFlags(for: 103) == function, "F11 (Show Desktop) carries the function flag")
+        expect(EdgeActionController.hardwareFlags(for: 9) == 0, "ordinary keys carry none")
+        if let up = EdgeActionController.keyboardEvents(code: 126, flags: CGEventFlags.maskControl.rawValue, physicalFlags: [])?.first {
+            expect(up.flags.contains(.maskControl) && up.flags.contains(.maskSecondaryFn) && up.flags.contains(.maskNumericPad),
+                   "Control-Up goes out exactly like the real keys")
+        }
         expect(ZoneAction.undoRedo.repeatsWhileSwiping && ZoneAction.clipboardHistory.repeatsWhileSwiping && !ZoneAction.paste.repeatsWhileSwiping,
                "undo and history step as you swipe; paste fires once")
-        expect(ZoneAction.paste.worksAsTap && ZoneAction.pastePrevious.worksAsTap && ZoneAction.categories.contains("Editing"), "editing actions fit corner taps")
+        expect(ZoneAction.categories.contains("Editing"), "editing actions fit corner taps")
 
         // Clipboard history rules, without touching the real pasteboard.
         expect(ClipboardHistory.shouldRecord(types: ["public.utf8-plain-text"], text: "hello"), "ordinary text is recorded")
@@ -204,6 +227,48 @@ private final class ModelFixture {
         expect(ClipboardHistory.age(of: now.addingTimeInterval(60), now: now) == "now", "a clock change never shows a negative age")
         expect(ClipboardHistory.preview("one\n\n  two  \nthree") == "one ⏎ two ⏎ three", "multi-line previews fit one row")
         expect(ClipboardHistory.preview(String(repeating: "y", count: 200)).count == 90, "long previews are shortened")
+
+        // Pictures, search and scrolling.
+        func picture(_ fingerprint: String, bytes: Int) -> ClipboardItem {
+            ClipboardItem(text: "", appName: "Preview", bundleID: "com.apple.Preview", date: Date(),
+                          image: ClipboardImage(data: Data(count: bytes), type: .png, pixelSize: CGSize(width: 1440, height: 900), thumbnail: NSImage(), fingerprint: fingerprint))
+        }
+        var pictures = ClipboardHistory.inserting(picture("a", bytes: 10), into: [item("hello")])
+        pictures = ClipboardHistory.inserting(picture("a", bytes: 10), into: pictures)
+        expect(pictures.count == 2 && pictures.filter { $0.image != nil }.count == 1, "the same picture copied twice is kept once")
+        pictures = ClipboardHistory.inserting(picture("b", bytes: 10), into: pictures)
+        expect(pictures.count == 3 && pictures.first?.key == "image:b", "a different picture is kept too, newest first")
+        let budgeted = ClipboardHistory.inserting(picture("c", bytes: 60), into: [picture("d", bytes: 50), item("t"), picture("e", bytes: 30)], imageBudget: 100)
+        expect(budgeted.map(\.key) == ["image:c", "t"], "over the picture budget, pictures go oldest first, and text stays")
+        expect(ClipboardHistory.inserting(item("x"), into: (0..<30).map { item("n\($0)") }, capacity: 50).count == 31, "a larger limit keeps more")
+        expect(ClipboardHistory.prefersImage(types: ["public.tiff", "public.utf8-plain-text"]) && ClipboardHistory.prefersImage(types: ["public.png"]),
+               "a copied image is a picture, even with its address as text")
+        expect(!ClipboardHistory.prefersImage(types: ["public.utf8-plain-text", "public.tiff"]) && !ClipboardHistory.prefersImage(types: ["com.apple.flat-rtfd", "public.png"]),
+               "a copied paragraph with a picture of itself is text")
+        expect(ClipboardHistory.imageType(in: ["public.tiff", "public.png"]) == .png && ClipboardHistory.imageType(in: ["public.utf8-plain-text"]) == nil,
+               "the best picture type wins")
+        expect(ClipboardHistory.shouldRecordImage(types: ["public.png"], bytes: 1000), "an ordinary picture is recorded")
+        expect(!ClipboardHistory.shouldRecordImage(types: ["public.png", "org.nspasteboard.ConcealedType"], bytes: 1000)
+               && !ClipboardHistory.shouldRecordImage(types: ["public.png"], bytes: ClipboardHistory.maximumImageBytes + 1)
+               && !ClipboardHistory.shouldRecordImage(types: ["public.png"], bytes: 0), "concealed, huge or empty pictures are skipped")
+        let note = item("Meet at 7:30 by the north entrance")
+        expect(ClipboardHistory.matches(note, query: "NORTH 7:30") && ClipboardHistory.matches(note, query: "notes") && ClipboardHistory.matches(note, query: ""),
+               "search ignores case, needs every word, and knows the app")
+        expect(ClipboardHistory.matches(item("Café menu"), query: "cafe") && !ClipboardHistory.matches(note, query: "north zebra"), "search ignores accents; every word must match")
+        expect(ClipboardHistory.matches(picture("p", bytes: 1), query: "image 1440") && !ClipboardHistory.matches(picture("p", bytes: 1), query: "invoice"), "a picture is found by its kind and size")
+        let long = String(repeating: "lorem ipsum ", count: 12) + "the invoice number is 42"
+        let near = ClipboardHistory.preview(long, near: "invoice")
+        expect(near.hasPrefix("…") && near.contains("invoice"), "a match deep in a long copy shows in its row")
+        expect(ClipboardPicker.filter([note, item("Flight 1024"), picture("q", bytes: 1)], query: "flight").count == 1, "search filters the list")
+        expect(ClipboardPicker.searchSelection(count: 3) == 0 && ClipboardPicker.searchSelection(count: 0) == -1, "a search starts on its best match, or Cancel")
+        expect(ClipboardPicker.editing("", code: 0, characters: "a", flags: []) == "a" && ClipboardPicker.editing("a", code: 26, characters: "7", flags: []) == "a7",
+               "typing, digits included, searches")
+        expect(ClipboardPicker.editing("ab", code: 51, characters: nil, flags: []) == "a" && ClipboardPicker.editing("hello world", code: 51, characters: nil, flags: .maskAlternate) == "hello "
+               && ClipboardPicker.editing("abc", code: 51, characters: nil, flags: .maskCommand) == "", "⌫ deletes a character, ⌥⌫ a word, ⌘⌫ everything")
+        expect(ClipboardPicker.editing("a", code: 8, characters: "c", flags: .maskCommand) == nil && ClipboardPicker.editing("a", code: 126, characters: "\u{F700}", flags: []) == nil,
+               "shortcuts and arrow keys never type")
+        expect(ClipboardPicker.gain(speed: 0.2) == 1 && ClipboardPicker.gain(speed: 10) == 4 && ClipboardPicker.gain(speed: 1.2) > ClipboardPicker.gain(speed: 0.7),
+               "a calm slide moves a row at a time, a quick one sweeps")
         expect(!ClipboardHistory.shared.isEnabled, "history is off unless a clipboard action is assigned")
         expect(ClipboardPicker.initialSelection(count: 5) == 1 && ClipboardPicker.initialSelection(count: 1) == 0
                && ClipboardPicker.initialSelection(count: 0) == -1, "the picker opens on the previous item, or Cancel when empty")
@@ -222,7 +287,7 @@ private final class ModelFixture {
         expect(HUDMotion.displaced(rest, by: CGVector(dx: 0, dy: -12)) == NSPoint(x: 400, y: 68), "an entrance starts below its resting place")
         expect(HUDMotion.displaced(rest, by: CGVector(dx: 14, dy: 0), scale: 0.6) == NSPoint(x: 408.4, y: 80), "an exit drifts back, but less far")
         let picker = ClipboardPicker.shared
-        expect(!picker.isOpen && !picker.handleKey(code: 53, characters: nil), "a closed picker never swallows keys")
+        expect(!picker.isOpen && !picker.handleKey(code: 53, characters: nil, flags: []), "a closed picker never swallows keys")
         ClipboardHistory.shared.noteCopy()
         expect(ClipboardHistory.shared.items.isEmpty, "a disabled history never reads the pasteboard")
     }
@@ -239,13 +304,15 @@ private final class ModelFixture {
         expect(events.allSatisfy { $0.getIntegerValueField(.eventSourceUserData) == EdgeActionController.eventMarker }, "own events never count as typing")
         let held = EdgeActionController.keyboardEvents(code: 48, flags: CGEventFlags.maskCommand.rawValue, physicalFlags: .maskCommand)!
         expect(held.count == 2, "physically held modifiers are not synthetically released")
-        expect(ZoneAction.allCases.count == 52, "51 assignable actions plus Off")
+        expect(ZoneAction.allCases.count == 54, "53 assignable actions plus Off")
         for action in ZoneAction.allCases {
             expect(!action.label.isEmpty && !action.icon.isEmpty && !action.guidance.isEmpty, "every action has usable metadata")
+            // A misspelled or retired symbol draws nothing at all.
+            expect(NSImage(systemSymbolName: action.icon, accessibilityDescription: nil) != nil, "\(action.rawValue)'s icon exists on this macOS")
             expect(ZoneAction.categories.contains(action.category), "all actions appear in a category")
             let performedDirectly: [ZoneAction] = [.outputMute, .microphoneMute, .customShortcut, .disabled, .audioOutput,
-                                                   .nowPlaying, .tileWindow, .trueTone, .runShortcut, .cheatSheet,
-                                                   .pastePrevious, .clipboardHistory, .sleepDisplay, .muteApp, .soloApp]
+                                                   .nowPlaying, .tileWindow, .trueTone, .runShortcut, .cheatSheet, .ambientLight,
+                                                   .pastePrevious, .clipboardHistory, .sleepDisplay, .muteApp, .soloApp, .audioApps]
             if action.isContinuous || performedDirectly.contains(action) {
                 expect(EdgeCommand.resolve(action, increasing: true) == nil, "\(action.rawValue) never becomes a keystroke")
             } else {
@@ -274,6 +341,14 @@ private final class ModelFixture {
         expect(steps.consume(delta: 0.001, sensitivity: 1, inverted: false, repeats: true, at: 2) == nil, "dropped motion is not replayed")
         expect(steps.consume(delta: -0.04, sensitivity: 1, inverted: false, repeats: true, at: 3) == nil, "reversal starts fresh travel")
         expect(steps.consume(delta: -0.04, sensitivity: 1, inverted: false, repeats: true, at: 3.3) == false, "negative travel fires once")
+        // The keyboard backlight steps like a level: a quick slide covers many notches.
+        func notches(_ stepper: GestureActionStepper) -> Int {
+            var stepper = stepper
+            return (0..<36).filter { stepper.consume(delta: -0.01, sensitivity: 1, inverted: false, repeats: true, at: 1 + Double($0) / 120) != nil }.count
+        }
+        expect(notches(GestureActionStepper(levelLike: true)) >= 9, "a quick slide moves the backlight many notches, not one")
+        expect(notches(GestureActionStepper()) <= 2, "commands such as tabs keep a deliberate pace")
+        expect(ZoneAction.keyboardBrightness.stepsLikeALevel && !ZoneAction.tabs.stepsLikeALevel, "only notched levels step like a level")
         var inverted = GestureActionStepper()
         expect(inverted.consume(delta: 0.03, sensitivity: 1, inverted: true, repeats: false, at: 1) == false, "reversed direction works for commands")
         for invalid in [Double.nan, .infinity, 0.5] {

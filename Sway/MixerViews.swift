@@ -13,7 +13,11 @@ struct MixerMenuSection: View {
     @ObservedObject var mixer: MixerModel
     @AppStorage("mixerMenuExpanded") private var expanded = true
     @State private var showsOthers = false
-    private let maximumRows = 4
+    private static let maximumRows = 4
+
+    // Spelled out: older Swift (Xcode 26, as on CI) makes the generated
+    // initializer private when a view has private state.
+    init(mixer: MixerModel) { self.mixer = mixer }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -39,8 +43,8 @@ struct MixerMenuSection: View {
                     let rows = mixer.playingChannels
                     if rows.isEmpty {
                         Text("Apps appear here when they play sound.").font(.system(size: 11)).foregroundStyle(.secondary)
-                    } else if rows.count > maximumRows {
-                        ScrollView { channelList(rows) }.frame(height: CGFloat(maximumRows) * 54)
+                    } else if rows.count > Self.maximumRows {
+                        ScrollView { channelList(rows) }.frame(height: CGFloat(Self.maximumRows) * 54)
                     } else {
                         channelList(rows)
                     }
@@ -70,8 +74,8 @@ struct MixerPermissionRow: View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "waveform.badge.mic").foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 4) {
-                Text(mixer.permission == .denied ? "Allow Sway in Screen & System Audio Recording to change each app’s sound."
-                                                 : "Sway needs System Audio Recording to change each app’s sound. Nothing is recorded or saved.")
+                Text(mixer.permission == .denied ? "Allow Kinara in Screen & System Audio Recording to change each app’s sound."
+                                                 : "Kinara needs System Audio Recording to change each app’s sound. Nothing is recorded or saved.")
                     .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Button(mixer.permission == .denied ? "Open System Settings…" : "Allow…") { mixer.requestPermission() }
                     .controlSize(.small)

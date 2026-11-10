@@ -102,6 +102,61 @@ final class MixerChannel: ObservableObject, Identifiable {
     }
 }
 
+/// One app in the audio picker, copied from its mixer channel.
+struct AudioPickerApp: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let icon: NSImage?
+    var isPlaying = false
+    var isMuted = false
+    var isSoloed = false
+    var isSilencedBySolo = false
+    var hasPlayed = false
+    var volume: Float = 1
+
+    static func == (lhs: AudioPickerApp, rhs: AudioPickerApp) -> Bool {
+        lhs.id == rhs.id && lhs.name == rhs.name && lhs.isPlaying == rhs.isPlaying && lhs.isMuted == rhs.isMuted
+            && lhs.isSoloed == rhs.isSoloed && lhs.isSilencedBySolo == rhs.isSilencedBySolo
+            && lhs.hasPlayed == rhs.hasPlayed && lhs.volume == rhs.volume
+    }
+
+    /// What lifting does to this app: mute or unmute, or (slid right) solo.
+    func action(solo: Bool) -> String {
+        solo ? (isSoloed ? "End solo" : "Only this") : (isMuted ? "Unmute" : "Mute")
+    }
+
+    var status: String {
+        if isSoloed { return "Only this app is playing" }
+        if isMuted { return "Muted" }
+        if isSilencedBySolo { return "Quiet while another app plays alone" }
+        if isPlaying { return volume < 0.995 ? "Playing · \(Int((volume * 100).rounded()))%" : "Playing" }
+        return "Not playing right now"
+    }
+}
+
+/// Which apps the audio picker offers, and in what order.
+enum AudioPickerRules {
+    /// Apps worth offering: playing now, muted or soloed (so they can be undone),
+    /// or heard from since Kinara started. Sounding apps first, then the rest.
+    static func ordered(_ apps: [AudioPickerApp]) -> [AudioPickerApp] {
+        func rank(_ app: AudioPickerApp) -> Int {
+            if app.isPlaying && !app.isMuted && !app.isSilencedBySolo { return 0 }
+            if app.isMuted || app.isSoloed || app.isSilencedBySolo { return 1 }
+            return 2
+        }
+        return apps.filter { $0.isPlaying || $0.isMuted || $0.isSoloed || $0.hasPlayed }.sorted {
+            rank($0) != rank($1) ? rank($0) < rank($1) : $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
+    }
+
+    /// Keeps the highlight on the same app when the list changes under it.
+    static func selection(keeping id: String?, previous: Int, in apps: [AudioPickerApp]) -> Int {
+        if previous < 0 || apps.isEmpty { return apps.isEmpty ? -1 : previous }
+        if let id, let index = apps.firstIndex(where: { $0.id == id }) { return index }
+        return min(previous, apps.count - 1)
+    }
+}
+
 /// An output the user can send an app to.
 struct MixerOutputDevice: Identifiable, Hashable {
     let id: AudioObjectID
@@ -204,6 +259,12 @@ final class MixerModel: ObservableObject {
     private var monitor: MixerProcessMonitor?
     private var deviceListeners: [MixerPropertyListener] = []
     private var panelVisible = false
+    private var pickerVisible = false
+    private var rechecks = 0
+    private var reportedUnnamed: Set<pid_t> = []
+    private static let maxRechecks = 4
+    /// Where the mixer says what it hears. The app sends it to Kinara's log.
+    static var log: ((String) -> Void)?
     private var saveScheduled = false
 
     init(defaults: UserDefaults = .standard, preview: Bool = false) {
@@ -247,11 +308,19 @@ final class MixerModel: ObservableObject {
         updateMonitoring()
     }
 
-    /// Watches the HAL's process list only while it can matter: the panel is
-    /// open, ducking is on, an app has saved settings, or solo is active.
+    /// The audio picker is up: it lists apps, so the process list must be watched.
+    func setPickerVisible(_ visible: Bool) {
+        guard Self.isSupported, !preview else { return }
+        pickerVisible = visible
+        if visible { refreshPermission() }
+        updateMonitoring()
+    }
+
+    /// Watches the HAL's process list only while it can matter: the panel or
+    /// audio picker is open, ducking is on, an app has saved settings, or solo is active.
     private func updateMonitoring() {
         guard Self.isSupported, !preview else { return }
-        let needed = panelVisible || duckDuringCalls || !stored.isEmpty || soloID != nil
+        let needed = panelVisible || pickerVisible || duckDuringCalls || !stored.isEmpty || soloID != nil
         if needed, monitor == nil {
             let monitor = MixerProcessMonitor()
             monitor.onChange = { [weak self] processes in self?.processesChanged(processes) }
@@ -293,14 +362,32 @@ final class MixerModel: ObservableObject {
     private func processesChanged(_ processes: [MixerAudioProcess]) {
         let ownPID = getpid(), ownBundleID = Bundle.main.bundleIdentifier
         var groups: [String: Group] = [:]
+        var unnamed: [MixerAudioProcess] = []
         for process in processes where process.pid != ownPID {
-            guard let app = MixerAppResolver.resolve(process), app.key != ownBundleID, !app.key.hasPrefix("pid.") else { continue }
+            guard let app = MixerAppResolver.resolve(process) else {
+                if process.isRunningOutput || process.isRunningInput { unnamed.append(process) }
+                continue
+            }
+            guard app.key != ownBundleID, !app.key.hasPrefix("pid.") else { continue }
             var group = groups[app.key] ?? Group(app: app)
             if process.isRunningOutput { group.playing = true }
             if process.isRunningInput { group.usingMicrophone = true }
             groups[app.key] = group
         }
         MixerAppResolver.prune(keeping: Set(processes.map(\.pid)))
+        // A sounding app that just launched may not be nameable yet: look
+        // again a few times rather than waiting for its next start or stop.
+        if unnamed.isEmpty {
+            rechecks = 0
+        } else if rechecks < Self.maxRechecks {
+            rechecks += 1
+            monitor?.recheck(after: 1.1)
+            for process in unnamed where !reportedUnnamed.contains(process.pid) {
+                reportedUnnamed.insert(process.pid)
+                Self.log?("Sound from pid \(process.pid) (\(process.bundleID ?? "no bundle ID")) has no app to show yet")
+            }
+        }
+        reportedUnnamed.formIntersection(processes.map(\.pid))
         for (id, group) in groups where group.playing { heardFrom.insert(id) }
         heardFrom.formIntersection(groups.keys)
 
@@ -318,7 +405,10 @@ final class MixerModel: ObservableObject {
             if !channel.hasAudio { sent[id] = nil }
             channel.hasAudio = true
             if channel.name != group.app.name { channel.name = group.app.name }
-            if channel.isPlaying != group.playing { channel.isPlaying = group.playing }
+            if channel.isPlaying != group.playing {
+                channel.isPlaying = group.playing
+                Self.log?("\(group.app.name) \(group.playing ? "started" : "stopped") playing")
+            }
             if channel.isUsingMicrophone != group.usingMicrophone { channel.isUsingMicrophone = group.usingMicrophone }
             let played = heardFrom.contains(id)
             if channel.hasPlayed != played { channel.hasPlayed = played }
@@ -415,10 +505,11 @@ final class MixerModel: ObservableObject {
 
     /// Mute or unmute the app in front; nil toggles. Returns the new state.
     @discardableResult
-    func setMuted(_ muted: Bool?, forApp id: String) -> Bool {
+    func setMuted(_ muted: Bool?, forApp id: String, remember keep: Bool = true) -> Bool {
         let channel = channel(forApp: id)
         channel.isMuted = muted ?? !channel.isMuted
-        remember(channel)
+        // A playback hold mutes only for a moment; it isn't a setting to keep.
+        if keep { remember(channel) }
         apply(channel, userInitiated: true)
         return channel.isMuted
     }
@@ -432,6 +523,39 @@ final class MixerModel: ObservableObject {
         updateMonitoring()
         applyMix(userInitiated: true)
         return on
+    }
+
+    /// Apps sending sound out right now, read once from the HAL. Main thread
+    /// only (the resolver's cache). Apps in a call, recording too, are left out.
+    static func soundingApps() -> Set<String> {
+        var output = Set<String>(), calling = Set<String>()
+        for (app, process) in audioProcesses(includingQuiet: false) {
+            if process.isRunningOutput { output.insert(app) }
+            if process.isRunningInput { calling.insert(app) }
+        }
+        return output.subtracting(calling)
+    }
+
+    /// Apps with audio set up, quiet or not: a paused player keeps it. Main thread only.
+    static func audioApps() -> Set<String> {
+        Set(audioProcesses(includingQuiet: true).map(\.app))
+    }
+
+    private static func audioProcesses(includingQuiet: Bool) -> [(app: String, process: MixerAudioProcess)] {
+        guard isSupported else { return [] }
+        let own = Bundle.main.bundleIdentifier
+        var processes: [(app: String, process: MixerAudioProcess)] = []
+        for id in MixerHAL.objectIDs(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyProcessObjectList) {
+            let pid: pid_t = MixerHAL.value(id, kAudioProcessPropertyPID, default: -1)
+            let out = MixerHAL.value(id, kAudioProcessPropertyIsRunningOutput, default: UInt32(0)) != 0
+            let input = MixerHAL.value(id, kAudioProcessPropertyIsRunningInput, default: UInt32(0)) != 0
+            guard pid > 0, pid != getpid(), out || input || includingQuiet else { continue }
+            let process = MixerAudioProcess(objectID: id, pid: pid, bundleID: MixerHAL.string(id, kAudioProcessPropertyBundleID),
+                                            isRunningOutput: out, isRunningInput: input)
+            guard let app = MixerAppResolver.resolve(process), app.isRegular, app.key != own, !app.key.hasPrefix("pid.") else { continue }
+            processes.append((app.key, process))
+        }
+        return processes
     }
 
     func displayName(forApp id: String) -> String {
@@ -584,16 +708,37 @@ struct MixerApp {
 /// Watches the HAL's process list and each process's output and input state.
 /// Event-driven: there are no timers, and it only exists while needed.
 final class MixerProcessMonitor {
+    /// What a process object announces when its audio starts or stops. Core
+    /// Audio posts "is running" and "devices" changes, but not the output and
+    /// input properties themselves, so listening only to those missed every
+    /// start and stop of an app already connected, such as a browser's audio
+    /// helper. Those two stay in case a later macOS posts them; the values
+    /// themselves read correctly either way.
+    static let stateSelectors: [AudioObjectPropertySelector] = [
+        kAudioProcessPropertyIsRunning, kAudioProcessPropertyDevices,
+        kAudioProcessPropertyIsRunningOutput, kAudioProcessPropertyIsRunningInput,
+    ]
     var onChange: (([MixerAudioProcess]) -> Void)?
     private var listListener: MixerPropertyListener?
     private var stateListeners: [AudioObjectID: [MixerPropertyListener]] = [:]
     private var reloadScheduled = false
+    private var recheckScheduled = false
 
     func start() {
         listListener = MixerPropertyListener(AudioObjectID(kAudioObjectSystemObject), MixerHAL.address(kAudioHardwarePropertyProcessObjectList)) { [weak self] in
             self?.scheduleReload()
         }
         reload()
+    }
+
+    /// Looks again shortly, for a sounding process whose app couldn't be named yet.
+    func recheck(after delay: TimeInterval) {
+        guard !recheckScheduled else { return }
+        recheckScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            self?.recheckScheduled = false
+            self?.reload()
+        }
     }
 
     /// Coalesces bursts of HAL notifications into one reload.
@@ -611,7 +756,7 @@ final class MixerProcessMonitor {
         let current = Set(ids)
         for id in stateListeners.keys where !current.contains(id) { stateListeners[id] = nil }
         for id in ids where stateListeners[id] == nil {
-            stateListeners[id] = [kAudioProcessPropertyIsRunningOutput, kAudioProcessPropertyIsRunningInput].map {
+            stateListeners[id] = Self.stateSelectors.map {
                 MixerPropertyListener(id, MixerHAL.address($0)) { [weak self] in self?.scheduleReload() }
             }
         }
@@ -626,6 +771,32 @@ final class MixerProcessMonitor {
     }
 }
 
+/// What each process resolved to. A miss is tried again after a moment: an
+/// app that just launched isn't known to Launch Services until it checks in,
+/// and remembering that first miss hid its audio for as long as it ran.
+struct ResolutionCache<Value> {
+    var retryAfter: TimeInterval = 1
+    private var hits: [pid_t: Value] = [:]
+    private var misses: [pid_t: TimeInterval] = [:]
+
+    mutating func value(for pid: pid_t, now: TimeInterval, lookup: () -> Value?) -> Value? {
+        if let hit = hits[pid] { return hit }
+        if let missed = misses[pid], now - missed < retryAfter { return nil }
+        guard let found = lookup() else {
+            misses[pid] = now
+            return nil
+        }
+        misses[pid] = nil
+        hits[pid] = found
+        return found
+    }
+
+    mutating func prune(keeping pids: Set<pid_t>) {
+        hits = hits.filter { pids.contains($0.key) }
+        misses = misses.filter { pids.contains($0.key) }
+    }
+}
+
 /// Maps helper processes (Chrome Helper, WebKit.WebContent, Electron
 /// renderers…) to the app the user sees.
 enum MixerAppResolver {
@@ -634,16 +805,13 @@ enum MixerAppResolver {
         guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "responsibility_get_pid_responsible_for_pid") else { return nil }
         return unsafeBitCast(symbol, to: Responsible.self)
     }()
-    private static var cache: [pid_t: MixerApp?] = [:]
+    private static var cache = ResolutionCache<MixerApp>()
 
     static func resolve(_ process: MixerAudioProcess) -> MixerApp? {
-        if let cached = cache[process.pid] { return cached }
-        let resolved = lookup(process)
-        cache[process.pid] = resolved
-        return resolved
+        cache.value(for: process.pid, now: ProcessInfo.processInfo.systemUptime) { lookup(process) }
     }
 
-    static func prune(keeping pids: Set<pid_t>) { cache = cache.filter { pids.contains($0.key) } }
+    static func prune(keeping pids: Set<pid_t>) { cache.prune(keeping: pids) }
 
     private static func lookup(_ process: MixerAudioProcess) -> MixerApp? {
         // Credit, in order: the responsible process (what Activity Monitor

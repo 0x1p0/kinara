@@ -1,4 +1,5 @@
 import AppKit
+import CoreAudio
 
 /// The mixer's rules (solo, call ducking, mute, routing, boost, remembered
 /// settings) and its model in preview mode. Never touches Core Audio: the tap
@@ -15,7 +16,31 @@ import AppKit
         statusTests()
         storeTests()
         modelTests()
+        pickerTests()
+        detectionTests()
         print("\(checks) mixer assertions passed. Rules and preview model only; no tap, aggregate device, routing change, or permission prompt.")
+    }
+
+    /// Hearing apps start and stop, and naming them, without trusting a miss forever.
+    private static func detectionTests() {
+        var cache = ResolutionCache<String>()
+        var lookups = 0
+        func ask(_ pid: pid_t, at now: TimeInterval, answer: String?) -> String? {
+            cache.value(for: pid, now: now) { lookups += 1; return answer }
+        }
+        expect(ask(7, at: 0, answer: nil) == nil && lookups == 1, "an app not registered yet has no name")
+        expect(ask(7, at: 0.5, answer: "com.brave.Browser") == nil && lookups == 1, "a miss isn't looked up again at once")
+        expect(ask(7, at: 1.2, answer: "com.brave.Browser") == "com.brave.Browser" && lookups == 2,
+               "a miss is retried a moment later, so the app's audio still shows up")
+        expect(ask(7, at: 60, answer: nil) == "com.brave.Browser" && lookups == 2, "a found app is kept for the life of its process")
+        cache.prune(keeping: [])
+        expect(ask(7, at: 61, answer: "com.other") == "com.other" && lookups == 3, "a pid reused after its process ends is looked up afresh")
+
+        let selectors = MixerProcessMonitor.stateSelectors
+        expect(selectors.contains(kAudioProcessPropertyIsRunning) && selectors.contains(kAudioProcessPropertyDevices),
+               "starts and stops are heard through what Core Audio posts: is running, and devices")
+        expect(selectors.contains(kAudioProcessPropertyIsRunningOutput) && selectors.contains(kAudioProcessPropertyIsRunningInput),
+               "the output and input properties stay watched in case macOS posts them")
     }
 
     private static func ruleTests() {
@@ -121,5 +146,24 @@ import AppKit
         expect(model.channels.allSatisfy { $0.volume == 1 && !$0.isMuted && $0.deviceUID == nil } && model.soloID == nil,
                "reset puts every app back to normal")
         expect(model.volume(forApp: "com.example.unknown") == 1, "unknown apps are at full level")
+    }
+
+    static func pickerTests() {
+        func app(_ id: String, playing: Bool = false, muted: Bool = false, soloed: Bool = false, silenced: Bool = false, played: Bool = false) -> AudioPickerApp {
+            AudioPickerApp(id: id, name: id.capitalized, icon: nil, isPlaying: playing, isMuted: muted,
+                           isSoloed: soloed, isSilencedBySolo: silenced, hasPlayed: played || playing)
+        }
+        let apps = [app("zoom", played: true), app("safari", playing: true), app("notes"), app("music", playing: true, muted: true),
+                    app("arc", playing: true), app("slack", silenced: true, played: true)]
+        let ordered = AudioPickerRules.ordered(apps)
+        expect(ordered.map(\.id) == ["arc", "safari", "music", "slack", "zoom"], "sounding apps first, then muted or silenced, then recent; never silent strangers")
+        expect(AudioPickerRules.ordered([app("notes")]).isEmpty, "an app that never made a sound is not offered")
+        expect(AudioPickerRules.selection(keeping: "safari", previous: 0, in: Array(ordered.dropFirst())) == 0, "the highlight stays on its app as the list changes")
+        expect(AudioPickerRules.selection(keeping: "gone", previous: 4, in: Array(ordered.prefix(2))) == 1, "a vanished app hands the highlight to its neighbour")
+        expect(AudioPickerRules.selection(keeping: nil, previous: -1, in: ordered) == -1, "Cancel stays Cancel")
+        expect(AudioPickerRules.selection(keeping: "arc", previous: 0, in: []) == -1, "an empty list leaves only Cancel")
+        expect(app("a").action(solo: false) == "Mute" && app("a", muted: true).action(solo: false) == "Unmute", "lifting mutes or unmutes")
+        expect(app("a").action(solo: true) == "Only this" && app("a", soloed: true).action(solo: true) == "End solo", "sliding right solos, or ends solo")
+        expect(app("a", playing: true).status == "Playing" && app("a", muted: true).status == "Muted", "each row says what the app is doing")
     }
 }

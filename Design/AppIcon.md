@@ -1,4 +1,4 @@
-# Sway app icon
+# Kinara app icon
 
 A graphite macOS tile that *is* a trackpad. A quiet track marks the left edge;
 the right edge carries one luminous swipe: a streak of cool white light that
@@ -26,5 +26,5 @@ Both the Xcode build and the direct-build fallback consume this asset set.
 
 The menu bar uses the same idea as a template image (`SwayGlyph` in
 `Sway/AppPresentation.swift`): a trackpad outline with a quiet left track and a
-solid swipe on the right, dimmed while gestures are paused. Inside Sway's
+solid swipe on the right, dimmed while gestures are paused. Inside Kinara's
 windows, logo spots show the app icon itself.

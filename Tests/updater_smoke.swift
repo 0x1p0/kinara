@@ -13,7 +13,7 @@ struct UpdaterSmoke {
         guard controller.updater.canCheckForUpdates,
               !controller.updater.automaticallyChecksForUpdates,
               !controller.updater.automaticallyDownloadsUpdates,
-              controller.updater.feedURL?.absoluteString == "https://github.com/0x1p0/sway-application/releases/latest/download/appcast.xml",
+              controller.updater.feedURL?.absoluteString == "https://github.com/0x1p0/kinara/releases/latest/download/appcast.xml",
               Bundle.main.object(forInfoDictionaryKey: "SURequireSignedFeed") as? Bool == true,
               Bundle.main.object(forInfoDictionaryKey: "SUVerifyUpdateBeforeExtraction") as? Bool == true,
               Bundle.main.object(forInfoDictionaryKey: "SUSignedFeedFailureExpirationInterval") as? Int == 0 else {

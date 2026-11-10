@@ -25,11 +25,11 @@ with tempfile.TemporaryDirectory(prefix="sway clean packaging ") as temporary:
     parent = Path(temporary)
     metadata = plistlib.loads((ROOT / "Sway/Info.plist").read_bytes())
     version = metadata["CFBundleShortVersionString"]
-    metadata.update(CFBundleIdentifier="com.trackpadcontrol.app", CFBundleExecutable="Sway")
+    metadata.update(CFBundleIdentifier="com.trackpadcontrol.app", CFBundleExecutable="Kinara")
     archive = parent / "unsigned fixture.zip"
     with zipfile.ZipFile(archive, "w") as output:
-        output.writestr("Sway.app/Contents/Info.plist", plistlib.dumps(metadata))
-        output.writestr("Sway.app/Contents/MacOS/Sway", b"Deliberately invalid; never execute this fixture.")
+        output.writestr("Kinara.app/Contents/Info.plist", plistlib.dumps(metadata))
+        output.writestr("Kinara.app/Contents/MacOS/Kinara", b"Deliberately invalid; never execute this fixture.")
     malformed = parent / "malformed.zip"
     malformed.write_bytes(b"Not a ZIP archive.")
 
@@ -62,7 +62,7 @@ with tempfile.TemporaryDirectory(prefix="sway clean packaging ") as temporary:
     expect("mktemp:" not in result.stderr, "fresh runner must create its staging parent before mktemp")
     expect("App archive extracted as data" in result.stdout, "clean packaging must reach archive extraction")
     expect("App identity verification/signing failed" in result.stderr, "untrusted app must stop at identity verification")
-    expect(len(list((project / "build").glob("SignedPackage.*/extracted/Sway.app"))) == 1,
+    expect(len(list((project / "build").glob("SignedPackage.*/extracted/Kinara.app"))) == 1,
            "staging must live under this checkout's build directory")
     expect(not list((project / "build").glob("ReleasePackage.*")), "rejected app must never reach artifact packaging")
     expect(not (project / "build/releases").exists(), "rejected app must not produce release outputs")

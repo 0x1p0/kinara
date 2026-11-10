@@ -3,7 +3,7 @@ set -euo pipefail
 script_directory="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_directory="$(cd -- "$script_directory/.." && pwd)"
 cd "$project_directory"
-source_bundle="${1:-$project_directory/build/Sway.app}"
+source_bundle="${1:-$project_directory/build/Kinara.app}"
 test -f "$source_bundle/Contents/Info.plist"
 test_directory="$(mktemp -d /tmp/sway-updater-smoke.XXXXXX)"
 test_bundle="$test_directory/Updater Smoke.app"

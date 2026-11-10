@@ -31,7 +31,7 @@ test("static downloads and release notes match the current app version", () => {
   const version = plist.match(/<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)</)[1];
   const links = [...html.matchAll(/href="([^"]+\.dmg)"/g)].map((match) => match[1]);
   assert.equal(links.length, 2);
-  for (const link of links) assert.equal(link, `https://github.com/0x1p0/sway-application/releases/download/v${version}/Sway-${version}-macos-universal.dmg`);
+  for (const link of links) assert.equal(link, `https://github.com/0x1p0/sway-application/releases/download/v${version}/Kinara-${version}-macos-universal.dmg`);
   assert.ok(html.includes(`releases/tag/v${version}`));
   assert.doesNotMatch(html, /v1\.0\.14/);
 });
@@ -50,7 +50,7 @@ test("catalog stays usable without JavaScript and clearly describes its limits",
   assert.equal([...html.matchAll(/class="action-group"/g)].length, 7);
   assert.match(html, /never opens a recording stream/);
   assert.match(html, /Other inputs and app mute buttons stay separate/);
-  assert.match(html, /Browsing here doesn’t change Sway/);
+  assert.match(html, /Browsing here doesn’t change Kinara/);
   assert.match(html, /id="action-count" role="status" aria-live="polite"/);
   assert.match(css, /\[hidden\]\s*\{\s*display: none !important/);
 });

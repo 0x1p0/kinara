@@ -33,6 +33,8 @@ final class SwaySession: ObservableObject {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
+    /// The app in front before the menu opened, to give focus back to.
+    private var appBeforePopover: NSRunningApplication?
     private var settingsWindow: NSWindow?
     private var welcomeWindow: NSWindow?
     private var quickControlsWindow: NSWindow?
@@ -57,11 +59,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        KinaraLog.info(.app, "Kinara \(version) launched (pid \(getpid()), macOS \(ProcessInfo.processInfo.operatingSystemVersionString), Accessibility \(AXIsProcessTrusted() ? "granted" : "not granted"))")
         dockPresence.setEnabled(TrackpadSettings.shared.showDockIcon)
         let controls = ControlCenterModel.shared
         controls.refresh()
         setupMenuBar()
         ExcludedAppsManager.shared.start()
+        MixerModel.log = { KinaraLog.info(.output, "Mixer: \($0)") }
         MixerModel.shared.start()
         HotkeyManager.shared.startWithSavedHotkey()
         _ = EdgeMapHUD.shared // Listens for the hold-to-show hotkey.
@@ -148,8 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
                 .sink { note in
                     guard let value = note.object as? Float, value.isFinite else { return }
                     let type: OSDType = name == .microphoneLevelChanged ? .microphone : name == .volumeChanged || name == .topEdgeVolumeChanged ? .volume : .brightness
-                    OSDOverlay.shared.show(type: type, value: value, placement: note.userInfo?["placement"] as? OSDPlacement,
-                                           fine: note.userInfo?["fine"] as? Bool ?? false)
+                    OSDOverlay.shared.show(type: type, value: value, placement: note.userInfo?["placement"] as? OSDPlacement)
                 }.store(in: &cancellables)
         }
         NotificationCenter.default.publisher(for: .microphoneMuteChanged).sink { note in
@@ -233,6 +237,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         case .settings: showSettings()
         case .controls: showQuickControls()
         case .edgeMap: EdgeMapHUD.shared.show(autoHide: true)
+        case let .ambient(on):
+            if let on { on ? AmbientLight.shared.start() : AmbientLight.shared.stop() } else { AmbientLight.shared.toggle() }
         }
     }
 
@@ -241,7 +247,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         statusItem = item
         item.button?.target = self
         item.button?.action = #selector(togglePopover)
-        item.button?.setAccessibilityLabel("Sway trackpad controls")
+        item.button?.setAccessibilityLabel("Kinara trackpad controls")
         item.button?.imagePosition = .imageLeading
         let panel = NSPopover()
         // One dismissal owner. Menu tracking is explicitly protected before
@@ -268,25 +274,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         menuBrightnessTimer = timer
     }
 
+    /// As in System Settings: the sidebar runs up under the window's buttons,
+    /// and each page's title sits in the bar beside them. The offscreen
+    /// renders build the same window.
+    static func settingsWindow(content: NSViewController) -> NSWindow {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 820, height: 660),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Kinara Settings"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.toolbar = NSToolbar(identifier: "KinaraSettings")
+        window.toolbarStyle = .unified
+        window.titlebarSeparatorStyle = .none
+        window.contentViewController = content
+        // The content fills the window, so its size is set here, not by the content.
+        window.setFrame(NSRect(x: 0, y: 0, width: 820, height: 660), display: false)
+        window.contentMinSize = NSSize(width: 820, height: 520)
+        window.contentMaxSize = NSSize(width: 820, height: 1600)
+        return window
+    }
+
     @objc func showSettings() {
         let window: NSWindow
         if let existingWindow = settingsWindow {
             window = existingWindow
         } else {
-            window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 820, height: 660),
-                styleMask: [.titled, .closable, .miniaturizable],
-                backing: .buffered,
-                defer: false
-            )
-            window.title = "Sway Settings"
+            let host = FirstClickHostingController(rootView: ContentView())
+            host.sizingOptions = []
+            window = Self.settingsWindow(content: host)
             window.identifier = NSUserInterfaceItemIdentifier("Sway.Settings")
             window.isReleasedWhenClosed = false
             window.delegate = self
-            window.contentViewController = FirstClickHostingController(rootView: ContentView())
             window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
             window.center()
-            window.setFrameAutosaveName("SwayOrganizedSettingsWindow")
+            window.setFrameAutosaveName("KinaraSettings")
             settingsWindow = window
         }
         ControlCenterModel.shared.setVisible("settings", true)
@@ -300,7 +325,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         else {
             window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 280),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
-            window.title = "Sway Updates"
+            window.title = "Kinara Updates"
             window.identifier = NSUserInterfaceItemIdentifier("Sway.Updates")
             window.isReleasedWhenClosed = false
             window.delegate = self
@@ -324,7 +349,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isMovableByWindowBackground = true
-        window.title = "Welcome to Sway"
+        window.title = "Welcome to Kinara"
         window.identifier = NSUserInterfaceItemIdentifier("Sway.Welcome")
         window.isReleasedWhenClosed = false
         window.delegate = self
@@ -369,14 +394,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     private func present(_ window: NSWindow) {
         window.appearance = themeAppearance
         dockPresence.windowWillOpen(window)
-        focus.show(window, closingPrevious: { self.closePopover() })
+        focus.show(window, closingPrevious: { self.closePopover(handingFocusBack: false) })
     }
 
     @objc func showQuickControls() {
         if let quickControlsWindow { present(quickControlsWindow); return }
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
                               styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
-        window.title = "Sway Controls"
+        window.title = "Kinara Controls"
         window.identifier = NSUserInterfaceItemIdentifier("Sway.Controls")
         window.isReleasedWhenClosed = false
         window.delegate = self
@@ -404,13 +429,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         let volume = audio.isAvailable ? "\(Int((audio.getVolume() * 100).rounded()))%" : "—"
         let brightness = display.isAvailable ? "\(Int((display.getBrightness() * 100).rounded()))%" : "—"
         let hasUpdate = UpdateChecker.shared.updateAvailable
-        let tooltip = "Sway · \(hasUpdate ? "Update available" : paused ? "Paused" : available ? "Ready" : "Setup needed")\nBrightness \(brightness) · Volume \(audio.isMuted ? "Muted" : volume)"
+        let tooltip = "Kinara · \(hasUpdate ? "Update available" : paused ? "Paused" : available ? "Ready" : "Setup needed")\nBrightness \(brightness) · Volume \(audio.isMuted ? "Muted" : volume)"
         let title: String
         switch settings.menuBarValueSource {
         case "volume": title = " \(volume)"
         case "brightness": title = " \(brightness)"
         case "both": title = " ☀︎ \(brightness)  ♪ \(volume)"
-        case "name": title = " Sway"
+        case "name": title = " Kinara"
         default: title = ""
         }
         let signature = "\(paused)|\(hasUpdate)|\(title)|\(tooltip)"
@@ -441,6 +466,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         MixerModel.shared.setPanelVisible(true)
         popover.appearance = themeAppearance
         popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        // Opening the menu makes Kinara active, which lifts its windows too;
+        // remember who had focus so closing the menu can give it back.
+        let front = NSWorkspace.shared.frontmostApplication
+        appBeforePopover = front?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : front
         WindowFocusCoordinator.activateApplication()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         if let window = popover.contentViewController?.view.window { focus.show(window) }
@@ -465,13 +494,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
 
     func popoverShouldClose(_ popover: NSPopover) -> Bool { !dismissal.isTrackingMenu }
 
-    private func closePopover() {
+    private func closePopover(handingFocusBack: Bool = true) {
         dismissal.stop()
         guard popover?.isShown == true else { return }
         focus.cancel()
         // Finish closing before another window gets focus.
         popover?.animates = false
         popover?.close()
+        let previous = appBeforePopover
+        appBeforePopover = nil
+        guard handingFocusBack, let previous else { return }
+        // A click into one of Kinara's own windows goes there on purpose.
+        if let event = NSApp.currentEvent, [.leftMouseDown, .rightMouseDown, .otherMouseDown].contains(event.type),
+           let window = event.window, managedWindows.contains(where: { $0 === window }) { return }
+        // A click into another app activates that app; give that a moment to
+        // land. Only if Kinara is still in front does the app that had focus
+        // get it back, above any Kinara window the menu lifted.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            guard NSApp.isActive, self?.popover?.isShown != true, !previous.isTerminated,
+                  NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier else { return }
+            previous.activate(options: [])
+        }
+    }
+
+    /// Once its last window closes, Kinara has nowhere to keep focus: hiding
+    /// hands it to the app behind instead of leaving keys going nowhere.
+    private func handFocusBackIfIdle() {
+        guard NSApp.isActive, popover?.isShown != true,
+              !managedWindows.contains(where: { $0.isVisible && !$0.isMiniaturized }) else { return }
+        NSApp.hide(nil)
     }
 
     func popoverDidClose(_ notification: Notification) {
@@ -489,7 +540,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     func windowWillClose(_ notification: Notification) {
         guard let closingWindow = notification.object as? NSWindow,
               managedWindows.contains(where: { $0 === closingWindow }) else { return }
-        defer { dockPresence.windowWillClose(closingWindow) }
+        defer {
+            dockPresence.windowWillClose(closingWindow)
+            // After the close and any window opening in its place (welcome → controls).
+            DispatchQueue.main.async { [weak self] in self?.handFocusBackIfIdle() }
+        }
         if let window = notification.object as? NSWindow, window === updatesWindow {
             window.contentViewController = nil
             updatesWindow = nil
@@ -576,6 +631,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        KinaraLog.info(.app, "Quitting")
         // Never leave a display dimmed or an app's audio rerouted after quitting.
         GammaDimmer.shared.restoreAll()
         MixerModel.shared.shutdown()

@@ -33,6 +33,7 @@ jobs:
           bash scripts/test-palm-rejection.sh
           bash scripts/test-settings.sh
           bash scripts/test-haptics.sh
+          bash scripts/test-edge-light.sh
           bash scripts/test-updates.sh
           bash scripts/test-update-signing.sh
           bash scripts/test-presentation.sh

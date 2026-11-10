@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { getReleaseDownload } from "../release.mjs";
 
 const url =
-  "https://github.com/0x1p0/sway-application/releases/download/v1.0.0/Sway-1.0.0-macos-universal.dmg";
+  "https://github.com/0x1p0/sway-application/releases/download/v1.0.0/Kinara-1.0.0-macos-universal.dmg";
 const release = {
   tag_name: "v1.0.0",
   assets: [
-    { name: "Sway-1.0.0-macos-universal.dmg", browser_download_url: url },
+    { name: "Kinara-1.0.0-macos-universal.dmg", browser_download_url: url },
   ],
 };
 test("accepts the exact stable universal DMG", () =>

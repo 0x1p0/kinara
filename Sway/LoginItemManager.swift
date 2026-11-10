@@ -15,11 +15,11 @@ final class LoginItemManager: ObservableObject {
         status = SMAppService.mainApp.status
         switch status {
         case .enabled:
-            statusMessage = "Sway opens when you log in."
+            statusMessage = "Kinara opens when you log in."
         case .requiresApproval:
-            statusMessage = "Allow Sway in System Settings → General → Login Items."
+            statusMessage = "Allow Kinara in System Settings → General → Login Items."
         case .notFound:
-            statusMessage = "Move Sway to Applications, then enable launch at login."
+            statusMessage = "Move Kinara to Applications, then enable launch at login."
         case .notRegistered:
             statusMessage = "Launch at login is off."
         @unknown default:

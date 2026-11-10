@@ -8,14 +8,14 @@
     <key>com.apple.security.cs.disable-library-validation</key>
     <true/>
     <!-- Now Playing reads the current track from Music or Spotify, and seeks
-         within it, through Apple Events. macOS asks once per player; Sway
+         within it, through Apple Events. macOS asks once per player; Kinara
          never addresses an app that is not already running. -->
     <key>com.apple.security.automation.apple-events</key>
     <true/>
     <!-- App volume reads the front app's sound through a Core Audio process
          tap and plays it back at your level. Hardened Runtime gates Core
          Audio input on this entitlement; macOS still asks for System Audio
-         Recording permission. Sway never records, saves, or sends audio. -->
+         Recording permission. Kinara never records, saves, or sends audio. -->
     <key>com.apple.security.device.audio-input</key>
     <true/>
 </dict>

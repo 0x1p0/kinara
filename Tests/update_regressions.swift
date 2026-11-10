@@ -44,7 +44,7 @@ enum UpdateRegressionTests {
     }
     private static func release(_ tag: String = "v1.0.5", url: String? = nil, draft: Bool = false, prerelease: Bool = false) -> Data {
         try! JSONSerialization.data(withJSONObject: [
-            "tag_name": tag, "html_url": url ?? "https://github.com/0x1p0/sway-application/releases/tag/\(tag)",
+            "tag_name": tag, "html_url": url ?? "https://github.com/0x1p0/kinara/releases/tag/\(tag)",
             "draft": draft, "prerelease": prerelease
         ])
     }
@@ -81,10 +81,10 @@ enum UpdateRegressionTests {
         let request = ReleaseProtocol.requests.last!
         expect(request.url == UpdateChecker.endpoint, "correct public GitHub feed")
         expect(request.value(forHTTPHeaderField: "Authorization") == nil, "no token or account credential")
-        expect(request.value(forHTTPHeaderField: "User-Agent") == "Sway/1.0.4", "versioned user agent")
+        expect(request.value(forHTTPHeaderField: "User-Agent") == "Kinara/1.0.4", "versioned user agent")
         expect(request.value(forHTTPHeaderField: "X-GitHub-Api-Version") == "2022-11-28", "API contract is pinned")
         updates.openReleasePage()
-        expect(opened.last?.path == "/0x1p0/sway-application/releases/tag/v1.0.5", "opens validated release, never installs code")
+        expect(opened.last?.path == "/0x1p0/kinara/releases/tag/v1.0.5", "opens validated release, never installs code")
         let count = ReleaseProtocol.requests.count
         updates.checkIfDue()
         expect(ReleaseProtocol.requests.count == count, "no request before tomorrow")
@@ -100,12 +100,12 @@ enum UpdateRegressionTests {
         for (data, status) in [
             (release(draft: true), 200), (release(prerelease: true), 200),
             (release("v1.0.5-beta"), 200), (Data("bad json".utf8), 200),
-            (release(url: "http://github.com/0x1p0/sway-application/releases/tag/v1.0.5"), 200),
-            (release(url: "https://example.com/0x1p0/sway-application/releases/tag/v1.0.5"), 200),
+            (release(url: "http://github.com/0x1p0/kinara/releases/tag/v1.0.5"), 200),
+            (release(url: "https://example.com/0x1p0/kinara/releases/tag/v1.0.5"), 200),
             (release(url: "https://github.com/another/repo/releases/tag/v1.0.5"), 200),
-            (release(url: "https://github.com/0x1p0/sway-application/releases/tag/v1.0.6"), 200),
-            (release(url: "https://name@github.com/0x1p0/sway-application/releases/tag/v1.0.5"), 200),
-            (release(url: "https://github.com/0x1p0/sway-application/releases/tag/v1.0.5?redirect=bad"), 200),
+            (release(url: "https://github.com/0x1p0/kinara/releases/tag/v1.0.6"), 200),
+            (release(url: "https://name@github.com/0x1p0/kinara/releases/tag/v1.0.5"), 200),
+            (release(url: "https://github.com/0x1p0/kinara/releases/tag/v1.0.5?redirect=bad"), 200),
             (release(), 404), (release(), 403), (release(), 429), (release(), 500)
         ] {
             ReleaseProtocol.prepare(data: data, status: status)

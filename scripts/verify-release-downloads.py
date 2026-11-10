@@ -51,8 +51,8 @@ def verify(directory, signed_zip_digest):
     if not re.fullmatch(r"[0-9a-f]{64}", signed_zip_digest):
         raise ValueError("Invalid signer-provided digest")
     version = plistlib.loads((ROOT / "Sway/Info.plist").read_bytes())["CFBundleShortVersionString"]
-    archive = directory / f"Sway-{version}-macos-universal.zip"
-    dmg = directory / f"Sway-{version}-macos-universal.dmg"
+    archive = directory / f"Kinara-{version}-macos-universal.zip"
+    dmg = directory / f"Kinara-{version}-macos-universal.dmg"
     if set(p.name for p in directory.iterdir()) != {archive.name, dmg.name, "SHA256SUMS.txt"}:
         raise ValueError("Unexpected release files")
     for path in directory.iterdir():
@@ -70,21 +70,21 @@ def verify(directory, signed_zip_digest):
         subprocess.run(["/usr/bin/hdiutil", "attach", str(dmg), "-readonly", "-nobrowse", "-noautoopen",
                         "-mountpoint", str(mount), "-quiet"], check=True)
         try:
-            allowed = {"Sway.app", "Applications", "First Launch.txt", ".background.tiff", ".VolumeIcon.icns", ".DS_Store", ".fseventsd", ".Trashes"}
+            allowed = {"Kinara.app", "Applications", "First Launch.txt", ".background.tiff", ".VolumeIcon.icns", ".DS_Store", ".fseventsd", ".Trashes"}
             if set(p.name for p in mount.iterdir()) - allowed:
                 raise ValueError("Unexpected installer contents")
             for name in (".background.tiff", ".VolumeIcon.icns", ".DS_Store"):
                 item = mount / name
                 if item.is_symlink() or not item.is_file() or item.stat().st_size > 67_108_864:
                     raise ValueError("Invalid installer metadata")
-            if (mount / "Sway.app").is_symlink() or manifest(mount / "Sway.app") != expected:
+            if (mount / "Kinara.app").is_symlink() or manifest(mount / "Kinara.app") != expected:
                 raise ValueError("DMG app differs from the app signer's ZIP")
             if not (mount / "Applications").is_symlink() or os.readlink(mount / "Applications") != "/Applications":
                 raise ValueError("Invalid Applications shortcut")
             instructions = mount / "First Launch.txt"
             if instructions.is_symlink() or instructions.read_bytes() != (ROOT / "releases/INSTALL.txt").read_bytes():
                 raise ValueError("Installer instructions differ from approved source")
-            subprocess.run([sys.executable, str(ROOT / "scripts/app-signing.py"), "verify", str(mount / "Sway.app")], check=True)
+            subprocess.run([sys.executable, str(ROOT / "scripts/app-signing.py"), "verify", str(mount / "Kinara.app")], check=True)
         finally:
             subprocess.run(["/usr/bin/hdiutil", "detach", str(mount), "-quiet"], check=True)
     print("ZIP digest and complete DMG app match the isolated app signer. No downloaded code was executed.")

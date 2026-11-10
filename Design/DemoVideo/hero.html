@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Kinara — Hero sequence</title>
+<script type="importmap">
+  { "imports": { "three": "/node_modules/three/build/three.module.js", "three/addons/": "/node_modules/three/examples/jsm/" } }
+</script>
+<style>
+  html, body { margin: 0; background: #000; overflow: hidden; }
+  #gl, #out { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; display: block; }
+  body.scrub { display: grid; place-items: center; height: 100vh; }
+  body.scrub #gl { position: relative; transform-origin: 50% 50%; }
+  /* Fades the outermost pixels to pure black so every frame's border is
+     exactly #000 and the sequence melts into a black page. The scene is
+     already near-black there; only the edge is guaranteed. */
+  #edge {
+    position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; pointer-events: none;
+    --fade: #000 0px, rgba(0,0,0,0.92) 6px, rgba(0,0,0,0.7) 14px, rgba(0,0,0,0.4) 24px, rgba(0,0,0,0.16) 36px, rgba(0,0,0,0.04) 46px, rgba(0,0,0,0) 54px;
+    background: linear-gradient(to bottom, var(--fade)), linear-gradient(to top, var(--fade)), linear-gradient(to right, var(--fade)), linear-gradient(to left, var(--fade));
+  }
+  body.scrub #edge, body.scrub #out { display: none; }
+  #scrubber { position: fixed; left: 24px; right: 24px; bottom: 16px; display: flex; gap: 12px; align-items: center; color: #aaa; font: 13px ui-monospace, Menlo, monospace; }
+  #scrubber input { flex: 1; }
+</style>
+</head>
+<body>
+  <canvas id="gl" width="1920" height="1080"></canvas>
+  <!-- the supersampled frame (src/hero.js averages several GL renders into it) -->
+  <canvas id="out" width="1920" height="1080"></canvas>
+  <div id="edge"></div>
+  <script type="module" src="/src/hero.js"></script>
+</body>
+</html>

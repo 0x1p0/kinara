@@ -1,83 +1,63 @@
 import AppKit
 import SwiftUI
 
+/// Six places, each a plain noun: what you'd look for, not how it's built.
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case overview, gestures, taps, profiles, protection, levels, mixer, feedback, appearance, general, updates, about
+    case home, edges, feel, sound, apps, general
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .overview: return "Overview"
-        case .gestures: return "Gestures"
-        case .taps: return "Taps & corners"
-        case .profiles: return "Profiles"
-        case .protection: return "Palm protection"
-        case .levels: return "Volume & brightness"
-        case .mixer: return "Mixer"
-        case .feedback: return "Haptics"
-        case .appearance: return "Appearance"
+        case .home: return "Home"
+        case .edges: return "Edges & corners"
+        case .feel: return "Feel"
+        case .sound: return "Sound & display"
+        case .apps: return "Apps"
         case .general: return "General"
-        case .updates: return "Software updates"
-        case .about: return "About & help"
         }
     }
     var icon: String {
         switch self {
-        case .overview: return "square.grid.2x2"
-        case .gestures: return "hand.draw"
-        case .taps: return "hand.tap"
-        case .profiles: return "square.stack"
-        case .protection: return "hand.raised"
-        case .levels: return "slider.horizontal.3"
-        case .mixer: return "slider.vertical.3"
-        case .feedback: return "waveform.path"
-        case .appearance: return "paintbrush"
-        case .general: return "gearshape"
-        case .updates: return "arrow.down.circle"
-        case .about: return "questionmark.circle"
+        case .home: return "house.fill"
+        case .edges: return "hand.tap.fill"
+        case .feel: return "waveform"
+        case .sound: return "speaker.wave.2.fill"
+        case .apps: return "square.stack.fill"
+        case .general: return "gearshape.fill"
         }
     }
+    /// The sidebar tile's gradient, top to bottom.
+    var colors: (top: Color, bottom: Color) {
+        switch self {
+        case .home: return (Color(red: 0.36, green: 0.64, blue: 1), Color(red: 0.04, green: 0.45, blue: 0.98))
+        case .edges: return (Color(red: 0.74, green: 0.55, blue: 1), Color(red: 0.53, green: 0.31, blue: 0.93))
+        case .feel: return (Color(red: 1, green: 0.72, blue: 0.27), Color(red: 1, green: 0.53, blue: 0.02))
+        case .sound: return (Color(red: 1, green: 0.45, blue: 0.55), Color(red: 0.96, green: 0.19, blue: 0.34))
+        case .apps: return (Color(red: 0.38, green: 0.82, blue: 0.96), Color(red: 0.11, green: 0.62, blue: 0.87))
+        case .general: return (Color(white: 0.68), Color(white: 0.52))
+        }
+    }
+    /// Pages with options most people never need keep them in a sheet.
+    var hasAdvanced: Bool { [.edges, .feel, .sound, .general].contains(self) }
     var detail: String {
         switch self {
-        case .overview: return "Everything Sway is doing, at a glance."
-        case .gestures: return "Assign edges, layers, and how swipes feel."
-        case .taps: return "Double-tap or tap-and-hold edges and corners."
-        case .profiles: return "Change edges for specific apps or when docked."
-        case .protection: return "Tune intent checks and try gestures safely."
-        case .levels: return "Limits, favorite levels, devices, and displays."
-        case .mixer: return "Every app’s volume, solo, call ducking, and speakers."
-        case .feedback: return "Choose the taps you feel on your trackpad."
-        case .appearance: return "Customize the menu bar and on-screen indicator."
-        case .general: return "Startup, shortcuts, automation, and your settings file."
-        case .updates: return "Check, download, and install signed updates."
-        case .about: return "Setup help, version information, and reset."
+        case .home: return "What Kinara is doing, at a glance."
+        case .edges: return "Choose what each edge and corner does."
+        case .feel: return "How gestures feel, and what you see when you use them."
+        case .sound: return "Limits for volume and brightness, and a fader for every app."
+        case .apps: return "Different edges in different apps, or when you’re docked."
+        case .general: return "Startup, look, clipboard, shortcuts, updates and help."
         }
     }
     private var keywords: String {
         switch self {
-        case .gestures: return "preset finger fingers one two edge zones width narrow sensitivity direction top bottom left right swipe reverse action volume brightness microphone keyboard backlight media playback track tab navigation zoom window desktop workspace shortcut screenshot emoji spotlight mute precision fine scrub speed acceleration flick layer option modifier tile shortcuts night shift true tone dim seek output app volume map"
-        case .overview: return "overview home status summary quick toggle"
-        case .taps: return "tap double-tap hold tap-and-hold corner corners hot click paste"
-        case .profiles: return "app apps profile profiles per-app docked dock external monitor display override"
-        case .protection: return "palm rejection strict balanced typing cooldown activation distance test diagnostics permission accessibility"
-        case .levels: return "volume brightness audio display minimum maximum limit mute zero favorite notch device airpods headphones external monitor ddc pointer extra dim"
-        case .mixer: return "mixer app apps per-app volume mute solo call calls ducking duck lower meeting zoom facetime speakers output airpods headphones route boost faders"
-        case .feedback: return "haptic feedback soft standard crisp tap vibration strength spacing steps preview notch notches detent sound click"
-        case .appearance: return "theme dark light system liquid glass indicator osd pill vertical horizontal position width menu bar icon follow finger edge now playing artwork scroll"
-        case .general: return "login launch startup dock spotlight shortcut hotkey pause exclude excluded apps cheat sheet edge map url automation export import backup settings file"
-        case .updates: return "github update release install download version automatic daily"
-        case .about: return "help welcome setup guide accessibility permission reset version"
+        case .home: return "overview home status summary quick toggle"
+        case .edges: return "edge edges corner corners tap double-tap hold tap-and-hold swipe slide action actions zone width size preset finger fingers one two top bottom left right layer option modifier shortcut custom palm rejection strict balanced typing cooldown activation distance test safely paste mission control"
+        case .feel: return "haptic haptics feedback soft standard crisp strongest tap vibration strength spacing steps notch notches detent sound click indicator osd pill vertical follow finger position width light edge corner glow colour color aurora sunset ember mint mono ambient screensaver fine control precision speed curve acceleration sensitivity reverse direction pointer hold now playing artwork"
+        case .sound: return "volume brightness audio display limit limits minimum maximum mute zero favorite device output airpods headphones external monitor ddc pointer extra dim mixer app apps per-app solo call calls ducking duck meeting speakers boost faders"
+        case .apps: return "app apps profile profiles per-app docked dock external monitor override exclude excluded pause"
+        case .general: return "login launch startup dock command-tab spotlight theme dark light system menu bar icon scroll clipboard history copies images pictures screenshots search shortcut hotkey pause edge map cheat sheet update updates install download version automatic github links url automation export import backup settings file help guide getting started diagnostic log reset about"
         }
     }
-    /// Sidebar grouping, in display order.
-    var group: String {
-        switch self {
-        case .overview: return ""
-        case .gestures, .taps, .profiles, .protection: return "Edges"
-        case .levels, .mixer, .feedback, .appearance: return "Feel & look"
-        case .general, .updates, .about: return "Sway"
-        }
-    }
-    static let groups = ["", "Edges", "Feel & look", "Sway"]
 
     func matches(_ query: String) -> Bool {
         let haystack = "\(title) \(detail) \(keywords)"
@@ -109,7 +89,7 @@ enum SwayGlyph {
             return true
         }
         image.isTemplate = true
-        image.accessibilityDescription = badge ? "Sway — update available" : "Sway"
+        image.accessibilityDescription = badge ? "Kinara — update available" : "Kinara"
         return image
     }
 }
@@ -248,6 +228,182 @@ final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
     }
 }
 
+/// How a RevealDriver reaches the menu's popover. While it drives, the
+/// popover's own sizing waits, so one frame never gets two heights.
+enum PopoverSizing {
+    static var isDriven = false
+    static var currentHeight: (() -> CGFloat?)?
+    static var setHeight: ((CGFloat) -> Void)?
+    /// Hands sizing back to the content once a reveal ends.
+    static var settle: (() -> Void)?
+}
+
+/// Unfolds content one display frame at a time. Each frame sets the content's
+/// progress and the popover's height together, on one fixed-length curve, so
+/// the glass and the content can't drift apart, overshoot, or crawl in at
+/// the end the way a spring's tail does in whole points.
+final class RevealDriver: NSObject, ObservableObject {
+    @Published private(set) var progress: CGFloat
+    /// The revealed content's full height, measured by its view.
+    var contentHeight: CGFloat = 0
+    private var from: CGFloat = 0
+    private var to: CGFloat = 0
+    private var start: CFTimeInterval?
+    private var duration: CFTimeInterval = 0
+    private var baseHeight: CGFloat = 0
+    private var running = false
+    /// Kept for the driver's life and only paused in between, so a reveal
+    /// starts on the very next frame instead of waiting for a new link.
+    private var link: AnyObject?
+
+    init(progress: CGFloat) { self.progress = progress }
+
+    deinit {
+        if #available(macOS 14, *), let link = link as? CADisplayLink { link.invalidate() }
+        (link as? Timer)?.invalidate()
+    }
+
+    /// A critically damped spring from rest, scaled to land exactly on time:
+    /// it eases out of a standstill and settles softly, with no tail to crawl.
+    static func curve(_ t: Double) -> Double {
+        let stiffness = 7.4
+        func spring(_ s: Double) -> Double { 1 - (1 + stiffness * s) * exp(-stiffness * s) }
+        return min(1, spring(max(0, t)) / spring(1))
+    }
+
+    func animate(to target: CGFloat, duration: CFTimeInterval) {
+        from = progress
+        to = target
+        self.duration = duration
+        // The clock starts on the first frame drawn, so a busy first moment
+        // delays the motion rather than skipping part of it.
+        start = nil
+        // The popover's height without the revealed part; each frame adds back what shows.
+        if let height = PopoverSizing.currentHeight?(), contentHeight > 0 {
+            baseHeight = height - contentHeight * progress
+            PopoverSizing.isDriven = true
+        }
+        running = true
+        runLink()
+    }
+
+    func set(_ value: CGFloat) {
+        running = false
+        pauseLink()
+        finish()
+        progress = value
+    }
+
+    fileprivate func step() {
+        guard running else { return }
+        let now = CACurrentMediaTime()
+        let startedAt = start ?? now
+        start = startedAt
+        let t = duration > 0 ? min(1, (now - startedAt) / duration) : 1
+        progress = from + (to - from) * CGFloat(Self.curve(t))
+        guard t >= 1 else {
+            if PopoverSizing.isDriven { PopoverSizing.setHeight?(baseHeight + contentHeight * progress) }
+            return
+        }
+        // The last frame in whole points, as the popover sizes itself, so handing back changes nothing.
+        if PopoverSizing.isDriven { PopoverSizing.setHeight?(ceil(baseHeight + contentHeight * to)) }
+        running = false
+        pauseLink()
+        finish()
+    }
+
+    private func runLink() {
+        if #available(macOS 14, *) {
+            if let link = link as? CADisplayLink {
+                link.isPaused = false
+                return
+            }
+            if let screen = NSScreen.main {
+                let link = screen.displayLink(target: RevealFrameTarget(self), selector: #selector(RevealFrameTarget.frame(_:)))
+                link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+                link.add(to: .main, forMode: .common)
+                self.link = link
+                return
+            }
+        }
+        guard link == nil else { return }
+        let timer = Timer(timeInterval: 1.0 / 120, target: RevealFrameTarget(self), selector: #selector(RevealFrameTarget.tick(_:)),
+                          userInfo: nil, repeats: true)
+        RunLoop.main.add(timer, forMode: .common)
+        link = timer
+    }
+
+    private func pauseLink() {
+        if #available(macOS 14, *), let link = link as? CADisplayLink { link.isPaused = true }
+        if let timer = link as? Timer {
+            timer.invalidate()
+            link = nil
+        }
+    }
+
+    private func finish() {
+        guard PopoverSizing.isDriven else { return }
+        PopoverSizing.isDriven = false
+        PopoverSizing.settle?()
+    }
+}
+
+/// The display link holds its target strongly; this keeps that from holding the driver.
+private final class RevealFrameTarget: NSObject {
+    private weak var driver: RevealDriver?
+    init(_ driver: RevealDriver) { self.driver = driver }
+    @available(macOS 14, *)
+    @objc func frame(_ link: CADisplayLink) { driver?.step() }
+    @objc func tick(_ timer: Timer) { driver?.step() }
+}
+
+/// Shows the top `progress` of its content, laid out at full height, so the
+/// height can change every frame and the popover grow with it.
+struct RevealLayout: Layout {
+    var progress: CGFloat
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let content = subviews.first else { return .zero }
+        let size = content.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil))
+        return CGSize(width: size.width, height: size.height * max(0, min(1, progress)))
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let content = subviews.first else { return }
+        let size = content.sizeThatFits(ProposedViewSize(width: bounds.width, height: nil))
+        content.place(at: bounds.origin, anchor: .topLeading, proposal: ProposedViewSize(width: bounds.width, height: size.height))
+    }
+}
+
+struct RevealModifier: ViewModifier {
+    var progress: CGFloat
+    func body(content: Content) -> some View {
+        RevealLayout(progress: progress) { content }
+            .clipped()
+            .opacity(Double(max(0, min(1, progress))))
+    }
+}
+
+private struct RevealHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+/// Content unfolded by a RevealDriver. Only this view follows the driver's
+/// frames, so the rest of the menu isn't rebuilt sixty times a second.
+struct RevealContainer<Content: View>: View {
+    @ObservedObject var driver: RevealDriver
+    let content: Content
+    var body: some View {
+        content
+            .background(GeometryReader { proxy in Color.clear.preference(key: RevealHeightKey.self, value: proxy.size.height) })
+            .modifier(RevealModifier(progress: driver.progress))
+            .onPreferenceChange(RevealHeightKey.self) { driver.contentHeight = $0 }
+    }
+}
+
+extension View {
+    func revealed(by driver: RevealDriver) -> some View { RevealContainer(driver: driver, content: self) }
+}
+
 /// NSHostingController creates its own hosting view during initialization;
 /// overriding loadView does not reliably replace that view. Own the host here.
 final class FirstClickHostingController<Content: View>: NSViewController {
@@ -278,6 +434,23 @@ final class FirstClickHostingController<Content: View>: NSViewController {
         sizingPopover = popover
         popover.contentViewController = self
         popover.contentSize = preferredContentSize
+        PopoverSizing.currentHeight = { [weak self] in self?.sizingPopover?.contentSize.height }
+        PopoverSizing.setHeight = { [weak self] height in self?.drive(height: height) }
+        PopoverSizing.settle = { [weak self] in self?.scheduleContentSizeUpdate() }
+    }
+
+    /// One frame of a RevealDriver: the popover's height, in device pixels,
+    /// with no animation of the popover's own.
+    private func drive(height: CGFloat) {
+        guard let popover = sizingPopover, popover.contentViewController === self, height.isFinite, height > 0 else { return }
+        let scale = view.window?.backingScaleFactor ?? 2
+        let size = NSSize(width: popover.contentSize.width, height: (height * scale).rounded() / scale)
+        guard popover.contentSize != size else { return }
+        let animates = popover.animates
+        popover.animates = false
+        popover.contentSize = size
+        popover.animates = animates
+        preferredContentSize = size
     }
 
     private func scheduleContentSizeUpdate() {
@@ -288,6 +461,8 @@ final class FirstClickHostingController<Content: View>: NSViewController {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.sizeUpdatePending = false
+            // A RevealDriver is sizing the popover this frame; it settles up when done.
+            if PopoverSizing.isDriven && self.sizingPopover != nil { return }
             // fittingSize can reflect the container's previous constraints.
             // intrinsicContentSize is SwiftUI's new ideal content size.
             let measured = self.host.intrinsicContentSize

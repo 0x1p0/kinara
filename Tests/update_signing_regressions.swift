@@ -11,7 +11,7 @@ struct UpdateSigningRegressions {
         let signature = try key.signature(for: archive).base64EncodedString()
         let item = """
         <item><sparkle:version>7</sparkle:version><sparkle:shortVersionString>1.0.6</sparkle:shortVersionString>
-        <enclosure url="https://github.com/0x1p0/sway-application/releases/download/v1.0.6/Sway-1.0.6-macos-universal.zip" length="\(archive.count)" sparkle:edSignature="\(signature)" type="application/octet-stream"/></item>
+        <enclosure url="https://github.com/0x1p0/kinara/releases/download/v1.0.6/Kinara-1.0.6-macos-universal.zip" length="\(archive.count)" sparkle:edSignature="\(signature)" type="application/octet-stream"/></item>
         """
         func xml(_ entries: String) -> Data {
             Data("<rss xmlns:sparkle=\"http://www.andymatuschak.org/xml-namespaces/sparkle\"><channel>\(entries)</channel></rss>\n".utf8)

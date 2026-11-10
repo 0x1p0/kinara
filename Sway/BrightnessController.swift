@@ -35,6 +35,7 @@ final class BrightnessController {
     static let shared = BrightnessController(backend: SystemBrightnessHardware())
     private let backend: BrightnessHardware
     private let queue = DispatchQueue(label: "Sway.Display", qos: .userInteractive)
+    static let minimumWriteInterval: TimeInterval = 1.0 / 60
     private let lock = NSLock()
 
     private struct State: Equatable {
@@ -197,8 +198,9 @@ final class BrightnessController {
         let again = pending != nil
         workerScheduled = again
         lock.unlock()
-        // Yield between writes so route notifications and reads cannot starve.
-        if again { queue.async { [weak self] in self?.processNext() } }
+        // Pace writes during long gestures so a slide never floods the system with
+        // display changes (newest value wins, the last one always lands).
+        if again { queue.asyncAfter(deadline: .now() + Self.minimumWriteInterval) { [weak self] in self?.processNext() } }
     }
 
     private func write(_ value: Float, target: String, isCurrent: () -> Bool) -> BrightnessRequestResult {

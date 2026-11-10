@@ -18,6 +18,7 @@ final class TrackpadMonitor: ObservableObject {
     /// Exists only while a one-finger gesture holds the pointer, so ordinary
     /// mouse movement never wakes Sway.
     private var freezeTap: CFMachPort?
+    private var warpScheduled = false
     private var freezeSource: CFRunLoopSource?
     /// The clipboard picker holds the pointer while one finger scrolls it.
     private var pointerHeldForPicker = false
@@ -34,6 +35,9 @@ final class TrackpadMonitor: ObservableObject {
     private var lastFrameTime = 0.0
     private var lastContactCount = 0
     private var cursorFreezeActive = false
+    /// Where the pointer was when a finger landed on an edge, before the slide could move it.
+    private var captureCursor: CGPoint?
+    private var wasCapturing = false
     private var frozenCursorPosition = CGPoint.zero
     private var scrollCapture = GestureScrollCapture()
     private var inputWatchdog: Timer?
@@ -41,6 +45,13 @@ final class TrackpadMonitor: ObservableObject {
     private var cachedTapConfiguration = TapConfiguration()
     private var configurationIsDirty = true
     private var settingsObserver: AnyCancellable?
+    private var appObserver: AnyCancellable?
+    /// Accessibility can be taken away while Kinara runs. These notice it within
+    /// about a second and take every tap down before input can back up behind it.
+    private var accessObserver: NSObjectProtocol?
+    private var accessTimer: Timer?
+    private var tapRecovery = TapRecovery()
+    private var tapRestart: DispatchWorkItem?
     private var brightnessPreparationGeneration: UInt64 = 0
     private var brightnessPreparationStarted = false
     private var brightnessBaseline: (value: Float, target: String)?
@@ -49,6 +60,24 @@ final class TrackpadMonitor: ObservableObject {
     /// One binding per touch sequence, resolved from the region, finger
     /// count, ⌥, frontmost app and docking state at the moment it began.
     private var gestureBinding: (region: GestureRegion, fingers: Int, binding: EdgeBinding, available: Bool)?
+    /// Where the finger was for the action being performed, so a message from
+    /// it can appear there in the Follow finger style.
+    private var messagePlacement: OSDPlacement?
+    /// A finger resting on a tap spot, to preview what its taps do.
+    private var rest = TapRestDetector()
+    /// The last tap action, so repeating it soon after can undo it.
+    private var lastTapAction: (slot: String, action: ZoneAction, time: Double)?
+    /// A tap on a level or a stepper arms it on the side edge it belongs to:
+    /// the next slide there adjusts it, and then the edge is itself again.
+    /// The rest of the trackpad stays as it is.
+    private var armedSlide: (binding: EdgeBinding, sides: Set<GestureRegion>, sliding: Bool)?
+    private var armTimeout: DispatchWorkItem?
+    /// How long an armed tap waits for its slide.
+    static let armWindow = 4.0
+    /// After an armed slide lifts, another this soon keeps adjusting, as
+    /// repeated swipes on an edge would.
+    static let armGrace = 1.0
+    static let undoWindow = 2.0
     private var fineEngaged = false
     private var levelChanged = false
     private var claimedButtons = Set<Int64>()
@@ -67,6 +96,92 @@ final class TrackpadMonitor: ObservableObject {
         settingsObserver = settings.objectWillChange.sink { [weak self] in
             self?.configurationIsDirty = true
         }
+        // An app profile can choose its own finger count.
+        appObserver = ExcludedAppsManager.shared.$currentAppBundleID.removeDuplicates().sink { [weak self] _ in
+            self?.configurationIsDirty = true
+        }
+        // The watchdog switched the taps off while the main thread was stuck: start clean.
+        MainThreadWatchdog.shared.onRecovered = { [weak self] in
+            guard let self, self.isRunning else { return }
+            self.restart(reason: "main thread recovered")
+        }
+        // macOS posts this whenever the Accessibility list changes, granted or taken
+        // away; the answer can lag the notice, so ask again a moment later too.
+        accessObserver = DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.apple.accessibility.api"), object: nil, queue: .main) { [weak self] _ in
+            KinaraLog.info(.access, "macOS says the Accessibility list changed")
+            // macOS can take several seconds to apply a change, so keep asking a little longer.
+            for delay in [0.0, 0.3, 1.0, 2.5, 5, 10] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { self?.checkAccess() }
+            }
+        }
+    }
+
+    /// Without Accessibility, nothing of Kinara's may stay in the input path,
+    /// and gestures stop: no taps, no touch reading, the pointer restored.
+    /// Whether macOS still lets Kinara filter input, asked fresh. On macOS 27,
+    /// AXIsProcessTrusted() kept answering yes for minutes after Kinara was
+    /// removed from the Accessibility list (Kinara.log, 2 Nov 2026), so this
+    /// also creates a tap like Kinara's own and throws it away: macOS refuses
+    /// that the moment access is gone. Never call it inside a tap callback.
+    static func accessIsLive() -> Bool {
+        guard AXIsProcessTrusted() else { return false }
+        let mask = CGEventMask(1 << CGEventType.otherMouseDown.rawValue)
+        guard let probe = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .tailAppendEventTap, options: .defaultTap,
+                                            eventsOfInterest: mask, callback: { _, _, event, _ in Unmanaged.passUnretained(event) },
+                                            userInfo: nil) else { return false }
+        CGEvent.tapEnable(tap: probe, enable: false)
+        CFMachPortInvalidate(probe)
+        return true
+    }
+
+    private var lastTrusted: Bool?
+    private func checkAccess() {
+        let trusted = Self.accessIsLive()
+        if trusted != lastTrusted {
+            KinaraLog.info(.access, "Accessibility \(trusted ? "granted" : "not granted") (running: \(isRunning), taps: \(eventTap != nil ? 1 : 0) + \(freezeTap != nil ? 1 : 0))")
+            lastTrusted = trusted
+        }
+        if !trusted && (isRunning || eventTap != nil || freezeTap != nil) { stopForMissingAccess() }
+        // Drives the menu and Settings, and restarts gestures once access is back.
+        ControlCenterModel.shared.refreshAccess()
+    }
+
+    private func stopForMissingAccess() {
+        // A picker holding the pointer lets go too.
+        TrackpadPickers.open?.cancel()
+        stop(reason: "Accessibility was taken away")
+        statusMessage = "Accessibility permission needed"
+    }
+
+    /// A tap was switched off by macOS. It stays off while Kinara checks, on the
+    /// next turn and outside the callback, whether access is really still there;
+    /// it comes back only if so, and only now and then. Otherwise Kinara steps
+    /// out of the input path and tries again later.
+    private func recoverTap(_ tap: CFMachPort?, _ type: CGEventType) {
+        let name = tap == freezeTap ? "Pointer" : "Input"
+        let kind = type == .tapDisabledByTimeout ? "timed out" : "was disabled by user input"
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let tap, tap == self.eventTap || tap == self.freezeTap else { return }
+            let trusted = Self.accessIsLive()
+            if self.tapRecovery.mayResume(trusted: trusted, at: ProcessInfo.processInfo.systemUptime) {
+                KinaraLog.warning(.taps, "\(name) tap \(kind); access confirmed, switched back on")
+                CGEvent.tapEnable(tap: tap, enable: true)
+                return
+            }
+            KinaraLog.fault(.taps, "\(name) tap \(kind); NOT switched back on (access \(trusted ? "still granted, but it keeps timing out" : "is gone"))")
+            if !trusted { self.checkAccess(); return }
+            // Trusted but timing out again and again: stand down, then come back.
+            self.stop(reason: "input tap kept timing out")
+            self.statusMessage = "Input monitoring paused for a moment"
+            self.tapRestart?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                guard let self, self.settings.isEnabled, AXIsProcessTrusted(), !self.isRunning else { return }
+                self.start()
+            }
+            self.tapRestart = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
+        }
     }
 
     func start() {
@@ -78,10 +193,12 @@ final class TrackpadMonitor: ObservableObject {
         if actions.contains(.microphoneLevel) || actions.contains(.microphoneMute) { VolumeController.microphone.refresh() }
         guard AXIsProcessTrusted() else {
             statusMessage = "Accessibility permission needed"
+            KinaraLog.warning(.monitor, "Not starting: Accessibility not granted")
             return
         }
         guard installEventTap() else {
             statusMessage = "Input monitoring could not start. Check Accessibility, then retry."
+            KinaraLog.fault(.monitor, "Not starting: the input tap could not be created")
             return
         }
         generation &+= 1
@@ -109,16 +226,32 @@ final class TrackpadMonitor: ObservableObject {
             removeEventTap()
             MTBridge_Stop()
             statusMessage = "No compatible trackpad found. Connect it, then retry."
+            KinaraLog.warning(.monitor, "Not starting: no compatible trackpad")
             return
         }
         isRunning = true
         statusMessage = "Ready for edge gestures"
+        KinaraLog.info(.monitor, "Running: \(deviceCount) trackpad(s), \(settings.minimumFingers) finger(s), cursor hold \(settings.cursorFreezeOnOneFinger ? "on" : "off"), haptics \(settings.hapticFeedback ? settings.hapticStyle.rawValue : "off")")
+        tapRecovery = TapRecovery()
+        // The safety net under the notification: a fresh check every two seconds, only while running.
+        let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in
+            guard let self, !Self.accessIsLive() else { return }
+            self.checkAccess()
+        }
+        timer.tolerance = 0.5
+        RunLoop.main.add(timer, forMode: .common)
+        accessTimer?.invalidate()
+        accessTimer = timer
     }
 
-    func restart() { stop(); start() }
+    func restart(reason: String = "restart") { stop(reason: reason); start() }
 
-    func stop() {
+    func stop(reason: String = "requested") {
+        if isRunning || eventTap != nil || freezeTap != nil { KinaraLog.info(.monitor, "Stopping: \(reason)") }
         isRunning = false
+        disarm()
+        accessTimer?.invalidate()
+        accessTimer = nil
         generation &+= 1
         MTBridge_Stop()
         trackpadFrames.clear()
@@ -141,6 +274,8 @@ final class TrackpadMonitor: ObservableObject {
     private func cancelCurrentGesture(reason: String) {
         let decision = recognizer.cancel(reason: reason)
         GestureTelemetry.shared.publish(decision, at: ProcessInfo.processInfo.systemUptime, force: true)
+        captureCursor = nil
+        wasCapturing = false
         finishAdjustment()
     }
 
@@ -156,7 +291,28 @@ final class TrackpadMonitor: ObservableObject {
 
     private var configuration: GestureConfiguration {
         if configurationIsDirty { rebuildConfigurations() }
-        return cachedConfiguration
+        return armedSlide == nil ? cachedConfiguration : armedConfiguration
+    }
+
+    /// While a tap's slide is armed, its side edge takes one finger or two,
+    /// even if that edge has nothing of its own. Nothing else changes.
+    private var armedConfiguration: GestureConfiguration {
+        var armed = cachedConfiguration
+        guard let sides = armedSlide?.sides else { return armed }
+        armed.enabledRegions.formUnion(sides)
+        armed.alternateRegions.formUnion(sides)
+        armed.fingerLayers = true
+        return armed
+    }
+
+    /// The side edge an armed tap borrows: its own side, or both for a tap on
+    /// the top or bottom edge.
+    static func armedSides(for region: TapRegion) -> Set<GestureRegion> {
+        switch region {
+        case .topLeftCorner, .bottomLeftCorner, .left: return [.left]
+        case .topRightCorner, .bottomRightCorner, .right: return [.right]
+        case .top, .bottom: return [.left, .right]
+        }
     }
 
     private var tapConfiguration: TapConfiguration {
@@ -166,13 +322,14 @@ final class TrackpadMonitor: ObservableObject {
 
     private func rebuildConfigurations() {
         var result = GestureConfiguration()
-        result.requiredFingers = settings.minimumFingers == 1 ? 1 : 2
+        result.requiredFingers = settings.requiredFingers(appBundleID: currentAppBundleID)
         result.leftWidth = settings.leftZoneWidth
         result.rightWidth = settings.rightZoneWidth
         result.topHeight = settings.topEdgeHeight
-        result.topEnabled = settings.topEdgeEnabled
+        // The top and bottom edges are one-finger gestures.
+        result.topEnabled = settings.topEdgeEnabled && result.requiredFingers == 1
         result.topHorizontal = settings.topEdgeSwipeDirection == "horizontal"
-        result.bottomEnabled = settings.bottomEdgeEnabled
+        result.bottomEnabled = settings.bottomEdgeEnabled && result.requiredFingers == 1
         result.bottomHeight = settings.bottomEdgeHeight
         result.strict = settings.palmRejectionMode == "strict"
         result.activationThreshold = settings.activationThreshold
@@ -200,6 +357,7 @@ final class TrackpadMonitor: ObservableObject {
         taps.typingCooldown = result.typingCooldown
         taps.slots = Set(EdgeSlot.allTaps.filter { settings.slotIsAssigned($0) })
         cachedTapConfiguration = taps
+        cachedConfiguration.tapGuard = taps
         configurationIsDirty = false
         // History exists only while something can use it.
         ClipboardHistory.shared.isEnabled = assignedActions.contains { $0.usesClipboardHistory }
@@ -221,6 +379,7 @@ final class TrackpadMonitor: ObservableObject {
     }
 
     private func binding(for decision: GestureDecision) -> (binding: EdgeBinding, available: Bool) {
+        if let armed = armedSlide, armed.sides.contains(decision.region) { return (armed.binding, isAvailable(armed.binding)) }
         let fingers = decision.fingers > 0 ? decision.fingers : configuration.requiredFingers
         if let cached = gestureBinding, cached.region == decision.region, cached.fingers == fingers {
             return (cached.binding, cached.available)
@@ -288,9 +447,8 @@ final class TrackpadMonitor: ObservableObject {
         lastFrameTime = timestamp
         lastContactCount = contacts.count
         if contacts.isEmpty { scrollCapture.touchesEnded() }
-        let picker = ClipboardPicker.shared
-        if picker.isOpen && picker.mode == .touch {
-            // While the picker waits, the trackpad only scrolls it.
+        if let picker = TrackpadPickers.open, picker.isTouchMode {
+            // While a picker waits, the trackpad only scrolls it.
             picker.handle(contacts: contacts, at: timestamp)
             if !contacts.isEmpty { taps.cancel() }
             return
@@ -313,8 +471,14 @@ final class TrackpadMonitor: ObservableObject {
             decision = recognizer.cancel(reason: "Normal scrolling started first. Lift your fingers before using an edge control.")
         }
         if ExcludedAppsManager.shared.activeAppIsExcluded && !contacts.isEmpty {
-            decision = recognizer.cancel(reason: "Sway is paused in this app.")
+            decision = recognizer.cancel(reason: "Kinara is paused in this app.")
         }
+        // Remember where the pointer was the moment a single finger lands on an edge. macOS
+        // moves the pointer while the slide is still being confirmed; acceptance puts it back.
+        let capturing = recognizer.isCapturing
+        if capturing && !wasCapturing { captureCursor = contacts.count == 1 ? CGEvent(source: nil)?.location : nil }
+        if !capturing { captureCursor = nil }
+        wasCapturing = capturing
         let telemetry = GestureTelemetry.shared
         if !telemetry.isTesting, recognizer.isCapturing {
             let resolved = binding(for: decision)
@@ -331,16 +495,33 @@ final class TrackpadMonitor: ObservableObject {
         }
         telemetry.publish(decision, at: timestamp)
         if contacts.isEmpty || decision.phase == .rejected || decision.ended {
+            EdgeGlow.shared.end()
             // The last legitimate request should settle after a normal lift.
             // Cancellation and rejected evidence discard queued hardware work.
             // A staggered two-finger release ends the gesture before the full lift.
             if decision.phase != .rejected, levelChanged, activeAction == .volume { VolumeFeedbackSound.play(setting: settings.volumeFeedbackSound) }
             finishAdjustment(cancelPending: decision.phase == .rejected)
+            // An armed tap's slide lifted: another one soon keeps adjusting;
+            // a pause hands every edge back.
+            if armedSlide?.sliding == true { waitForSlide(Self.armGrace) }
             return
         }
         guard decision.phase == .accepted else { return }
+        if !telemetry.isTesting {
+            let edge = decision.region == .left ? "left" : decision.region == .right ? "right" : decision.region == .bottom ? "bottom" : "top"
+            EdgeGlow.shared.update(edge: edge, along: decision.region.isSide ? decision.y : decision.x,
+                                   tint: self.binding(for: decision).binding.action.lightTint)
+        }
         if decision.justAccepted {
-            if !telemetry.isTesting { beginAdjustment(for: decision) }
+            if armedSlide != nil {
+                armedSlide?.sliding = true
+                armTimeout?.cancel()
+            }
+            if !telemetry.isTesting {
+                beginAdjustment(for: decision)
+                KinaraLog.info(.gesture, "Slide on \(decision.region.rawValue) with \(decision.fingers) finger(s): \(activeAction.rawValue)")
+                NotificationCenter.default.post(name: .kinaraGestureUsed, object: decision.region.rawValue)
+            }
             return
         }
         guard !telemetry.isTesting, activeValue != nil, decision.delta != 0 else { return }
@@ -354,14 +535,164 @@ final class TrackpadMonitor: ObservableObject {
             _ = taps.process(contacts: contacts, timestamp: timestamp, configuration: TapConfiguration())
             return
         }
-        guard let event = taps.process(contacts: contacts, timestamp: timestamp, configuration: tapConfiguration) else { return }
+        let pendingBefore = taps.pendingTap?.end
+        let event = taps.process(contacts: contacts, timestamp: timestamp, configuration: tapConfiguration)
         let telemetry = GestureTelemetry.shared
+        if !telemetry.isTesting { tapFeedback(contacts, at: timestamp, pendingBefore: pendingBefore, fired: event != nil) }
+        guard let event else { return }
         guard !telemetry.isTesting else { telemetry.publishTap(event, title: EdgeSlot.title(event.slot)); return }
+        // Another tap takes over from one that was waiting for its slide.
+        disarm()
         let binding = settings.binding(event.slot, appBundleID: currentAppBundleID, docked: isDocked)
-        guard binding.action.worksAsTap, binding.action != .disabled, isAvailable(binding),
-              let application = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
-        if perform(binding, increasing: true, tap: true, region: nil, application: application),
-           settings.hapticFeedback { HapticOutput.shared.play(settings.hapticStyle) }
+        guard binding.action != .disabled, isAvailable(binding),
+              NSWorkspace.shared.frontmostApplication?.processIdentifier != nil else { return }
+        if binding.action.slidesAfterTap {
+            arm(binding, region: event.region, slot: event.slot)
+            return
+        }
+        guard let application = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
+        let placement = Self.placement(for: event.region)
+        messagePlacement = placement
+        defer { messagePlacement = nil }
+        // After a page that slept through play, the next press opens its app instead.
+        let waking = binding.action == .playPause ? PlaybackHoldController.shared.appToWake.map { MixerModel.shared.displayName(forApp: $0) } : nil
+        // The same spot again soon after puts things back.
+        let undoing = waking == nil && (lastTapAction.map { $0.slot == event.slot && $0.action == binding.action && timestamp - $0.time <= Self.undoWindow } ?? false)
+        if undoing, binding.action.undoesWithCommandZ {
+            lastTapAction = nil
+            CornerBloom.shared.fire(event.region, title: "Undone", icon: "arrow.uturn.backward", detail: nil)
+            if EdgeActionController.send(.key(6, CGEventFlags.maskCommand.rawValue, global: false), expectedApplication: application) { tick(.single) }
+            return
+        }
+        // The light runs out from the spot, and the bloom names it (first, so a
+        // message the action reports lands in its pill).
+        CornerLight.shared.flash(event.region, strength: 1, spread: 1)
+        if let waking {
+            CornerBloom.shared.fire(event.region, title: "Opening \(waking)", icon: "arrow.up.forward.app", detail: nil)
+        } else {
+            CornerBloom.shared.fire(event.region, title: binding.action.opensPanel ? nil : bloomTitle(binding, undoing: undoing),
+                                    icon: undoing ? "arrow.uturn.backward" : binding.action.icon,
+                                    detail: bloomDetail(event, action: binding.action, undoing: undoing))
+        }
+        guard perform(binding, increasing: true, tap: true, region: nil, application: application) else {
+            _ = CornerBloom.shared.absorb("Not available here", icon: "exclamationmark.circle", placement: placement)
+            return
+        }
+        tick(.double)
+        KinaraLog.info(.gesture, "Tap \(event.slot): \(binding.action.rawValue)\(undoing ? " (undo)" : "")")
+        lastTapAction = undoing ? nil : (event.slot, binding.action, timestamp)
+        NotificationCenter.default.post(name: .kinaraGestureUsed, object: event.slot)
+    }
+
+    /// A level or a stepper needs a direction and an amount, which a tap
+    /// can't give: the tap names it, and the next slide on its edge sets it.
+    private func arm(_ binding: EdgeBinding, region: TapRegion, slot: String) {
+        let sides = Self.armedSides(for: region)
+        armedSlide = (binding, sides, false)
+        lastTapAction = nil
+        gestureBinding = nil
+        let edge = sides == [.left] ? "the left edge" : sides == [.right] ? "the right edge" : "a side edge"
+        CornerLight.shared.flash(region, strength: 1, spread: 1)
+        CornerBloom.shared.fire(region, title: binding.action.label, icon: binding.action.icon, detail: "Slide \(edge) to adjust")
+        tick(.double)
+        KinaraLog.info(.gesture, "Tap \(slot): \(binding.action.rawValue), waiting for a slide")
+        NotificationCenter.default.post(name: .kinaraGestureUsed, object: slot)
+        waitForSlide(Self.armWindow)
+    }
+
+    /// Stays armed this long for a (further) slide; then every edge is itself again.
+    private func waitForSlide(_ seconds: Double) {
+        armedSlide?.sliding = false
+        armTimeout?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.armedSlide?.sliding == false else { return }
+            self.disarm()
+        }
+        armTimeout = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
+
+    private func disarm() {
+        guard armedSlide != nil else { return }
+        armedSlide = nil
+        armTimeout?.cancel()
+        armTimeout = nil
+        gestureBinding = nil
+    }
+
+    private func bloomTitle(_ binding: EdgeBinding, undoing: Bool) -> String {
+        if undoing && binding.action.undoesByRepeating { return "Undone" }
+        if binding.action == .runShortcut, !binding.shortcut.isEmpty { return binding.shortcut }
+        return binding.action.label
+    }
+
+    /// The first time a spot fires, where to change it; after that, how to undo it.
+    private func bloomDetail(_ event: TapEvent, action: ZoneAction, undoing: Bool) -> String? {
+        if !settings.seenGestureHints.contains(event.slot) {
+            settings.seenGestureHints.insert(event.slot)
+            return "\(EdgeSlot.title(event.slot)) · change it in Settings"
+        }
+        guard !undoing, action.undoesByRepeating || action.undoesWithCommandZ else { return nil }
+        return event.gesture == .doubleTap ? "Double-tap again to undo" : "Tap and hold again to undo"
+    }
+
+    /// A drop in the screen corner for a first tap, and a preview for a resting finger.
+    /// Corners only: tap-to-click along a whole edge is too common to decorate.
+    private func tapFeedback(_ contacts: [GestureContact], at timestamp: Double, pendingBefore: Double?, fired: Bool) {
+        if let pending = taps.pendingTap, pending.end != pendingBefore, pending.region.isCorner {
+            CornerBloom.shared.arm(pending.region)
+            // Heard you: a faint flicker in that corner, waiting for the second tap.
+            CornerLight.shared.flash(pending.region, strength: 0.5, spread: 0.4)
+        }
+        let change = fired ? rest.interrupt() : rest.process(contacts: contacts, timestamp: timestamp, configuration: tapConfiguration)
+        switch change {
+        case let .show(region)? where region.isCorner:
+            showRestPreview(region)
+            CornerLight.shared.hold(region)
+        case .hide?:
+            CornerBloom.shared.endPreview()
+            CornerLight.shared.release()
+        default: break
+        }
+    }
+
+    private func showRestPreview(_ region: TapRegion) {
+        let double = settings.binding("\(region.rawValue).doubleTap", appBundleID: currentAppBundleID, docked: isDocked)
+        let hold = settings.binding("\(region.rawValue).tapHold", appBundleID: currentAppBundleID, docked: isDocked)
+        let hasDouble = double.action != .disabled, hasHold = hold.action != .disabled
+        guard hasDouble || hasHold else { return }
+        let main = hasDouble ? double : hold
+        let detail = hasDouble ? (hasHold ? "Double-tap · tap and hold: \(hold.action.label)" : "Double-tap") : "Tap and hold"
+        CornerBloom.shared.preview(region, title: main.action.label, icon: main.action.icon, detail: detail)
+    }
+
+    /// Haptics with a grammar: a double tick for a tap action, a single one for undo.
+    private enum Tick { case single, double }
+    private func tick(_ kind: Tick) {
+        guard settings.hapticFeedback else { return }
+        let style = settings.hapticStyle
+        HapticOutput.shared.play(style)
+        if kind == .double {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.09) { HapticOutput.shared.play(style) }
+        }
+    }
+
+    /// The screen spot that matches a tapped trackpad edge or corner.
+    static func placement(for region: TapRegion) -> OSDPlacement {
+        switch region {
+        case .left: return OSDPlacement(edge: "left", x: 0, y: 0.5)
+        case .right: return OSDPlacement(edge: "right", x: 1, y: 0.5)
+        case .top: return OSDPlacement(edge: "top", x: 0.5, y: 1)
+        case .bottom: return OSDPlacement(edge: "bottom", x: 0.5, y: 0)
+        case .topLeftCorner: return OSDPlacement(edge: "left", x: 0, y: 1)
+        case .topRightCorner: return OSDPlacement(edge: "right", x: 1, y: 1)
+        case .bottomLeftCorner: return OSDPlacement(edge: "left", x: 0, y: 0)
+        case .bottomRightCorner: return OSDPlacement(edge: "right", x: 1, y: 0)
+        }
+    }
+
+    private func announce(_ text: String, icon: String, at placement: OSDPlacement?) {
+        OSDOverlay.shared.show(type: .message(text, icon: icon), value: 1, placement: placement)
     }
 
     // MARK: Gesture lifecycle
@@ -443,14 +774,14 @@ final class TrackpadMonitor: ObservableObject {
         activeBinding = binding
         activeApplication = NSWorkspace.shared.frontmostApplication?.processIdentifier
         activeAppBundleID = currentAppBundleID
-        commandStepper = GestureActionStepper()
+        commandStepper = GestureActionStepper(levelLike: action.stepsLikeALevel)
         outputScope = UUID()
         activeTarget = target
         activeValue = RelativeGestureValue(value: value)
         fineEngaged = false
         levelChanged = false
         let now = ProcessInfo.processInfo.systemUptime
-        if let style = haptics.begin(value: min(1, max(0, value)), configuration: settings.hapticConfiguration, at: now),
+        if let style = haptics.begin(value: value, configuration: settings.hapticConfiguration, at: now),
            !GestureTelemetry.shared.isTesting, now - lastFrameTime <= 0.12 {
             HapticOutput.shared.play(style)
         }
@@ -459,8 +790,10 @@ final class TrackpadMonitor: ObservableObject {
         if decision.fingers == 1 && settings.cursorFreezeOnOneFinger,
            let event = CGEvent(source: nil) {
             // CGEvent.location and CGWarpMouseCursorPosition share global display
-            // coordinates, including negative origins on secondary displays.
-            frozenCursorPosition = event.location
+            // coordinates, including negative origins on secondary displays. The pointer
+            // goes back to where the finger landed, undoing the drift before acceptance.
+            frozenCursorPosition = captureCursor ?? event.location
+            CGWarpMouseCursorPosition(frozenCursorPosition)
             cursorFreezeActive = true
             installFreezeTap()
             NSCursor.hide()
@@ -472,6 +805,10 @@ final class TrackpadMonitor: ObservableObject {
         if activeAction == .clipboardHistory, picker.isOpen, picker.mode == .swipe {
             // A completed swipe pastes what's highlighted; anything else pastes nothing.
             cancelPending ? picker.cancel() : picker.commit()
+        }
+        let audio = AudioAppPicker.shared
+        if activeAction == .audioApps, audio.isOpen, audio.mode == .swipe {
+            cancelPending ? audio.cancel() : audio.commit()
         }
         brightnessPreparationGeneration &+= 1
         brightnessPreparationStarted = false
@@ -553,26 +890,32 @@ final class TrackpadMonitor: ObservableObject {
         // Seeking should feel direct; precision still applies, acceleration does not.
         let shaping = activeAction == .seek ? feel.precisionScale(inward: decision.inward) : feel.scale(speed: decision.speed, inward: decision.inward)
         let fine = feel.isFine(inward: decision.inward)
-        if fine && !fineEngaged && settings.hapticFeedback { HapticOutput.shared.play(.soft) }
+        let entersFine = fine && !fineEngaged
         fineEngaged = fine
         let previous = value.value
         let requested = value.apply(delta: decision.delta, sensitivity: settings.sensitivity,
                                     inverted: settings.invertScrollDirection, bounds: bounds,
                                     scale: shaping, notches: notches, capture: TrackpadSettings.notchCapture)
-        guard abs(requested - previous) > 0.00001 else { return }
+        guard abs(requested - previous) > 0.00001 else {
+            if entersFine { cue(.soft) }
+            return
+        }
         // Accumulate from the requested continuous value, not delayed/quantized
         // device readback. The controllers coalesce writes off the main thread.
         activeValue = value
         levelChanged = true
+        // Extra dim begins where the hardware ends, and that edge is a detent too.
+        let detents = dimming ? notches + [limits(for: .brightness).lowerBound] : notches
+        if !haptic(at: requested, bounds: bounds, notches: detents), entersFine { cue(.soft) }
         let placement = OSDPlacement(edge: region == .left ? "left" : region == .right ? "right" : region == .bottom ? "bottom" : "top",
                                      x: decision.x, y: decision.y)
-        requestLevel(requested, region: region, scope: scope, placement: placement, fine: fine)
+        requestLevel(requested, region: region, scope: scope, placement: placement)
     }
 
     // Keep the epoch stable through this gesture. Already-applied samples
     // can render while a newer desired value is pending; filtering by every
     // request would freeze feedback whenever the driver runs below 120 Hz.
-    private func requestLevel(_ requested: Double, region: GestureRegion, scope: UUID, placement: OSDPlacement, fine: Bool) {
+    private func requestLevel(_ requested: Double, region: GestureRegion, scope: UUID, placement: OSDPlacement) {
         let revision = outputRevision
         let target = activeTarget
         let action = activeAction
@@ -588,7 +931,7 @@ final class TrackpadMonitor: ObservableObject {
                 switch result {
                 case let .applied(measured, _, appliedTarget):
                     guard appliedTarget == target, appliedTarget == self.targetIdentifier(action) else { return }
-                    self.publishAdjustment(measured, action: action, region: region, placement: placement, fine: fine)
+                    self.publishAdjustment(measured, action: action, region: region, placement: placement)
                 case .failed:
                     self.cancelCurrentGesture(reason: "The device did not accept this adjustment.")
                 case .cancelled: break
@@ -599,12 +942,7 @@ final class TrackpadMonitor: ObservableObject {
             let dim = requested < lower ? (lower - requested) / Self.extraDimSpan : 0
             if settings.extraDimBelowMinimum, let display = BrightnessController.shared.activeDisplay {
                 GammaDimmer.shared.setLevel(Float(dim), for: display)
-                if dim > 0 {
-                    OSDOverlay.shared.show(type: .extraDim, value: Float(1 - dim), placement: placement, fine: fine)
-                    if let style = haptics.update(value: 1 - dim, bounds: 0...1, at: ProcessInfo.processInfo.systemUptime) {
-                        HapticOutput.shared.play(style)
-                    }
-                }
+                if dim > 0 { OSDOverlay.shared.show(type: .extraDim, value: Float(1 - dim), placement: placement) }
             }
             let hardware = max(lower, requested)
             guard dim == 0 || abs(Double(BrightnessController.shared.getBrightness()) - hardware) > 0.0005 else { return }
@@ -617,7 +955,7 @@ final class TrackpadMonitor: ObservableObject {
                 switch result {
                 case let .applied(measured, appliedTarget):
                     guard appliedTarget == target, appliedTarget == self.targetIdentifier(.brightness), dim == 0 else { return }
-                    self.publishAdjustment(measured, action: .brightness, region: region, placement: placement, fine: fine)
+                    self.publishAdjustment(measured, action: .brightness, region: region, placement: placement)
                 case .failed:
                     self.cancelCurrentGesture(reason: "The device did not accept this adjustment.")
                 case .cancelled: break
@@ -629,7 +967,7 @@ final class TrackpadMonitor: ObservableObject {
             MixerModel.shared.adjustVolume(Float(requested), forApp: bundle) { [weak self] result in
                 guard let self, self.outputRevision == revision else { return }
                 switch result {
-                case let .applied(gain): self.publishAdjustment(gain, action: .appVolume, region: region, placement: placement, fine: fine)
+                case let .applied(gain): self.publishAdjustment(gain, action: .appVolume, region: region, placement: placement)
                 case let .failed(reason): self.cancelCurrentGesture(reason: reason)
                 case .cancelled: break
                 }
@@ -637,14 +975,14 @@ final class TrackpadMonitor: ObservableObject {
         case .nightShift:
             NightShiftController.shared.request(Float(requested)) { [weak self] level in
                 guard let self, self.outputRevision == revision, let level else { return }
-                self.publishAdjustment(level, action: .nightShift, region: region, placement: placement, fine: fine)
+                self.publishAdjustment(level, action: .nightShift, region: region, placement: placement)
             }
         case .extraDim:
             guard let display = dimTargetDisplay(), GammaDimmer.shared.setLevel(Float(1 - requested), for: display) else {
                 cancelCurrentGesture(reason: "This display does not allow extra dimming.")
                 return
             }
-            publishAdjustment(Float(requested), action: .extraDim, region: region, placement: placement, fine: fine)
+            publishAdjustment(Float(requested), action: .extraDim, region: region, placement: placement)
         case .seek:
             guard let info = seekBaseline, let duration = info.duration else { return }
             let seconds = requested * duration
@@ -652,9 +990,6 @@ final class TrackpadMonitor: ObservableObject {
             NowPlayingController.shared.requestSeek(to: seconds) { [weak self] success in
                 guard let self, self.outputRevision == revision, !success else { return }
                 self.cancelCurrentGesture(reason: "The player did not accept the new position.")
-            }
-            if let style = haptics.update(value: requested, bounds: 0...1, at: ProcessInfo.processInfo.systemUptime) {
-                HapticOutput.shared.play(style)
             }
         default: break
         }
@@ -686,6 +1021,12 @@ final class TrackpadMonitor: ObservableObject {
             else { picker.open(mode: .swipe, application: application) }
             return
         }
+        if activeAction == .audioApps {
+            let picker = AudioAppPicker.shared
+            if picker.isOpen { picker.scroll(by: delta * (settings.invertScrollDirection ? -1 : 1)) }
+            else { picker.open(mode: .swipe, application: application) }
+            return
+        }
         guard let increasing = commandStepper.consume(delta: delta, sensitivity: settings.sensitivity,
             inverted: settings.invertScrollDirection, repeats: activeAction.repeatsWhileSwiping,
             at: ProcessInfo.processInfo.systemUptime) else { return }
@@ -702,7 +1043,7 @@ final class TrackpadMonitor: ObservableObject {
                 switch result {
                 case let .applied(value, muted, identifier):
                     guard target == identifier, identifier == controller.targetIdentifier else { return }
-                    if action == .outputMute { self.publishAdjustment(muted ? 0 : value, action: .volume, region: region, placement: nil, fine: false) }
+                    if action == .outputMute { self.publishAdjustment(muted ? 0 : value, action: .volume, region: region, placement: nil) }
                     else {
                         NotificationCenter.default.post(name: .microphoneMuteChanged, object: muted)
                     }
@@ -712,6 +1053,9 @@ final class TrackpadMonitor: ObservableObject {
             }
             return
         }
+        messagePlacement = OSDPlacement(edge: region == .left ? "left" : region == .right ? "right" : region == .bottom ? "bottom" : "top",
+                                        x: recognizer.decision.x, y: recognizer.decision.y)
+        defer { messagePlacement = nil }
         guard perform(activeBinding, increasing: increasing, tap: false, region: region, application: application) else {
             cancelCurrentGesture(reason: "This action is not configured or could not be sent. Check its settings.")
             return
@@ -736,9 +1080,10 @@ final class TrackpadMonitor: ObservableObject {
             return true
         case .trueTone:
             let on = tap ? !(TrueToneController.shared.isEnabled ?? false) : increasing
-            TrueToneController.shared.setEnabled(on) { state in
+            let placement = messagePlacement
+            TrueToneController.shared.setEnabled(on) { [weak self] state in
                 guard let state else { return }
-                OSDOverlay.shared.show(type: .message(state ? "True Tone on" : "True Tone off", icon: "circle.lefthalf.fill"), value: 1)
+                self?.announce(state ? "True Tone on" : "True Tone off", icon: "circle.lefthalf.fill", at: placement)
             }
             return true
         case .muteApp, .soloApp:
@@ -746,15 +1091,16 @@ final class TrackpadMonitor: ObservableObject {
             let mixer = MixerModel.shared, name = mixer.displayName(forApp: bundle)
             if binding.action == .muteApp {
                 let muted = mixer.setMuted(tap ? nil : !increasing, forApp: bundle)
-                OSDOverlay.shared.show(type: .message(muted ? "\(name) muted" : "\(name) unmuted", icon: muted ? "speaker.slash.fill" : "speaker.wave.2.fill"), value: 1)
+                announce(muted ? "\(name) muted" : "\(name) unmuted", icon: muted ? "speaker.slash.fill" : "speaker.wave.2.fill", at: messagePlacement)
             } else {
                 let soloed = mixer.setSoloed(tap ? nil : increasing, forApp: bundle)
-                OSDOverlay.shared.show(type: .message(soloed ? "Only \(name) is playing" : "Solo off", icon: "headphones"), value: 1)
+                announce(soloed ? "Only \(name) is playing" : "Solo off", icon: "headphones", at: messagePlacement)
             }
             return true
         case .audioOutput:
-            AudioOutputSwitcher.cycle(forward: increasing) { device in
-                OSDOverlay.shared.show(type: .message(device?.name ?? "No other audio output", icon: "airplayaudio"), value: 1)
+            let placement = messagePlacement
+            AudioOutputSwitcher.cycle(forward: increasing) { [weak self] device in
+                self?.announce(device?.name ?? "No other audio output", icon: "airplayaudio", at: placement)
             }
             return true
         case .tileWindow:
@@ -768,11 +1114,32 @@ final class TrackpadMonitor: ObservableObject {
         case .cheatSheet:
             EdgeMapHUD.shared.toggle()
             return true
+        case .ambientLight:
+            // A tap toggles; a swipe up starts it, down stops it.
+            if tap { AmbientLight.shared.toggle() } else if increasing { AmbientLight.shared.start() } else { AmbientLight.shared.stop() }
+            let on = AmbientLight.shared.isRunning
+            announce(on ? "Ambient light on" : "Ambient light off", icon: "light.ribbon", at: messagePlacement)
+            return true
+        case .missionControl:
+            // macOS's own Mission Control app: it works whatever the keyboard shortcut is set to.
+            let url = URL(fileURLWithPath: "/System/Applications/Mission Control.app")
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { _, error in
+                if let error { KinaraLog.warning(.output, "Mission Control didn't open: \(error.localizedDescription)") }
+            }
+            return true
+        case .playPause:
+            // Predictable with several apps playing: one press quiets them all, the next brings them back.
+            let placement = messagePlacement
+            return PlaybackHoldController.shared.toggle(placement: placement) { [weak self] in self?.showNowPlaying(after: 0.45, placement: placement) }
         case .pastePrevious:
             return ClipboardHistory.shared.pastePrevious(into: application)
         case .clipboardHistory:
             // A tap opens the picker; the next one-finger slide chooses.
             ClipboardPicker.shared.open(mode: .touch, application: application)
+            return true
+        case .audioApps:
+            // Like the clipboard: a tap opens it, the next slide chooses an app.
+            AudioAppPicker.shared.open(mode: .touch, application: application)
             return true
         case .sleepDisplay:
             let process = Process()
@@ -784,7 +1151,7 @@ final class TrackpadMonitor: ObservableObject {
             guard let command = EdgeCommand.resolve(binding.action, increasing: increasing, custom: custom),
                   EdgeActionController.send(command, expectedApplication: application) else { return false }
             // Players need a moment to change tracks before they report them.
-            if binding.action == .mediaTracks || binding.action == .playPause { showNowPlaying(after: 0.45) }
+            if binding.action == .mediaTracks { showNowPlaying(after: 0.45, placement: messagePlacement) }
             if binding.action == .copy || binding.action == .cut { ClipboardHistory.shared.noteCopy() }
             return true
         }
@@ -797,11 +1164,17 @@ final class TrackpadMonitor: ObservableObject {
         return region == .right ? .rightHalf : .leftHalf
     }
 
-    private func showNowPlaying(after delay: Double) {
-        guard settings.nowPlayingHUD else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+    /// The track card; after a corner tap, the track goes into that tap's pill instead.
+    private func showNowPlaying(after delay: Double, placement: OSDPlacement? = nil) {
+        guard settings.nowPlayingHUD || CornerBloom.shared.isShowingTap else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [settings] in
             NowPlayingController.shared.fetch { info in
-                if let info { NowPlayingHUD.shared.show(info) }
+                guard let info else { return }
+                let state = info.isPlaying ? "Playing" : "Paused"
+                let title = info.title.isEmpty ? state : info.title
+                let detail = info.title.isEmpty ? (info.artist.isEmpty ? nil : info.artist) : [state, info.artist].filter { !$0.isEmpty }.joined(separator: " · ")
+                if CornerBloom.shared.absorb(title, icon: info.isPlaying ? "play.fill" : "pause.fill", detail: detail, placement: placement) { return }
+                if settings.nowPlayingHUD { NowPlayingHUD.shared.show(info) }
             }
         }
     }
@@ -812,10 +1185,11 @@ final class TrackpadMonitor: ObservableObject {
         else { pendingOutputs[scope]?.count -= 1 }
     }
 
+    /// Measured readback drives the indicator only; haptics already followed the finger.
     private func publishAdjustment(_ measured: Float, action: ZoneAction, region: GestureRegion,
-                                   placement: OSDPlacement?, fine: Bool) {
+                                   placement: OSDPlacement?) {
         var info: [String: Any] = ["zone": region == .left || region == .topLeft ? "left" : "right",
-                                   "gestureRegion": region.rawValue, "fine": fine]
+                                   "gestureRegion": region.rawValue]
         if let placement { info["placement"] = placement }
         switch action {
         case .volume, .brightness, .microphoneLevel:
@@ -824,12 +1198,11 @@ final class TrackpadMonitor: ObservableObject {
             else if action == .microphoneLevel { name = .microphoneLevelChanged }
             else { name = region.isTop ? .topEdgeBrightnessChanged : .brightnessChanged }
             NotificationCenter.default.post(name: name, object: measured, userInfo: info)
-        case .appVolume: OSDOverlay.shared.show(type: .appVolume, value: measured, placement: placement, fine: fine)
-        case .nightShift: OSDOverlay.shared.show(type: .nightShift, value: measured, placement: placement, fine: fine)
-        case .extraDim: OSDOverlay.shared.show(type: .extraDim, value: measured, placement: placement, fine: fine)
+        case .appVolume: OSDOverlay.shared.show(type: .appVolume, value: measured, placement: placement)
+        case .nightShift: OSDOverlay.shared.show(type: .nightShift, value: measured, placement: placement)
+        case .extraDim: OSDOverlay.shared.show(type: .extraDim, value: measured, placement: placement)
         default: break
         }
-        if activeValue != nil { haptic(at: measured) }
     }
 
     // MARK: Capabilities
@@ -846,11 +1219,12 @@ final class TrackpadMonitor: ObservableObject {
             return !settings.customShortcut(for: binding, increasing: true).isEmpty
                 || !settings.customShortcut(for: binding, increasing: false).isEmpty
         case .appVolume, .muteApp, .soloApp: return AppVolumeController.isSupported && currentAppBundleID != nil
+        case .audioApps: return AppVolumeController.isSupported
         case .nightShift: return NightShiftController.shared.isAvailable
         case .trueTone: return TrueToneController.shared.isAvailable
         case .runShortcut:
             return ShortcutsRunner.isAvailable && !(binding.shortcut.isEmpty && binding.downShortcut.isEmpty)
-        case .extraDim, .seek, .nowPlaying, .cheatSheet, .audioOutput: return true
+        case .extraDim, .seek, .nowPlaying, .cheatSheet, .ambientLight, .audioOutput: return true
         case .disabled: return false
         default: return NSWorkspace.shared.frontmostApplication != nil
         }
@@ -881,16 +1255,23 @@ final class TrackpadMonitor: ObservableObject {
         }
     }
 
-    private func haptic(at value: Float) {
-        guard settings.hapticFeedback else { haptics.end(); return }
-        let now = ProcessInfo.processInfo.systemUptime
-        guard !GestureTelemetry.shared.isTesting, recognizer.decision.phase == .accepted,
-              now - lastFrameTime <= 0.12 else { return }
-        let bounds = limits(for: activeAction)
-        let notches = [.volume, .brightness, .microphoneLevel, .appVolume].contains(activeAction) ? settings.notches(for: activeAction) : []
-        if let style = haptics.update(value: Double(value), bounds: bounds, at: now, notches: notches) {
-            HapticOutput.shared.play(style)
-        }
+    /// Detents follow the finger: the level it asked for, on the frame it asked.
+    /// Device readback arrives late, paced and quantized, so ticks driven by it
+    /// landed somewhere different every slide. Returns whether it tapped.
+    @discardableResult
+    private func haptic(at value: Double, bounds: ClosedRange<Double>, notches: [Double]) -> Bool {
+        guard settings.hapticFeedback else { haptics.end(); return false }
+        guard let style = haptics.update(value: value, bounds: bounds, at: ProcessInfo.processInfo.systemUptime,
+                                         notches: notches) else { return false }
+        HapticOutput.shared.play(style)
+        return true
+    }
+
+    /// A one-off tap that keeps the slide's cadence, such as precision engaging.
+    private func cue(_ style: HapticStyle) {
+        guard settings.hapticFeedback,
+              let style = haptics.cue(style, at: ProcessInfo.processInfo.systemUptime) else { return }
+        HapticOutput.shared.play(style)
     }
 
     // MARK: Event tap
@@ -913,6 +1294,8 @@ final class TrackpadMonitor: ObservableObject {
         runLoopSource = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
+        KinaraLog.info(.taps, "Input tap installed")
+        watchTaps()
         return true
     }
 
@@ -923,8 +1306,15 @@ final class TrackpadMonitor: ObservableObject {
             CFMachPortInvalidate(eventTap)
         }
         if let runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes) }
+        if eventTap != nil { KinaraLog.info(.taps, "Input tap removed") }
         eventTap = nil
         runLoopSource = nil
+        watchTaps()
+    }
+
+    /// The watchdog guards whichever taps are in the input path right now.
+    private func watchTaps() {
+        MainThreadWatchdog.shared.watch([eventTap, freezeTap].compactMap { $0 })
     }
 
     private func installFreezeTap() {
@@ -941,6 +1331,7 @@ final class TrackpadMonitor: ObservableObject {
         freezeSource = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
+        watchTaps()
     }
 
     private func removeFreezeTap() {
@@ -951,15 +1342,25 @@ final class TrackpadMonitor: ObservableObject {
         if let freezeSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), freezeSource, .commonModes) }
         freezeTap = nil
         freezeSource = nil
+        watchTaps()
     }
 
     private func handleFreezeEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            if let freezeTap { CGEvent.tapEnable(tap: freezeTap, enable: true) }
+            recoverTap(freezeTap, type)
             return Unmanaged.passUnretained(event)
         }
         guard cursorFreezeActive || pointerHeldForPicker else { return Unmanaged.passUnretained(event) }
-        CGWarpMouseCursorPosition(frozenCursorPosition)
+        // Never call back into the window server from inside its own tap: that can
+        // stall both. Put the pointer back on the next turn, once, however many moves.
+        if !warpScheduled {
+            warpScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.warpScheduled = false
+                if self.cursorFreezeActive || self.pointerHeldForPicker { CGWarpMouseCursorPosition(self.frozenCursorPosition) }
+            }
+        }
         return nil
     }
 
@@ -970,25 +1371,33 @@ final class TrackpadMonitor: ObservableObject {
             cancelCurrentGesture(reason: "Input monitoring was interrupted. Lift your fingers to reset.")
             scrollCapture = GestureScrollCapture()
             claimedButtons.removeAll()
-            if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: true) }
+            recoverTap(eventTap, type)
             return pass
         }
         let now = ProcessInfo.processInfo.systemUptime
         if type == .keyDown {
             if event.getIntegerValueField(.eventSourceUserData) == EdgeActionController.eventMarker { return pass }
-            // While the clipboard picker is up, its keys (esc, return, arrows,
-            // 1–9) choose; the app in front keeps focus and receives nothing.
-            if ClipboardPicker.shared.isOpen,
-               ClipboardPicker.shared.handleKey(code: event.getIntegerValueField(.keyboardEventKeycode),
-                                                characters: NSEvent(cgEvent: event)?.charactersIgnoringModifiers) {
+            // Like a screensaver, the ambient light ends at the first key; the key still goes through.
+            if AmbientLight.shared.isRunning { AmbientLight.shared.stop() }
+            // While a picker is up, its keys (typing to search, esc, return,
+            // arrows, ⌘1–9) choose; the app in front keeps focus and receives nothing.
+            if let picker = TrackpadPickers.open,
+               picker.handleKey(code: event.getIntegerValueField(.keyboardEventKeycode),
+                                characters: NSEvent(cgEvent: event)?.characters, flags: event.flags) {
                 return nil
             }
             // ⌘C / ⌘X: let clipboard history read the result once, shortly after.
-            if event.flags.contains(.maskCommand), [7, 8].contains(event.getIntegerValueField(.keyboardEventKeycode)) {
+            let code = event.getIntegerValueField(.keyboardEventKeycode)
+            if event.flags.contains(.maskCommand), [7, 8].contains(code) {
                 ClipboardHistory.shared.noteCopy()
+            }
+            // ⌘⌃⇧3: a screenshot straight to the clipboard, ready a moment later.
+            if event.flags.isSuperset(of: [.maskCommand, .maskControl, .maskShift]), code == 20 {
+                ClipboardHistory.shared.noteCopy(after: 1.0)
             }
             let decision = recognizer.keyDown(at: now)
             taps.keyDown(at: now)
+            if rest.interrupt(at: now) == .hide { CornerBloom.shared.endPreview() }
             GestureTelemetry.shared.publish(decision, at: now, force: true)
             finishAdjustment()
             return pass
@@ -1000,12 +1409,11 @@ final class TrackpadMonitor: ObservableObject {
             ClipboardHistory.shared.noteCopy(after: 0.3)
             return pass
         }
-        let picker = ClipboardPicker.shared
         if (type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown),
-           picker.isOpen || now <= picker.claimsClicksUntil {
-            // Clicks belong to the picker while it is up: a press chooses, and
+           TrackpadPickers.claimsClick(at: now) {
+            // Clicks belong to a picker while it is up: a press chooses, and
             // the tap-to-click after a choosing lift never reaches the app.
-            if picker.isOpen && picker.mode == .touch && lastContactCount > 0 { picker.commit() }
+            if let picker = TrackpadPickers.open, picker.isTouchMode, lastContactCount > 0 { picker.commit() }
             claimedButtons.insert(button)
             return nil
         }
@@ -1019,13 +1427,16 @@ final class TrackpadMonitor: ObservableObject {
                 return nil
             }
             taps.click()
+            // A real click ends the ambient light; a tap's own claimed click (above) doesn't.
+            if AmbientLight.shared.isRunning { AmbientLight.shared.stop() }
+            if rest.interrupt() == .hide { CornerBloom.shared.endPreview() }
             cancelCurrentGesture(reason: "Click detected. Lift your fingers before swiping.")
             return pass
         }
         guard type == .scrollWheel else { return pass }
         guard let scrolling = NSEvent(cgEvent: event), scrolling.hasPreciseScrollingDeltas else { return pass }
         // The open picker owns the trackpad; pages behind it don't scroll.
-        if picker.isOpen && picker.mode == .touch { return nil }
+        if TrackpadPickers.open?.isTouchMode == true { return nil }
         let phase = scrollPhase(scrolling.phase)
         let momentum = scrollPhase(scrolling.momentumPhase)
         scrollCapture.prepare(phase: phase, momentum: momentum)

@@ -19,7 +19,7 @@ struct RenderUI {
         let output = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "/private/tmp/SwayUI")
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         NSApplication.shared.setActivationPolicy(previewMenu || previewOSD ? .accessory : .prohibited)
-        // The renderer is not an app bundle; show Sway's real icon in logo spots.
+        // The renderer is not an app bundle; show Kinara's real icon in logo spots.
         if let icon = NSImage(contentsOfFile: "Sway/Assets.xcassets/AppIcon.appiconset/icon_1024x1024.png") {
             NSApplication.shared.applicationIconImage = icon
         }
@@ -33,7 +33,7 @@ struct RenderUI {
             Fixture(surface: .welcome(.welcome, true)),
             Fixture(surface: .welcome(.access, false)),
             Fixture(surface: .welcome(.access, true)),
-            Fixture(surface: .welcome(.practice, true)),
+            Fixture(surface: .welcome(.tour, true)),
             Fixture(surface: .welcome(.personalize, true)),
             Fixture(surface: .welcome(.done, true)),
             Fixture(surface: .updates),
@@ -42,56 +42,79 @@ struct RenderUI {
             Fixture(surface: .menu),
             Fixture(surface: .menu, suffix: "-expanded", reduceTransparency: true),
             Fixture(surface: .menu, suffix: "-reduced-transparency", reduceTransparency: true),
-            Fixture(surface: .menu, suffix: "-paused", configure: { $0.isEnabled = false })
+            Fixture(surface: .menu, suffix: "-paused", configure: { $0.isEnabled = false }),
+            Fixture(surface: .audioPicker)
         ] + SettingsPane.allCases.map { Fixture(surface: .preferences($0)) } + [
-            Fixture(surface: .preferences(.gestures), suffix: "-top-edge", configure: {
+            Fixture(surface: .preferences(.edges, showsAdvanced: true), suffix: "-advanced"),
+            Fixture(surface: .preferences(.edges), suffix: "-narrow", configure: {
+                $0.applyGesturePreset(.oneFinger)
+                $0.leftZoneWidth = 0.03
+                $0.rightZoneWidth = 0.03
+                $0.setBaseBinding(EdgeBinding(.keyboardBrightness), for: "topLeftCorner.doubleTap")
+                $0.setBaseBinding(EdgeBinding(.playPause), for: "topRightCorner.doubleTap")
+                $0.setBaseBinding(EdgeBinding(.missionControl), for: "bottomLeftCorner.doubleTap")
+                $0.setBaseBinding(EdgeBinding(.cheatSheet), for: "bottomRightCorner.doubleTap")
+            }),
+            Fixture(surface: .preferences(.home), suffix: "-narrow", configure: {
+                $0.applyGesturePreset(.oneFinger)
+                $0.leftZoneWidth = 0.03
+                $0.rightZoneWidth = 0.03
+                $0.setBaseBinding(EdgeBinding(.keyboardBrightness), for: "topLeftCorner.doubleTap")
+                $0.setBaseBinding(EdgeBinding(.playPause), for: "topRightCorner.doubleTap")
+                $0.setBaseBinding(EdgeBinding(.missionControl), for: "bottomLeftCorner.doubleTap")
+                $0.setBaseBinding(EdgeBinding(.cheatSheet), for: "bottomRightCorner.doubleTap")
+            }),
+            Fixture(surface: .preferences(.feel, showsAdvanced: true), suffix: "-advanced"),
+            Fixture(surface: .preferences(.sound, showsAdvanced: true), suffix: "-advanced"),
+            Fixture(surface: .preferences(.general, showsAdvanced: true), suffix: "-advanced"),
+            Fixture(surface: .preferences(.edges, spot: "top"), suffix: "-top-edge", configure: {
                 $0.applyGesturePreset(.oneFinger)
                 $0.topEdgeEnabled = true
             }),
-            Fixture(surface: .preferences(.gestures), suffix: "-extended-actions", configure: {
+            Fixture(surface: .preferences(.edges), suffix: "-extended-actions", configure: {
                 $0.leftZoneAction = .microphoneLevel
                 $0.rightZoneAction = .customShortcut
             }),
-            Fixture(surface: .preferences(.gestures), suffix: "-one-percent", configure: {
+            Fixture(surface: .preferences(.edges, spot: "top"), suffix: "-one-percent", configure: {
                 $0.applyGesturePreset(.oneFinger)
                 $0.leftZoneWidth = 0.01
                 $0.rightZoneWidth = 0.01
                 $0.topEdgeEnabled = true
                 $0.topEdgeHeight = 0.01
             }),
-            Fixture(surface: .preferences(.appearance), suffix: "-vertical-osd", configure: { $0.osdStyle = "vertical" }),
-            Fixture(surface: .preferences(.appearance), suffix: "-follow-finger", configure: { $0.osdStyle = "edge" }),
-            Fixture(surface: .preferences(.gestures), suffix: "-layers", configure: {
+            Fixture(surface: .preferences(.feel, showsAdvanced: true), suffix: "-vertical-osd", configure: { $0.osdStyle = "vertical" }),
+            Fixture(surface: .preferences(.feel), suffix: "-follow-finger", configure: { $0.osdStyle = "edge" }),
+            Fixture(surface: .preferences(.edges, spot: "right", showsAdvanced: true), suffix: "-layers", configure: {
                 $0.setBaseBinding(EdgeBinding(.customShortcut, up: HotkeyCombo(keyCode: 17, modifiers: UInt32(cmdKey))), for: "right")
                 $0.setBaseBinding(EdgeBinding(.keyboardBrightness), for: EdgeSlot.option("left"))
                 $0.setBaseBinding(EdgeBinding(.runShortcut, shortcut: "Desk Lamp Up", downShortcut: "Desk Lamp Down"), for: EdgeSlot.option("right"))
                 $0.setBaseBinding(EdgeBinding(.nightShift), for: EdgeSlot.alternate("left"))
             }),
-            Fixture(surface: .preferences(.gestures), suffix: "-bottom-edge", configure: {
+            Fixture(surface: .preferences(.edges, spot: "bottom"), suffix: "-bottom-edge", configure: {
                 $0.applyGesturePreset(.oneFinger)
                 $0.bottomEdgeEnabled = true
                 $0.bottomEdgeAction = .seek
             }),
-            Fixture(surface: .preferences(.taps), suffix: "-assigned", configure: {
+            Fixture(surface: .preferences(.edges, spot: "topRightCorner"), suffix: "-corner", configure: {
                 $0.setBaseBinding(EdgeBinding(.playPause), for: "left.doubleTap")
                 $0.setBaseBinding(EdgeBinding(.missionControl), for: "right.tapHold")
                 $0.setBaseBinding(EdgeBinding(.screenshotTools), for: "topRightCorner.doubleTap")
                 $0.setBaseBinding(EdgeBinding(.cheatSheet), for: "bottomLeftCorner.doubleTap")
             }),
-            Fixture(surface: .preferences(.profiles), suffix: "-with-profiles", configure: {
+            Fixture(surface: .preferences(.apps), suffix: "-with-profiles", configure: {
                 $0.appProfiles["com.apple.Safari"] = ActionProfile(name: "Safari", bindings: ["right": EdgeBinding(.tabs), "left.doubleTap": EdgeBinding(.history)])
                 $0.appProfiles["com.apple.FinalCut"] = ActionProfile(name: "Final Cut Pro", bindings: ["left": EdgeBinding(.zoom)])
                 $0.dockedProfileEnabled = true
                 $0.dockedProfile.bindings["left"] = EdgeBinding(.brightness)
             }),
-            Fixture(surface: .preferences(.levels), suffix: "-device-limits", configure: {
+            Fixture(surface: .preferences(.sound, showsAdvanced: true), suffix: "-device-limits", configure: {
                 $0.deviceVolumeLimits["preview-device"] = DeviceLimit(name: "MacBook speakers", min: 0.05, max: 0.7)
                 $0.deviceVolumeLimits["airpods"] = DeviceLimit(name: "AirPods Pro", min: 0, max: 0.6)
                 $0.volumeFavorite = 0.3
                 $0.extraDimBelowMinimum = true
             }),
-            Fixture(surface: .preferences(.feedback), suffix: "-haptics-off", configure: { $0.hapticFeedback = false }),
-            Fixture(surface: .preferences(.feedback), suffix: "-haptics-crisp", configure: {
+            Fixture(surface: .preferences(.feel), suffix: "-haptics-off", configure: { $0.hapticFeedback = false }),
+            Fixture(surface: .preferences(.feel, showsAdvanced: true), suffix: "-haptics-crisp", configure: {
                 $0.hapticStyle = .crisp
                 $0.hapticSpacing = .fine
                 $0.hapticOnStart = false
@@ -119,9 +142,14 @@ struct RenderUI {
                 let width: CGFloat
                 var previewSettingsWindow: NSWindow?
                 switch fixture.surface {
+                case .audioPicker:
+                    // The flat, reduced-transparency surface: offscreen captures cannot see glass.
+                    AudioAppPicker.renderOpaque = true
+                    content = AnyView(AudioPickerView(model: sampleAudioPicker()))
+                    width = 508
                 case .actions:
-                    content = AnyView(EdgeActionLibrary(action: .constant(.microphoneLevel), edgeName: "Left edge action", preview: true))
-                    width = 590
+                    content = AnyView(EdgeActionLibrary(action: .constant(.microphoneLevel), edgeName: "Slide", preview: true))
+                    width = 620
                 case let .welcome(step, access):
                     content = AnyView(GettingStartedView(settings: settings, preview: true, hasAccess: access, previewStep: step, openControls: {}))
                     width = 560
@@ -138,10 +166,10 @@ struct RenderUI {
                                 contentRect: NSRect(x: 0, y: 0, width: 820, height: 660),
                                 styleMask: [.titled, .closable], backing: .buffered, defer: false)
                             if previewSettingsWindow == nil {
-                                window.title = "Sway Settings Preview"
+                                window.title = "Kinara Settings Preview"
                                 window.isReleasedWhenClosed = false
                                 window.contentViewController = NSHostingController(rootView:
-                                    ContentView(initialPane: .gestures, preview: true, settings: settings))
+                                    ContentView(initialPane: .edges, preview: true, settings: settings))
                                 window.center()
                                 previewSettingsWindow = window
                             }
@@ -149,8 +177,8 @@ struct RenderUI {
                             NSApp.activate(ignoringOtherApps: true)
                         }))
                     width = 320
-                case .preferences(let tab):
-                    content = AnyView(ContentView(initialPane: tab, preview: true, settings: settings,
+                case let .preferences(tab, spot, advanced):
+                    content = AnyView(ContentView(initialPane: tab, spot: spot, showsAdvanced: advanced, preview: true, settings: settings,
                                                   updates: UpdateChecker(defaults: defaults, current: "1.0.6")))
                     width = 820
                 }
@@ -175,7 +203,7 @@ struct RenderUI {
                     // Match the actual menu-bar container, not a decorative
                     // mock window. This creates no production AppDelegate.
                     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-                    statusItem.button?.title = "Sway Preview"
+                    statusItem.button?.title = "Kinara Preview"
                     let popover = NSPopover()
                     popover.behavior = .applicationDefined
                     let controller = FirstClickHostingController(rootView: root)
@@ -250,6 +278,7 @@ struct RenderUI {
             }
         }
         try renderIndicators(to: output)
+        try renderSettingsWindow(to: output)
         guard overflows.isEmpty else {
             for line in overflows { print("OVERFLOW \(line)") }
             throw RenderError.controlsOverflow(overflows.count)
@@ -323,11 +352,11 @@ struct RenderUI {
         let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1024, height: 768)
         let anchor = NSWindow(contentRect: NSRect(x: screen.midX - 100, y: screen.maxY - 100, width: 200, height: 40),
                               styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
-        anchor.title = "Sway — safe layout check"
+        anchor.title = "Kinara — safe layout check"
         anchor.isReleasedWhenClosed = false
         defer { anchor.close() }
         let button = NSButton(frame: NSRect(x: 80, y: 10, width: 40, height: 20))
-        button.title = "Sway"
+        button.title = "Kinara"
         anchor.contentView?.addSubview(button)
         anchor.orderFront(nil)
         for name in ["light", "dark"] {
@@ -393,22 +422,58 @@ struct RenderUI {
         }
         let collapsed = host.fittingSize.height
         let windows = Set(NSApp.windows.map(\.windowNumber))
+        // The reveal runs on the display's clock for about 0.4 s; wait for it to land.
+        func settle(until done: () -> Bool) {
+            let deadline = Date().addingTimeInterval(1.5)
+            repeat {
+                RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+                host.layoutSubtreeIfNeeded()
+            } while !done() && Date() < deadline
+        }
         button.performClick(nil)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.15))
-        host.layoutSubtreeIfNeeded()
+        settle { host.fittingSize.height > collapsed + 80 }
         guard host.window === window, host.fittingSize.height > collapsed + 80,
               Set(NSApp.windows.map(\.windowNumber)) == windows,
               button.accessibilityValue() as? String == "Expanded" else {
             throw RenderError.invalidInlineOptions
         }
         button.performClick(nil)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.15))
-        host.layoutSubtreeIfNeeded()
+        settle { abs(host.fittingSize.height - collapsed) < 1 }
         guard abs(host.fittingSize.height - collapsed) < 1,
               button.accessibilityValue() as? String == "Collapsed" else {
             throw RenderError.invalidInlineOptions
         }
         print("Verified first-action expansion and collapse in the production menu hierarchy; no popup window created.")
+    }
+
+    /// The real Settings window, chrome included, never ordered on screen:
+    /// the window's buttons must sit clear of the search field and the title.
+    @MainActor
+    private static func renderSettingsWindow(to output: URL) throws {
+        for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", NSAppearance.Name.darkAqua)] {
+            let suite = "com.sway.render.\(UUID().uuidString)"
+            guard let defaults = UserDefaults(suiteName: suite) else { throw RenderError.preferencesUnavailable }
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let settings = TrackpadSettings(defaults: defaults)
+            settings.appearanceMode = name
+            settings.applyGesturePreset(.oneFinger)
+            settings.leftZoneWidth = 0.03
+            settings.rightZoneWidth = 0.03
+            settings.setBaseBinding(EdgeBinding(.playPause), for: "topRightCorner.doubleTap")
+            settings.setBaseBinding(EdgeBinding(.missionControl), for: "bottomLeftCorner.doubleTap")
+            let controller = NSHostingController(rootView: ContentView(initialPane: .edges, preview: true, settings: settings))
+            controller.sizingOptions = []
+            let window = AppDelegate.settingsWindow(content: controller)
+            window.isReleasedWhenClosed = false
+            window.appearance = NSAppearance(named: appearance)
+            window.layoutIfNeeded()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+            window.layoutIfNeeded()
+            guard let frame = window.contentView?.superview else { throw RenderError.bitmapUnavailable }
+            try snapshot(frame, to: output.appendingPathComponent("sway-settings-window-\(name).png"))
+            print("  Window frame: \(Int(window.frame.width)) × \(Int(window.frame.height)) pt")
+            window.close()
+        }
     }
 
     /// This uses the production AppKit indicator content and material. Bitmap
@@ -480,7 +545,7 @@ struct RenderUI {
     private static func showIndicatorPreview() {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 740, height: 370),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "Sway Indicator Preview — no hardware changes"
+        window.title = "Kinara Indicator Preview — no hardware changes"
         window.isReleasedWhenClosed = false
         let delegate = IndicatorPreviewDelegate()
         window.delegate = delegate
@@ -524,20 +589,41 @@ struct RenderUI {
         var configure: (TrackpadSettings) -> Void = { _ in }
     }
 
+    /// Four apps the way the picker shows them: two playing, one muted, one quiet.
+    @MainActor
+    private static func sampleAudioPicker() -> AudioPickerModel {
+        func icon(_ bundle: String) -> NSImage? {
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle).map { NSWorkspace.shared.icon(forFile: $0.path) }
+        }
+        let model = AudioPickerModel()
+        model.apps = AudioPickerRules.ordered([
+            AudioPickerApp(id: "com.apple.Music", name: "Music", icon: icon("com.apple.Music"), isPlaying: true, hasPlayed: true, volume: 0.8),
+            AudioPickerApp(id: "com.apple.Safari", name: "Safari", icon: icon("com.apple.Safari"), isPlaying: true, hasPlayed: true),
+            AudioPickerApp(id: "com.apple.FaceTime", name: "FaceTime", icon: icon("com.apple.FaceTime"), isPlaying: true, isMuted: true, hasPlayed: true),
+            AudioPickerApp(id: "com.apple.podcasts", name: "Podcasts", icon: icon("com.apple.podcasts"), hasPlayed: true),
+        ])
+        model.selection = 1
+        model.visible = true
+        model.mode = .touch
+        return model
+    }
+
     private enum Surface {
+        case audioPicker
         case actions
         case welcome(GettingStartedView.Step, Bool)
         case updates
         case menu
-        case preferences(SettingsPane)
+        case preferences(SettingsPane, spot: String = "left", showsAdvanced: Bool = false)
 
         var name: String {
             switch self {
+            case .audioPicker: return "audio-picker"
             case .actions: return "action-library"
             case let .welcome(step, access): return "welcome-\(step)" + (step == .access && !access ? "-needed" : "")
             case .updates: return "updates"
             case .menu: return "menu"
-            case .preferences(let tab): return "settings-\(tab.rawValue)"
+            case let .preferences(tab, _, _): return "settings-\(tab.rawValue)"
             }
         }
     }

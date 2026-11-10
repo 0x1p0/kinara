@@ -1,5 +1,5 @@
 // Small DOM toolkit for the film: element creation, per-frame transforms,
-// word-by-word reveals, glyphs, and Sway's own UI pieces (icon, indicator).
+// word-by-word reveals, glyphs, and Kinara's own UI pieces (icon, indicator).
 import { prog, ease, clamp, lerp } from "./timeline.js";
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -113,6 +113,21 @@ const G = {
   airpods: '<path d="M8.2 4A3.2 3.2 0 0 0 5 7.2v1.3a3.2 3.2 0 0 0 3.2 3.2h.3v8.3a1.6 1.6 0 0 0 3.2 0V7.4A3.4 3.4 0 0 0 8.2 4zM15.8 4A3.2 3.2 0 0 1 19 7.2v1.3a3.2 3.2 0 0 1-3.2 3.2h-.3v8.3a1.6 1.6 0 0 1-3.2 0V7.4A3.4 3.4 0 0 1 15.8 4z" fill="currentColor" stroke="none"/>',
   bubble: '<path d="M4 11.5c0-4 3.6-7 8-7s8 3 8 7-3.6 7-8 7c-1 0-2-.1-2.9-.4L5 19.5l1.2-3.4C4.8 14.9 4 13.3 4 11.5z" fill="currentColor" stroke="none"/>',
   phone: '<path d="M6.6 3.6l3 .6 1.4 3.9-2 1.6a12 12 0 0 0 5.4 5.4l1.6-2 3.9 1.4.6 3c0 1.1-1 2-2.1 2C10 19.5 4.5 14 4.5 5.7c0-1.1.9-2.1 2.1-2.1z" fill="currentColor" stroke="none"/>',
+  plus: '<path d="M12 6.5v11M6.5 12h11"/>',
+  search: '<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l4.8 4.8"/>',
+  playpause: '<path d="M3.5 6v12l8-6z" fill="currentColor" stroke="none"/><path d="M15 6.5v11M19.5 6.5v11" stroke-width="2.6"/>',
+  uturn: '<path d="M9 14L4.5 9.5 9 5"/><path d="M4.5 9.5H14a5.5 5.5 0 0 1 0 11h-3"/>',
+  musiclist: '<path d="M3.5 6h9M3.5 10.5h9M3.5 15h6"/><path d="M17 17V5.5l3.5-1"/><circle cx="15" cy="17.5" r="2.4" fill="currentColor" stroke="none"/>',
+  wifi: '<path d="M2.5 9a14 14 0 0 1 19 0M5.8 12.4a9.3 9.3 0 0 1 12.4 0M9.1 15.8a4.6 4.6 0 0 1 5.8 0"/><circle cx="12" cy="19" r="1.3" fill="currentColor" stroke="none"/>',
+  back: '<path d="M11 6v12l-8-6zM20 6v12l-8-6z" fill="currentColor" stroke="none"/>',
+  forward: '<path d="M4 6v12l8-6zM13 6v12l8-6z" fill="currentColor" stroke="none"/>',
+  play: '<path d="M7 4.5v15l12.5-7.5z" fill="currentColor" stroke="none"/>',
+  pause: '<rect x="6" y="4.5" width="4.2" height="15" rx="1.2" fill="currentColor" stroke="none"/><rect x="13.8" y="4.5" width="4.2" height="15" rx="1.2" fill="currentColor" stroke="none"/>',
+  mail: '<rect x="3.5" y="6" width="17" height="12.5" rx="2.4"/><path d="M4.5 7.5l7.5 6 7.5-6"/>',
+  notes: '<rect x="5" y="4" width="14" height="16.5" rx="2.6"/><path d="M8.5 9h7M8.5 12.5h7M8.5 16h4.5"/>',
+  xmark: '<circle cx="12" cy="12" r="8.5"/><path d="M9 9l6 6M15 9l-6 6"/>',
+  light: '<path d="M4 8.5c2.5-3 5.5-3 8 0s5.5 3 8 0"/><path d="M4 15.5c2.5-3 5.5-3 8 0s5.5 3 8 0"/>',
+  tabs: '<rect x="3" y="7" width="18" height="12.5" rx="2.2"/><path d="M3 7.5V6a1.5 1.5 0 0 1 1.5-1.5h5L11 7"/>',
   battery: '<rect x="2.5" y="7.5" width="16.5" height="9" rx="2.2"/><path d="M21.5 10.5v3"/><rect x="4.6" y="9.6" width="3.2" height="4.8" rx="0.8" fill="currentColor" stroke="none"/>',
 };
 export function glyph(name, size = 24, style = {}) {
@@ -193,14 +208,3 @@ export function indicator(kind = "speaker", scale = 1.55) {
 /** A frosted glass panel. */
 export const glass = (cls = "", style = {}, ...children) => h("div", { class: `glass ${cls}`, style }, ...children);
 
-/** Animated ripple rings for taps and haptic ticks, drawn into an SVG group. */
-export function ripples(svg, events, t, { max = 70, life = 0.75, stroke = 2.4, color = "#eef3ff" } = {}) {
-  svg.innerHTML = "";
-  for (const e of events) {
-    const age = t - e.t;
-    if (age < 0 || age > life) continue;
-    const p = ease.out(age / life);
-    const r = (e.r0 ?? 8) + p * (e.max ?? max);
-    svg.append(h("circle", { cx: e.x, cy: e.y, r, fill: "none", stroke: color, "stroke-width": stroke * (1 - p * 0.6), opacity: (1 - p) * (e.o ?? 0.9) }));
-  }
-}

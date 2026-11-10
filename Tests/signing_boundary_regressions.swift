@@ -10,8 +10,8 @@ struct SigningBoundaryRegressions {
         let sparkleTool = CommandLine.arguments.count > 4 ? CommandLine.arguments[4] : nil
         let key = Curve25519.Signing.PrivateKey()
         let encodedSeed = key.rawRepresentation.base64EncodedString()
-        let archiveName = "Sway-1.0.7-macos-universal.zip"
-        let dmgName = "Sway-1.0.7-macos-universal.dmg"
+        let archiveName = "Kinara-1.0.7-macos-universal.zip"
+        let dmgName = "Kinara-1.0.7-macos-universal.dmg"
         let archive = Data([0x50, 0x4b, 0x03, 0x04]) + Data("Opaque test bytes. Never execute me.".utf8)
         let dmg = Data("koly".utf8) + Data(repeating: 0, count: 508)
         let notes = "Release notes: <tag> & \"quotes\" ]]> <!DOCTYPE x SYSTEM 'file:///etc/passwd'>"

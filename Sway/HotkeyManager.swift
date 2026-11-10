@@ -40,7 +40,7 @@ final class HotkeyManager: ObservableObject {
         if let failure = unregister(&cheatSheetRef) { cheatSheetError = failure; return false }
         currentCheatSheet = hotkey
         guard hotkey != currentHotkey || hotkey.isEmpty else {
-            cheatSheetError = "This shortcut already pauses Sway. Choose another one."
+            cheatSheetError = "This shortcut already pauses Kinara. Choose another one."
             return false
         }
         cheatSheetError = register(hotkey, id: Self.cheatSheetID, into: &cheatSheetRef)
