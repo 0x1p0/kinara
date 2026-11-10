@@ -1,6 +1,6 @@
 import { site } from '@/data/site';
 
-type Doc = { title: string; intro: string; sections: { h: string; p: string[] }[] };
+type Doc = { title: string; intro: string; sections: { h: string; p: string[]; link?: { text: string; href: string } }[] };
 
 /** A plain page for policy text: title on the left, readable column on the right. */
 export function LegalPage({ doc }: { doc: Doc }) {
@@ -17,6 +17,14 @@ export function LegalPage({ doc }: { doc: Doc }) {
             <section key={s.h}>
               <h2>{s.h}</h2>
               {s.p.map((text) => <p key={text}>{text}</p>)}
+              {s.link && (
+                <p>
+                  <a className="link" href={s.link.href}>
+                    {s.link.text}
+                    <svg width="8" height="12" viewBox="0 0 8 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2 1.5L6.5 6 2 10.5" /></svg>
+                  </a>
+                </p>
+              )}
             </section>
           ))}
         </div>

@@ -21,8 +21,9 @@ export const site = {
   // Download fetches the disk image itself; one universal build runs natively on every Mac.
   downloadUrl: release?.url ?? 'https://github.com/0x1p0/kinara/releases/latest',
   releasesUrl: 'https://github.com/0x1p0/kinara/releases',
+  // There is no email: questions, bugs and ideas go to GitHub issues.
   issuesUrl: 'https://github.com/0x1p0/kinara/issues',
-  email: 'support@kinara.example', // placeholder: true
+  newIssueUrl: 'https://github.com/0x1p0/kinara/issues/new',
   updated: '10 November 2026',
 };
 
@@ -205,7 +206,7 @@ export const legal = {
       { h: 'Network', p: ['Kinara checks GitHub for signed updates once a day. That request includes your app version and, like any request, your IP address, and GitHub’s own privacy statement covers it. You can turn update checks off in Settings.', 'Kinara has no account, no sign-in and no license check, so nothing else is sent.'] },
       { h: 'Open source', p: ['You don’t have to take this page on trust: Kinara’s source code is public, so anyone can check what it does.'] },
       { h: 'This website', p: ['This site uses no analytics, no advertising and no cookies. Your theme choice is saved in your own browser. Our host keeps standard server logs.'] },
-      { h: 'Contact', p: [`Questions about privacy: ${site.email}.`] },
+      { h: 'Contact', p: ['Questions about privacy are welcome as an issue on GitHub, where the answer helps the next person too. Issues are public, so leave out anything personal.'], link: { text: 'Open an issue on GitHub', href: site.newIssueUrl } },
     ],
   },
   license: {
@@ -220,7 +221,7 @@ export const legal = {
         'THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.',
       ] },
       { h: 'Third-party software', p: ['Kinara includes Sparkle, for updates, under its own MIT License. Its license text ships inside the app as Sparkle-LICENSE.txt.'] },
-      { h: 'Contact', p: [`Questions about the license: ${site.email}, or open an issue on GitHub.`] },
+      { h: 'Contact', p: ['Questions about the license are welcome as an issue on GitHub.'], link: { text: 'Open an issue on GitHub', href: site.newIssueUrl } },
     ],
   },
 };

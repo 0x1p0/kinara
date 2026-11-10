@@ -15,7 +15,7 @@ export function Footer() {
             <li><a href="/privacy">Privacy</a></li>
             <li><a href="/license">License</a></li>
             <li><a href={site.sourceUrl}>Source</a></li>
-            <li><a href={`mailto:${site.email}`}>Contact</a></li>
+            <li><a href={site.issuesUrl}>Contact</a></li>
           </ul>
         </div>
       </div>
