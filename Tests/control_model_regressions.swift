@@ -184,6 +184,22 @@ private final class ModelFixture {
         expect(TrackpadMonitor.armedSides(for: .topLeftCorner) == [.left] && TrackpadMonitor.armedSides(for: .bottomRightCorner) == [.right]
                && TrackpadMonitor.armedSides(for: .left) == [.left] && TrackpadMonitor.armedSides(for: .top) == [.left, .right],
                "a tap arms the side edge on its own side, never the whole trackpad")
+        // A level slide shows the indicator as it's accepted, at the level it starts from,
+        // so a slide already at its limit, or a flick lifted early, still shows it.
+        let start = { (action: ZoneAction, value: Double, muted: Bool) in
+            TrackpadMonitor.startingIndicator(for: action, value: value, muted: muted, brightnessFloor: 0.1)
+        }
+        expect(start(.volume, 1, false).map { $0.type == .volume && $0.value == 1 } == true, "a slide at full volume shows the indicator full")
+        expect(start(.volume, 0, false).map { $0.type == .volume && $0.value == 0 } == true, "a slide at zero volume shows the indicator empty")
+        expect(start(.volume, 0.6, true)?.value == 0, "muted output starts the indicator at zero, as the menu shows it")
+        expect(start(.brightness, 0.4, false).map { $0.type == .brightness && abs($0.value - 0.4) < 0.0001 } == true, "brightness starts where it is")
+        expect(start(.brightness, -0.15, false).map { $0.type == .extraDim && abs($0.value - 0.5) < 0.0001 } == true,
+               "below the hardware floor a slide starts in extra dim, as it continues")
+        expect(start(.microphoneLevel, 0.3, false)?.type == .microphone && start(.appVolume, 0.8, false)?.type == .appVolume
+               && start(.nightShift, 0.2, false)?.type == .nightShift && start(.extraDim, 0.9, false)?.type == .extraDim,
+               "every level slide has its own indicator")
+        expect(start(.seek, 0.5, false) == nil && start(.tabs, 0.5, false) == nil
+               && start(.playPause, 0.5, false) == nil, "seeking and steppers keep their own feedback")
         expect(!ZoneAction.clipboardHistory.slidesAfterTap && !ZoneAction.audioApps.slidesAfterTap && !ZoneAction.playPause.slidesAfterTap
                && ZoneAction.outputMute.togglesOnTap, "panels open, one-shots fire, mute toggles")
 

@@ -787,6 +787,14 @@ final class TrackpadMonitor: ObservableObject {
         }
         NotificationCenter.default.post(name: .swayGestureBegan, object: nil,
                                         userInfo: ["action": activeAction.rawValue])
+        // The indicator comes up as the slide is accepted, at the level it starts
+        // from. Values follow only when the level moves, so a slide already at its
+        // limit, or a quick flick lifted before its first change landed, showed none.
+        if let start = Self.startingIndicator(for: action, value: value,
+                                              muted: action == .volume && VolumeController.shared.isMuted,
+                                              brightnessFloor: limits(for: .brightness).lowerBound) {
+            OSDOverlay.shared.show(type: start.type, value: start.value, placement: Self.placement(for: decision))
+        }
         if decision.fingers == 1 && settings.cursorFreezeOnOneFinger,
            let event = CGEvent(source: nil) {
             // CGEvent.location and CGWarpMouseCursorPosition share global display
@@ -907,9 +915,32 @@ final class TrackpadMonitor: ObservableObject {
         // Extra dim begins where the hardware ends, and that edge is a detent too.
         let detents = dimming ? notches + [limits(for: .brightness).lowerBound] : notches
         if !haptic(at: requested, bounds: bounds, notches: detents), entersFine { cue(.soft) }
-        let placement = OSDPlacement(edge: region == .left ? "left" : region == .right ? "right" : region == .bottom ? "bottom" : "top",
-                                     x: decision.x, y: decision.y)
-        requestLevel(requested, region: region, scope: scope, placement: placement)
+        requestLevel(requested, region: region, scope: scope, placement: Self.placement(for: decision))
+    }
+
+    /// Where the finger is, for the indicator's Follow finger style.
+    private static func placement(for decision: GestureDecision) -> OSDPlacement {
+        let region = decision.region
+        return OSDPlacement(edge: region == .left ? "left" : region == .right ? "right" : region == .bottom ? "bottom" : "top",
+                            x: decision.x, y: decision.y)
+    }
+
+    /// What the indicator shows as a level slide begins: the level it starts
+    /// from, as the indicator shows that level. Nil for actions without one.
+    static func startingIndicator(for action: ZoneAction, value: Double, muted: Bool,
+                                  brightnessFloor: Double) -> (type: OSDType, value: Float)? {
+        switch action {
+        case .volume: return (.volume, muted ? 0 : Float(value))
+        case .microphoneLevel: return (.microphone, Float(value))
+        case .brightness:
+            guard value < brightnessFloor else { return (.brightness, Float(value)) }
+            // Below the hardware minimum the slide is in extra dim, and goes on there.
+            return (.extraDim, Float(1 - (brightnessFloor - value) / extraDimSpan))
+        case .appVolume: return (.appVolume, Float(value))
+        case .nightShift: return (.nightShift, Float(value))
+        case .extraDim: return (.extraDim, Float(value))
+        default: return nil
+        }
     }
 
     // Keep the epoch stable through this gesture. Already-applied samples

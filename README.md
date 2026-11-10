@@ -200,7 +200,7 @@ system level, requests a permission, registers a shortcut or launches the produc
 | --- | --- | ---: | --- |
 | Gesture recognizer | `scripts/test-gestures.sh` | 253 | Intent, rejection, scroll ownership, staleness |
 | Palm rejection | `scripts/test-palm-rejection.sh` | 60 | Footprint and intent rules on synthetic traces |
-| Control model | `scripts/test-controls.sh` | 516 | Every action's metadata and icon, steppers, panel state from readback |
+| Control model | `scripts/test-controls.sh` | 523 | Every action's metadata and icon, steppers, panel state from readback |
 | Settings | `scripts/test-settings.sh` | 343 | Migration, normalization, profiles, export and import (91 cases) |
 | Haptics | `scripts/test-haptics.sh` | 132 | Fixed detents on the shown number, hysteresis, rate limits, fake clock and performer |
 | Edge light | `scripts/test-edge-light.sh` | 90 | Overlay window joins full-screen Spaces; every colour reads at 3:1 on any background; the ambient lap |

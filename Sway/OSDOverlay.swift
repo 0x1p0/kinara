@@ -57,6 +57,17 @@ final class OSDOverlay {
         let now = ProcessInfo.processInfo.systemUptime
         hideDeadline = now + 1.35
         let value = max(0, min(1, value))
+        // Shown, yet missing from the Space in front (as the edge light was over
+        // a full-screen video): bring it here, or start over with a fresh window.
+        if let shown = window, shown.isVisible, !shown.isOnActiveSpace {
+            shown.orderFrontRegardless()
+            if !shown.isOnActiveSpace {
+                KinaraLog.warning(.output, "Indicator missed the active Space; replaced its window")
+                dismiss()
+                window = nil
+                surface = nil
+            }
+        }
         let isStarting = window?.isVisible != true
         if window == nil {
             let surface = OSDSurfaceView(horizontal: configuration.isHorizontal)
