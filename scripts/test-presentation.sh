@@ -2,14 +2,14 @@
 set -euo pipefail
 script_directory="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_directory="$(cd -- "$script_directory/.." && pwd)"
-test_directory="$(mktemp -d /tmp/sway-presentation-tests.XXXXXX)"
+test_directory="$(mktemp -d /tmp/kinara-presentation-tests.XXXXXX)"
 test_arch="$(uname -m)"
 sdk_path="$(xcrun --sdk macosx --show-sdk-path)"
 cd "$project_directory"
 xcrun swiftc -target "$test_arch-apple-macos13.0" -sdk "$sdk_path" \
     -swift-version 5 -warnings-as-errors -parse-as-library \
     -module-cache-path "$test_directory/ModuleCache" \
-    Sway/AppPresentation.swift Tests/presentation_regressions.swift \
+    Kinara/AppPresentation.swift Tests/presentation_regressions.swift \
     -framework AppKit -framework SwiftUI -o "$test_directory/presentation-regressions"
 if [[ "${1:-}" == "--live" ]]; then
     # Match the production app's bundle/lifecycle. The fixture starts its
@@ -20,7 +20,7 @@ if [[ "${1:-}" == "--live" ]]; then
     cp "$test_directory/presentation-regressions" "$test_bundle/Contents/MacOS/PresentationTest"
     test_plist="$test_bundle/Contents/Info.plist"
     plutil -create xml1 "$test_plist"
-    plutil -insert CFBundleIdentifier -string com.sway.presentationtest "$test_plist"
+    plutil -insert CFBundleIdentifier -string com.kinara.presentationtest "$test_plist"
     plutil -insert CFBundleName -string 'Kinara Presentation Test' "$test_plist"
     plutil -insert CFBundleExecutable -string PresentationTest "$test_plist"
     plutil -insert CFBundlePackageType -string APPL "$test_plist"

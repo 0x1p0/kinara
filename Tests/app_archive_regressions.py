@@ -10,7 +10,7 @@ archive = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(archive)
 checks = 0
 
-with tempfile.TemporaryDirectory(prefix="sway-archive-tests.") as temporary:
+with tempfile.TemporaryDirectory(prefix="kinara-archive-tests.") as temporary:
     root = Path(temporary)
 
     def check(entries, accepted):

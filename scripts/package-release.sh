@@ -36,7 +36,7 @@ if [[ -n "${2:-}" ]]; then
     python3 scripts/safe-app-archive.py "$signed_archive" "$extraction/extracted"
     bundle="$extraction/extracted/Kinara.app"
 else
-    SWAY_ARCH=universal bash scripts/build.sh
+    KINARA_ARCH=universal bash scripts/build.sh
     bundle="$project_directory/build/Kinara.app"
     python3 scripts/app-signing.py sign "$bundle"
     signed_archive=""
@@ -75,9 +75,9 @@ bash scripts/test-updater-bundle.sh "$bundle"
     shasum -a 256 "${checksum_files[@]}" > SHA256SUMS.txt
     shasum -a 256 -c SHA256SUMS.txt
 )
-if [[ "${SWAY_DEFER_UPDATE_SIGNING:-0}" != "1" ]]; then
+if [[ "${KINARA_DEFER_UPDATE_SIGNING:-0}" != "1" ]]; then
     bash scripts/sign-release.sh "$staging/artifacts" "v$version"
 fi
 mv "$staging/artifacts" "$release_directory"
 printf '\nVerified release artifacts: %s\n' "$release_directory"
-printf 'Signing: persistent self-signed Sway identity; not notarized. No release has been published by this script.\n'
+printf 'Signing: persistent self-signed Kinara identity; not notarized. No release has been published by this script.\n'

@@ -14,13 +14,13 @@ struct RenderUI {
             try verifyNativePresentation()
             return
         }
-        let previewMenu = CommandLine.arguments.contains("--preview-menu") || Bundle.main.bundleIdentifier == "com.sway.uipreview"
-        let previewOSD = CommandLine.arguments.contains("--preview-osd") || Bundle.main.bundleIdentifier == "com.sway.osdpreview"
-        let output = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "/private/tmp/SwayUI")
+        let previewMenu = CommandLine.arguments.contains("--preview-menu") || Bundle.main.bundleIdentifier == "com.kinara.uipreview"
+        let previewOSD = CommandLine.arguments.contains("--preview-osd") || Bundle.main.bundleIdentifier == "com.kinara.osdpreview"
+        let output = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "/private/tmp/KinaraUI")
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         NSApplication.shared.setActivationPolicy(previewMenu || previewOSD ? .accessory : .prohibited)
         // The renderer is not an app bundle; show Kinara's real icon in logo spots.
-        if let icon = NSImage(contentsOfFile: "Sway/Assets.xcassets/AppIcon.appiconset/icon_1024x1024.png") {
+        if let icon = NSImage(contentsOfFile: "Kinara/Assets.xcassets/AppIcon.appiconset/icon_1024x1024.png") {
             NSApplication.shared.applicationIconImage = icon
         }
         if previewOSD {
@@ -130,7 +130,7 @@ struct RenderUI {
                 }
                 // Isolate every fixture from the app's saved preferences. The
                 // preview model uses canned readouts and refuses hardware writes.
-                let suiteName = "com.sway.render.\(UUID().uuidString)"
+                let suiteName = "com.kinara.render.\(UUID().uuidString)"
                 guard let defaults = UserDefaults(suiteName: suiteName) else {
                     throw RenderError.preferencesUnavailable
                 }
@@ -246,7 +246,7 @@ struct RenderUI {
                 RunLoop.main.run(until: Date().addingTimeInterval(0.15))
                 host.layoutSubtreeIfNeeded()
 
-                let stem = "sway-\(fixture.surface.name)-\(name)\(fixture.suffix)"
+                let stem = "kinara-\(fixture.surface.name)-\(name)\(fixture.suffix)"
                 audit(host, fixture: stem)
                 try snapshot(canvas, to: output.appendingPathComponent("\(stem).png"))
                 print("  Content size: \(Int(size.width)) × \(Int(size.height)) pt")
@@ -360,7 +360,7 @@ struct RenderUI {
         anchor.contentView?.addSubview(button)
         anchor.orderFront(nil)
         for name in ["light", "dark"] {
-            let suite = "com.sway.native-layout.\(UUID().uuidString)"
+            let suite = "com.kinara.native-layout.\(UUID().uuidString)"
             guard let defaults = UserDefaults(suiteName: suite) else { throw RenderError.preferencesUnavailable }
             defer { defaults.removePersistentDomain(forName: suite) }
             let settings = TrackpadSettings(defaults: defaults)
@@ -451,7 +451,7 @@ struct RenderUI {
     @MainActor
     private static func renderSettingsWindow(to output: URL) throws {
         for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", NSAppearance.Name.darkAqua)] {
-            let suite = "com.sway.render.\(UUID().uuidString)"
+            let suite = "com.kinara.render.\(UUID().uuidString)"
             guard let defaults = UserDefaults(suiteName: suite) else { throw RenderError.preferencesUnavailable }
             defer { defaults.removePersistentDomain(forName: suite) }
             let settings = TrackpadSettings(defaults: defaults)
@@ -470,7 +470,7 @@ struct RenderUI {
             RunLoop.main.run(until: Date().addingTimeInterval(0.2))
             window.layoutIfNeeded()
             guard let frame = window.contentView?.superview else { throw RenderError.bitmapUnavailable }
-            try snapshot(frame, to: output.appendingPathComponent("sway-settings-window-\(name).png"))
+            try snapshot(frame, to: output.appendingPathComponent("kinara-settings-window-\(name).png"))
             print("  Window frame: \(Int(window.frame.width)) × \(Int(window.frame.height)) pt")
             window.close()
         }
@@ -525,7 +525,7 @@ struct RenderUI {
                     canvas.layoutSubtreeIfNeeded()
                     let orientation = horizontal ? "horizontal" : "vertical"
                     let suffix = reduced ? "-reduced-transparency" : ""
-                    try snapshot(canvas, to: output.appendingPathComponent("sway-indicator-\(orientation)-\(name)\(suffix).png"))
+                    try snapshot(canvas, to: output.appendingPathComponent("kinara-indicator-\(orientation)-\(name)\(suffix).png"))
                     if #available(macOS 26.0, *), !reduced {
                         guard let glass = surface.subviews.first as? NSGlassEffectView,
                               glass.contentView === surface.content,

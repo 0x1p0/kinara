@@ -1,5 +1,5 @@
 // The screen's picture: a Mac desktop with Kinara's own feedback on it, at the
-// app's real sizes (Sway/CornerBloom.swift, Sway/Overlay.swift) times one
+// app's real sizes (Kinara/CornerBloom.swift, Kinara/Overlay.swift) times one
 // film scale, so it reads from across the studio. Scenes add their windows to
 // `content` and describe the rest (backlight, level, lights) each frame.
 import { h, glyph } from "./ui.js";
@@ -10,7 +10,7 @@ const W = SCREEN.w, H = SCREEN.h;
 /** Kinara's overlays are drawn this much larger than life. */
 export const FILM_SCALE = 1.3;
 
-// Kinara's light colours (Sway/Overlay.swift), as the system colours look on a dark screen.
+// Kinara's light colours (Kinara/Overlay.swift), as the system colours look on a dark screen.
 export const PALETTES = {
   accent: [[10, 132, 255]],
   aurora: [[64, 200, 224], [10, 132, 255], [191, 90, 242], [255, 55, 95]],

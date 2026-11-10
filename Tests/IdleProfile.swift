@@ -12,7 +12,7 @@ struct IdleProfile {
         let defaults = UserDefaults.standard
         var overrides = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
         overrides["isEnabled"] = false
-        overrides["hasCompletedSwaySetup"] = true
+        overrides["hasCompletedKinaraSetup"] = true
         overrides["hasRequestedLaunchAccessibility"] = true
         overrides["automaticallyCheckForUpdates"] = false
         overrides["showDockIcon"] = false
@@ -27,7 +27,7 @@ struct IdleProfile {
               settings.menuBarValueSource == "icon",
               !settings.showDockIcon,
               !defaults.bool(forKey: "automaticallyCheckForUpdates"),
-              defaults.bool(forKey: "hasCompletedSwaySetup"),
+              defaults.bool(forKey: "hasCompletedKinaraSetup"),
               defaults.bool(forKey: "hasRequestedLaunchAccessibility") else {
             throw ProfileError.unsafeConfiguration
         }

@@ -21,9 +21,9 @@ def expect(condition, message):
     checks += 1
 
 
-with tempfile.TemporaryDirectory(prefix="sway clean packaging ") as temporary:
+with tempfile.TemporaryDirectory(prefix="kinara clean packaging ") as temporary:
     parent = Path(temporary)
-    metadata = plistlib.loads((ROOT / "Sway/Info.plist").read_bytes())
+    metadata = plistlib.loads((ROOT / "Kinara/Info.plist").read_bytes())
     version = metadata["CFBundleShortVersionString"]
     metadata.update(CFBundleIdentifier="com.trackpadcontrol.app", CFBundleExecutable="Kinara")
     archive = parent / "unsigned fixture.zip"
@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory(prefix="sway clean packaging ") as temporary:
         project = parent / name
         for relative in ("scripts/package-release.sh", "scripts/release-version.sh",
                          "scripts/safe-app-archive.py", "scripts/app-signing.py",
-                         "scripts/verify-runtime.sh", "scripts/signing/Sway.cer", "Sway/Info.plist"):
+                         "scripts/verify-runtime.sh", "scripts/signing/Kinara.cer", "Kinara/Info.plist"):
             target = project / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / relative, target)
@@ -49,8 +49,8 @@ with tempfile.TemporaryDirectory(prefix="sway clean packaging ") as temporary:
 
     def package(project, input_archive=archive, tag=None):
         environment = {key: value for key, value in os.environ.items()
-                       if key not in {"SWAY_APP_SIGNING_IDENTITY", "SPARKLE_PRIVATE_KEY"}}
-        environment.update(CI="true", SWAY_DEFER_UPDATE_SIGNING="1")
+                       if key not in {"KINARA_APP_SIGNING_IDENTITY", "SPARKLE_PRIVATE_KEY"}}
+        environment.update(CI="true", KINARA_DEFER_UPDATE_SIGNING="1")
         # Intentionally invoke from elsewhere, as well as using paths with spaces.
         return subprocess.run(["/bin/bash", str(project / "scripts/package-release.sh"),
                                tag or f"v{version}", str(input_archive)],

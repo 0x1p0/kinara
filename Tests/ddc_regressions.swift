@@ -2,7 +2,7 @@ import Foundation
 import CoreGraphics
 
 /// A simulated scaler behind one DDC endpoint. It validates packets the way a
-/// monitor would, so these tests cover the exact bytes Sway puts on the bus.
+/// monitor would, so these tests cover the exact bytes Kinara puts on the bus.
 private final class FakeMonitor {
     var current: UInt16
     var maximum: UInt16

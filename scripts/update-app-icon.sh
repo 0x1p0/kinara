@@ -7,7 +7,7 @@ set -euo pipefail
 
 script_directory="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_directory="$(cd -- "$script_directory/.." && pwd)"
-asset_directory="$project_directory/Sway/Assets.xcassets/AppIcon.appiconset"
+asset_directory="$project_directory/Kinara/Assets.xcassets/AppIcon.appiconset"
 master="$asset_directory/icon_1024x1024.png"
 renderer="$project_directory/Design/render-icon.swift"
 

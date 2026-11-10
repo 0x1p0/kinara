@@ -50,7 +50,7 @@ def manifest(root):
 def verify(directory, signed_zip_digest):
     if not re.fullmatch(r"[0-9a-f]{64}", signed_zip_digest):
         raise ValueError("Invalid signer-provided digest")
-    version = plistlib.loads((ROOT / "Sway/Info.plist").read_bytes())["CFBundleShortVersionString"]
+    version = plistlib.loads((ROOT / "Kinara/Info.plist").read_bytes())["CFBundleShortVersionString"]
     archive = directory / f"Kinara-{version}-macos-universal.zip"
     dmg = directory / f"Kinara-{version}-macos-universal.dmg"
     if set(p.name for p in directory.iterdir()) != {archive.name, dmg.name, "SHA256SUMS.txt"}:
@@ -60,7 +60,7 @@ def verify(directory, signed_zip_digest):
             raise ValueError("Invalid release artifact")
     if digest(archive) != signed_zip_digest:
         raise ValueError("Packager changed the signed ZIP")
-    with tempfile.TemporaryDirectory(prefix="sway-verify-downloads.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="kinara-verify-downloads.") as temporary:
         work = Path(temporary)
         bundle = load("safe-app-archive").extract(archive, work / "extracted")
         subprocess.run([sys.executable, str(ROOT / "scripts/app-signing.py"), "verify", str(bundle)], check=True)

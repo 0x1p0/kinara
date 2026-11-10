@@ -24,7 +24,7 @@ bash scripts/update-app-icon.sh
 Pass a square PNG as the first argument to package external artwork instead.
 Both the Xcode build and the direct-build fallback consume this asset set.
 
-The menu bar uses the same idea as a template image (`SwayGlyph` in
-`Sway/AppPresentation.swift`): a trackpad outline with a quiet left track and a
+The menu bar uses the same idea as a template image (`KinaraGlyph` in
+`Kinara/AppPresentation.swift`): a trackpad outline with a quiet left track and a
 solid swipe on the right, dimmed while gestures are paused. Inside Kinara's
 windows, logo spots show the app icon itself.

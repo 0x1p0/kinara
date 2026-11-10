@@ -323,8 +323,8 @@ def wallpaper(theme: str) -> Image.Image:
 
 # ---------------------------------------------------------------- menu bar
 
-def sway_glyph_mask(scale: float) -> Image.Image:
-    """SwayGlyph from Sway/AppPresentation.swift: 19x16 pt template image."""
+def kinara_glyph_mask(scale: float) -> Image.Image:
+    """KinaraGlyph from Kinara/AppPresentation.swift: 19x16 pt template image."""
     k = scale * SS
     m = Image.new("L", (round(19 * k), round(16 * k)), 0)
     d = ImageDraw.Draw(m)
@@ -401,7 +401,7 @@ def menu_bar(canvas: Image.Image, blurred: Image.Image, t: dict) -> int:
         box = (x, y, x + mask.width, y + mask.height)
         ink.paste(ImageChops.lighter(ink.crop(box), mask), box[:2])
 
-    # Left: Kinara's own menus (Sway/SwayApp.swift). The Apple menu is left
+    # Left: Kinara's own menus (Kinara/KinaraApp.swift). The Apple menu is left
     # out on purpose: Apple's marketing guidelines don't allow its logo.
     x = 34
     for i, label in enumerate(["Kinara", "File", "Edit", "Window"]):
@@ -419,7 +419,7 @@ def menu_bar(canvas: Image.Image, blurred: Image.Image, t: dict) -> int:
         x -= g.width
         stamp(g, x, (BAR_H - g.height) // 2)
         x -= 34
-    glyph = sway_glyph_mask(2.0)
+    glyph = kinara_glyph_mask(2.0)
     gx = x - glyph.width - 4
     stamp(glyph, gx, (BAR_H - glyph.height) // 2)
 
@@ -440,7 +440,7 @@ def menu_bar(canvas: Image.Image, blurred: Image.Image, t: dict) -> int:
 
 def traffic_lights():
     """The three window buttons where AppKit puts them over Kinara's unified
-    toolbar (measured from build/UIRender/sway-settings-window-*.png): 14 pt
+    toolbar (measured from build/UIRender/kinara-settings-window-*.png): 14 pt
     circles, 23 pt apart, centred 25.75 pt from the top-left corner.
     Yields (fill mask, edge mask, top-left, fill colour, edge colour)."""
     colors = [((255, 95, 87), (224, 68, 62)), ((254, 188, 46), (222, 161, 35)), ((40, 200, 64), (29, 173, 43))]
@@ -458,7 +458,7 @@ def traffic_lights():
 
 def build_window(theme: str, behind: Image.Image, origin: tuple[int, int], t: dict,
                  sidebar_glass: bool) -> tuple[Image.Image, Image.Image]:
-    src = Image.open(RENDERS / f"sway-settings-sound-{theme}.png").convert("RGB")
+    src = Image.open(RENDERS / f"kinara-settings-sound-{theme}.png").convert("RGB")
     box = detect_bounds(src)
     content = src.crop(box)
     cw, ch = content.size
@@ -502,7 +502,7 @@ def build_panel(theme: str) -> tuple[Image.Image, tuple]:
     # The reduced-transparency render is the same popover on a flat
     # background, with the right label colours. The default render is the
     # broken offscreen glass (dark text on dark, white-on-white controls).
-    src = Image.open(RENDERS / f"sway-menu-{theme}-reduced-transparency.png").convert("RGB")
+    src = Image.open(RENDERS / f"kinara-menu-{theme}-reduced-transparency.png").convert("RGB")
     box = detect_bounds(src)
     panel = src.crop(box)
     bg = most_common(panel)
@@ -522,7 +522,7 @@ def build_panel(theme: str) -> tuple[Image.Image, tuple]:
     return panel, bg
 
 
-# Where the popover's app icons sit (panel coords, 2x): Sway's own icon in
+# Where the popover's app icons sit (panel coords, 2x): Kinara's own icon in
 # the header, then the four apps in the mixer list. Boxes hold only the icon.
 PANEL_ICON_BOXES = [(20, 20, 110, 110)] + [(22, y, 90, y + 65) for y in (455, 565, 675, 785)]
 
@@ -559,7 +559,7 @@ def compose(theme: str, sidebar_glass: bool = True) -> Image.Image:
 
     # Settings window: left of centre, vertically centred under the bar,
     # its right edge tucked a little under the popover.
-    probe = Image.open(RENDERS / f"sway-settings-sound-{theme}.png")
+    probe = Image.open(RENDERS / f"kinara-settings-sound-{theme}.png")
     b = detect_bounds(probe)
     ww, wh = b[2] - b[0], b[3] - b[1]
     wx0 = px0 + 52 - ww
@@ -607,7 +607,7 @@ PICKER_CROP = (1240, 960)  # the shot: the picker with a little desktop around i
 def build_picker(theme: str) -> tuple[Image.Image, tuple]:
     """The reduced-transparency render of the audio picker, cropped to its
     surface: 16 pt of backdrop plus 24 pt of shadow room on every side."""
-    src = Image.open(RENDERS / f"sway-audio-picker-{theme}.png").convert("RGB")
+    src = Image.open(RENDERS / f"kinara-audio-picker-{theme}.png").convert("RGB")
     m = 80
     panel = src.crop((m, m, src.width - m, src.height - m))
     return panel, most_common(panel)

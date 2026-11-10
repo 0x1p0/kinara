@@ -61,7 +61,7 @@ jobs:
           ruby Tests/release_policy_regressions.rb
       - name: Build and verify without private identities
         run: |
-          SWAY_ARCH=universal bash scripts/build.sh
+          KINARA_ARCH=universal bash scripts/build.sh
           bash scripts/test-updater-bundle.sh
           ditto -c -k --keepParent --norsrc --noextattr build/Kinara.app "$RUNNER_TEMP/Kinara-unsigned.zip"
       - name: Hand off data, never signing tools
@@ -105,7 +105,7 @@ jobs:
           bash scripts/verify-runtime.sh "$RUNNER_TEMP/kinara-app/Kinara.app"
       - name: Sign without executing the app or installing dependencies
         env:
-          SWAY_APP_SIGNING_IDENTITY: ${{ secrets.SWAY_APP_SIGNING_IDENTITY }}
+          KINARA_APP_SIGNING_IDENTITY: ${{ secrets.KINARA_APP_SIGNING_IDENTITY }}
         run: python3 scripts/app-signing.py sign "$RUNNER_TEMP/kinara-app/Kinara.app"
       - name: Verify and seal the signed app after keychain cleanup
         id: digest
@@ -149,7 +149,7 @@ jobs:
           SIGNED_ZIP_SHA256: ${{ needs.sign-app.outputs.zip-sha256 }}
         run: |
           test "$(shasum -a 256 "$RUNNER_TEMP/kinara-signed/Kinara-signed.zip" | cut -d ' ' -f 1)" = "$SIGNED_ZIP_SHA256"
-          SWAY_DEFER_UPDATE_SIGNING=1 bash scripts/package-release.sh "$GITHUB_REF_NAME" "$RUNNER_TEMP/kinara-signed/Kinara-signed.zip"
+          KINARA_DEFER_UPDATE_SIGNING=1 bash scripts/package-release.sh "$GITHUB_REF_NAME" "$RUNNER_TEMP/kinara-signed/Kinara-signed.zip"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         id: upload
         with:
@@ -183,7 +183,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           version="$(bash scripts/release-version.sh "$GITHUB_REF_NAME")"
           test -s "releases/$GITHUB_REF_NAME.md"
-          printf 'SWAY_VERSION=%s\n' "$version" >> "$GITHUB_ENV"
+          printf 'KINARA_VERSION=%s\n' "$version" >> "$GITHUB_ENV"
       - name: Compile trusted dependency-free signing tools
         run: |
           xcrun swiftc -swift-version 5 -warnings-as-errors scripts/sign-update.swift -o "$RUNNER_TEMP/kinara-sign-update"
@@ -204,10 +204,10 @@ jobs:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           test -n "$SPARKLE_PRIVATE_KEY" || { printf 'Protected release signing key is missing.\n' >&2; exit 1; }
-          "$RUNNER_TEMP/kinara-sign-update" "$RUNNER_TEMP/kinara-release" Sway/Info.plist "releases/$GITHUB_REF_NAME.md" "$GITHUB_REF_NAME"
+          "$RUNNER_TEMP/kinara-sign-update" "$RUNNER_TEMP/kinara-release" Kinara/Info.plist "releases/$GITHUB_REF_NAME.md" "$GITHUB_REF_NAME"
       - name: Independently verify signatures and checksums
         run: |
-          "$RUNNER_TEMP/kinara-verify-update" "$RUNNER_TEMP/kinara-release/appcast.xml" "$RUNNER_TEMP/kinara-release/Kinara-$SWAY_VERSION-macos-universal.zip" Sway/Info.plist
+          "$RUNNER_TEMP/kinara-verify-update" "$RUNNER_TEMP/kinara-release/appcast.xml" "$RUNNER_TEMP/kinara-release/Kinara-$KINARA_VERSION-macos-universal.zip" Kinara/Info.plist
           cd "$RUNNER_TEMP/kinara-release"
           shasum -a 256 -c SHA256SUMS.txt
       - name: Publish complete immutable release
@@ -216,11 +216,11 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "$RUNNER_TEMP/kinara-release/Kinara-$SWAY_VERSION-macos-universal.zip" \
-            "$RUNNER_TEMP/kinara-release/Kinara-$SWAY_VERSION-macos-universal.dmg" \
+            "$RUNNER_TEMP/kinara-release/Kinara-$KINARA_VERSION-macos-universal.zip" \
+            "$RUNNER_TEMP/kinara-release/Kinara-$KINARA_VERSION-macos-universal.dmg" \
             "$RUNNER_TEMP/kinara-release/SHA256SUMS.txt" \
             "$RUNNER_TEMP/kinara-release/appcast.xml" \
             --verify-tag --draft \
-            --title "Kinara $SWAY_VERSION" \
+            --title "Kinara $KINARA_VERSION" \
             --notes-file "releases/$GITHUB_REF_NAME.md"
           gh release edit "$GITHUB_REF_NAME" --draft=false --latest

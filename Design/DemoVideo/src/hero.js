@@ -51,7 +51,7 @@ const OPEN = { elevation: 88, azimuth: 0, distance: 17.5, target: [0, 0, 0], fov
 const CALM = { elevation: 31, azimuth: -4.5, distance: 25.5, target: [0, -0.4, 0.9], fov: 38 };
 const WIDE = { elevation: 1.5, distance: 2.2, target: [0, 0, 0] }; // added by the final pull-back
 const LEAN = { right: 1.6, left: 4.5, x: 1.3, distance: 0.8 }; // right is gentler: the far-corner glint grows fast below −7°
-const SWAY = { azimuth: 0.6, elevation: 0.22 };
+const DRIFT = { azimuth: 0.6, elevation: 0.22 };
 
 // ------------------------------------------------------------------ score
 
@@ -319,10 +319,10 @@ function camera(t, [jx, jy] = [0, 0]) {
   // The dive: pull back from straight down while tilting to the 3/4 view.
   const back = ease.smooth(prog(t, 0, 1.55));
   const tilt = ease.smooth(prog(t, 0, 1.6));
-  // Idle sway, breathing in after the dive and out before the last frames.
-  const sway = ease.smooth(prog(t, 1.3, 2.4)) * (1 - ease.smooth(prog(t, 10.9, 11.9)));
-  const swayA = Math.sin(((t - 1.3) / 6.4) * Math.PI * 2) * SWAY.azimuth * sway;
-  const swayE = Math.sin(((t - 1.3) / 8.6) * Math.PI * 2) * SWAY.elevation * sway;
+  // Idle drift, breathing in after the dive and out before the last frames.
+  const drift = ease.smooth(prog(t, 1.3, 2.4)) * (1 - ease.smooth(prog(t, 10.9, 11.9)));
+  const driftA = Math.sin(((t - 1.3) / 6.4) * Math.PI * 2) * DRIFT.azimuth * drift;
+  const driftE = Math.sin(((t - 1.3) / 8.6) * Math.PI * 2) * DRIFT.elevation * drift;
   // Leans toward the edge in use, softer than the film's.
   const right = Math.min(ease.inOut(prog(t, 4.95, 5.95)), 1 - ease.inOut(prog(t, 6.85, 7.4)));
   const left = Math.min(ease.inOut(prog(t, 7.75, 8.75)), 1 - ease.inOut(prog(t, 9.45, 10.0)));
@@ -330,8 +330,8 @@ function camera(t, [jx, jy] = [0, 0]) {
   const wide = ease.smooth(prog(t, 11.0, 11.95));
 
   pad.fov = lerp(OPEN.fov, CALM.fov, back);
-  pad.elevation = lerp(OPEN.elevation, CALM.elevation, tilt) + swayE + wide * WIDE.elevation;
-  pad.azimuth = lerp(OPEN.azimuth, CALM.azimuth, tilt) + swayA - right * LEAN.right + left * LEAN.left;
+  pad.elevation = lerp(OPEN.elevation, CALM.elevation, tilt) + driftE + wide * WIDE.elevation;
+  pad.azimuth = lerp(OPEN.azimuth, CALM.azimuth, tilt) + driftA - right * LEAN.right + left * LEAN.left;
   pad.distance = lerp(OPEN.distance, CALM.distance, back) - (right + left) * LEAN.distance + wide * WIDE.distance;
   pad.target = [
     (right - left) * LEAN.x,
@@ -444,7 +444,7 @@ function bounds() {
 
 window.__seek = seek;
 window.__render = () => gl.render();
-window.__hero = { HERO, LOOK, OPEN, CALM, WIDE, LEAN, SWAY, pose, bounds, pad };
+window.__hero = { HERO, LOOK, OPEN, CALM, WIDE, LEAN, DRIFT, pose, bounds, pad };
 seek(0);
 window.__ready = true;
 

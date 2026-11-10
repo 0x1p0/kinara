@@ -11,7 +11,7 @@ why development builds need the permission granted again after every rebuild.
 
 - **What the requirement pins:** the designated requirement pins both the bundle ID
   `com.trackpadcontrol.app` and the exact certificate in
-  [`scripts/signing/Sway.cer`](../scripts/signing/Sway.cer). Release verification compares the
+  [`scripts/signing/Kinara.cer`](../scripts/signing/Kinara.cer). Release verification compares the
   embedded certificate bytes for every architecture. Don't relax this to a bundle-ID-only
   requirement: anyone could imitate that.
 - **Keeping it stable:** don't casually replace the certificate. Permission continuity depends on
@@ -80,7 +80,7 @@ release, with a new, unused tag:
 ```bash
 git switch main &&
 git pull --ff-only origin main &&
-git add README.md Sway/Info.plist Sway.xcodeproj/project.pbxproj releases/v1.0.0.md &&
+git add README.md Kinara/Info.plist Kinara.xcodeproj/project.pbxproj releases/v1.0.0.md &&
 git commit -m "Prepare Kinara 1.0.0 release" &&
 git tag -a v1.0.0 -m "Kinara 1.0.0" &&
 git push --atomic origin main v1.0.0
@@ -109,9 +109,10 @@ source and the earlier jobs.
 - **Tooling and tags:** signing and packaging tools come from protected main, which must equal
   the tag's commit. If main moves while you wait, make a new version instead of moving a tag.
 - **Artifacts** are selected by exact workflow artifact ID, never by name.
-- **Secrets:** `SWAY_APP_SIGNING_IDENTITY` and `SPARKLE_PRIVATE_KEY` exist only in the `release`
+- **Secrets:** `KINARA_APP_SIGNING_IDENTITY` and `SPARKLE_PRIVATE_KEY` exist only in the `release`
   environment. Each reaches only its own signing step, on its own runner.
-- **The update key** also lives in the login Keychain under account `sway-app-0x1p0`, and only
+- **The update key** also lives in the login Keychain as Sparkle's own item (service
+  `https://sparkle-project.org`), and only
   its public half is committed. Keep a secure backup and don't rotate it casually: installed apps
   trust it.
 
@@ -135,7 +136,7 @@ bash scripts/package-release.sh v1.0.0
 ```
 
 This needs Python 3.10+, Xcode 26+ and both signing identities in the Keychain. Artifacts land in
-`build/releases/v1.0.0/`, and existing outputs are never overwritten. `SWAY_DEFER_UPDATE_SIGNING=1`
+`build/releases/v1.0.0/`, and existing outputs are never overwritten. `KINARA_DEFER_UPDATE_SIGNING=1`
 skips only the feed signature; the app identity is still required. For key-free development
 builds use `bash scripts/build.sh`.
 

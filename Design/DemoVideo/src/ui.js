@@ -134,7 +134,7 @@ export function glyph(name, size = 24, style = {}) {
   return h("span", { class: "glyph", style: { width: `${size}px`, height: `${size}px`, ...style }, html: `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${G[name] || ""}</svg>` });
 }
 
-// ---------------------------------------------------------------- Sway icon
+// ---------------------------------------------------------------- Kinara icon
 
 /** Apple-style continuous-corner tile (a superellipse) inside a 1024 canvas. */
 function squirclePath(cx = 512, cy = 512, half = 412, n = 5) {
@@ -148,11 +148,11 @@ function squirclePath(cx = 512, cy = 512, half = 412, n = 5) {
 }
 
 let iconCount = 0;
-/** Sway's app icon, drawn as vectors so it stays crisp at any size. The
+/** Kinara's app icon, drawn as vectors so it stays crisp at any size. The
  * fingertip can travel: set icon.__finger(p) with p = 0 (bottom) … 1 (top). */
-export function swayIcon(size = 300) {
+export function kinaraIcon(size = 300) {
   const id = `icon${iconCount++}`;
-  const el = h("div", { class: "sway-icon", style: { width: `${size}px`, height: `${size}px` } });
+  const el = h("div", { class: "kinara-icon", style: { width: `${size}px`, height: `${size}px` } });
   el.innerHTML = `
   <svg viewBox="0 0 1024 1024" width="${size}" height="${size}" style="overflow:visible">
     <defs>
@@ -191,7 +191,7 @@ export function swayIcon(size = 300) {
 
 // ---------------------------------------------------------------- indicator
 
-/** Sway's vertical level indicator (the native HUD pill). */
+/** Kinara's vertical level indicator (the native HUD pill). */
 export function indicator(kind = "speaker", scale = 1.55) {
   const fill = h("div", { class: "ind-fill" });
   const number = h("div", { class: "ind-num" }, "0");

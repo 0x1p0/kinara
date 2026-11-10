@@ -55,7 +55,7 @@ enum UpdateRegressionTests {
         for invalid in ["", "v", "1..4", "1.0.4-beta", "v1.0.4.1", " 1.0.4", "-1.0", "1.0.99999999999999999999999999", "１.0.4"] {
             expect(UpdateChecker.versionParts(invalid) == nil, "malformed/prerelease versions are rejected")
         }
-        let suite = "com.sway.update-tests.\(UUID().uuidString)"
+        let suite = "com.kinara.update-tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
         defer { defaults.removePersistentDomain(forName: suite) }

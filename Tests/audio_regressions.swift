@@ -179,7 +179,7 @@ private final class FakeAudioBackend: AudioOutputBackend {
         RunLoop.current.run(until: Date().addingTimeInterval(0.02))
         expect(backend.locked { backend.reads } == before, "idle has no polling IO")
         var notifications = 0
-        let observer = NotificationCenter.default.addObserver(forName: .swayAudioStateChanged, object: controller, queue: nil) { _ in
+        let observer = NotificationCenter.default.addObserver(forName: .kinaraAudioStateChanged, object: controller, queue: nil) { _ in
             expect(Thread.isMainThread, "state notification on main")
             notifications += 1
         }

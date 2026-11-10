@@ -31,7 +31,7 @@ enum SettingsRegressionTests {
 
     private static func isolated(_ label: String, seed: [String: Any] = [:],
                                  _ body: (UserDefaults, String) throws -> Void) throws {
-        let suite = "com.sway.settings-regression.\(UUID().uuidString)"
+        let suite = "com.kinara.settings-regression.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else { throw Failure.preferencesUnavailable }
         // Only this disposable test domain is written or removed. Never use
         // UserDefaults.standard, the app's bundle domain, or registered globals.
@@ -367,7 +367,7 @@ enum SettingsRegressionTests {
             try expect(steps[6].kind == .tapHold("topRightCorner") && steps[7].kind == .doubleTap("right"), "tap and hold, and an edge tap, are their own stops")
             settings.applyRecommendedSetup(appAudio: false)
             try expect(settings.binding("bottomLeftCorner.doubleTap", appBundleID: nil, docked: false).action == .showDesktop, "without the mixer, that corner shows the desktop")
-            let other = TrackpadSettings(defaults: UserDefaults(suiteName: "com.sway.tests.tour.\(UUID().uuidString)")!)
+            let other = TrackpadSettings(defaults: UserDefaults(suiteName: "com.kinara.tests.tour.\(UUID().uuidString)")!)
             other.setBaseBinding(EdgeBinding(.paste), for: "topRightCorner.doubleTap")
             try expect(!other.offersRecommendedSetup, "someone who already set a tap keeps their setup")
         }
@@ -442,11 +442,11 @@ enum SettingsRegressionTests {
             }
             let tampered = try PropertyListSerialization.data(fromPropertyList: [
                 "format": TrackpadSettings.exportFormat, "version": 1, "leftZoneWidth": 7.0,
-                "leftZoneAction": "selfDestruct", "launchAtLogin": true, "hasFinishedSwaySetup": true,
+                "leftZoneAction": "selfDestruct", "launchAtLogin": true, "hasFinishedKinaraSetup": true,
             ] as [String: Any], format: .xml, options: 0)
             try settings.importData(tampered)
             try expect(near(settings.leftZoneWidth, TrackpadSettings.sideZoneWidthRange.upperBound) && settings.leftZoneAction == .brightness, "imported values pass normal validation")
-            try expect(!settings.launchAtLogin && defaults.object(forKey: "hasFinishedSwaySetup") == nil, "login and setup state are never imported")
+            try expect(!settings.launchAtLogin && defaults.object(forKey: "hasFinishedKinaraSetup") == nil, "login and setup state are never imported")
             var rejected = 0
             for data in [Data("garbage".utf8),
                          try PropertyListSerialization.data(fromPropertyList: ["format": "other"], format: .xml, options: 0),

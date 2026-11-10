@@ -1,9 +1,10 @@
 # Persistent app identity
 
-`Sway.cer` is the public DER certificate for Kinara's release app signing. Its
-subject is `CN=Sway`, kept from before the app was named Kinara: a new
-certificate changes the designated requirement, so macOS would ask for
-permissions again. It is safe to publish; it contains no private key,
+`Kinara.cer` is the public DER certificate for Kinara's release app signing. Its
+subject is `CN=Kinara`, and macOS shows that name wherever it says who made the
+app, such as Login Items. It replaced an earlier certificate on 10 November
+2026, before any public release; a new certificate changes the designated
+requirement, so macOS asks for permissions again. It is safe to publish; it contains no private key,
 personal name, or email. It is a self-issued, code-signing-only root (path
 length zero), not an Apple Developer ID certificate. Users do not need to
 install this certificate or change their trust settings. It does not remove
@@ -12,11 +13,11 @@ Gatekeeper's warning.
 The private PKCS#12 identity and wrapping password are stored as one protected
 item in the maintainer's login Keychain:
 
-- Service: `com.sway.app-signing`
-- Account: `sway-application-0x1p0`
-- Label: `Sway persistent app signing identity`
+- Service: `com.kinara.app-signing`
+- Account: `kinara-0x1p0`
+- Label: `Kinara persistent app signing identity`
 
-GitHub Actions receives the same identity only through `SWAY_APP_SIGNING_IDENTITY`
+GitHub Actions receives the same identity only through `KINARA_APP_SIGNING_IDENTITY`
 in the approval-protected `release` environment. It is not a repository-level
 secret. Never print it, commit it, or regenerate it during a build. Keep an
 encrypted offline backup through a secure credential-management process.
@@ -42,7 +43,7 @@ Apple-managed revocation service.
 
 This key is separate from `SPARKLE_PRIVATE_KEY`, which authenticates the update
 feed and ZIP. Local release packaging reads both identities from Keychain;
-`SWAY_DEFER_UPDATE_SIGNING=1` skips only the update signature, not app signing.
+`KINARA_DEFER_UPDATE_SIGNING=1` skips only the update signature, not app signing.
 `scripts/build.sh` remains a key-free ad-hoc development build and is not a
 permission-preserving release. Never replace the installed release with it
 when testing permission continuity. To try local changes without losing the
@@ -52,7 +53,7 @@ identity, moves the installed copy to the Trash and installs the new one.
 To inspect the public identity:
 
 ```sh
-openssl x509 -inform DER -in scripts/signing/Sway.cer -noout -subject -issuer -dates -fingerprint -sha256
+openssl x509 -inform DER -in scripts/signing/Kinara.cer -noout -subject -issuer -dates -fingerprint -sha256
 codesign --display -r - /Applications/Kinara.app
 python3 scripts/app-signing.py verify build/Kinara.app
 ```
@@ -80,7 +81,7 @@ release workflow. Instructions are at the top of the script.
 Before switching releases over, weigh the trade-off:
 
 - **One more Accessibility grant.** A Developer ID signature has a different
-  designated requirement than `CN=Sway`, so macOS treats the first Developer ID
+  designated requirement than `CN=Kinara`, so macOS treats the first Developer ID
   build as a new app. Users re-enable Kinara in Accessibility once; after that,
   Developer ID builds keep the permission as reliably as the current identity.
 - **Update signing is unchanged.** Sparkle's EdDSA key is separate from app

@@ -6,7 +6,7 @@ import Security
 // unpacked, loaded as bundles, or executed in the process holding the key.
 // Ed25519 is provided by Apple's CryptoKit, not a custom implementation.
 func require(_ condition: @autoclosure () -> Bool, _ message: String) throws {
-    if !condition() { throw NSError(domain: "Sway.Signing", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+    if !condition() { throw NSError(domain: "Kinara.Signing", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
 }
 
 func regularFile(_ url: URL, maximumSize: Int) throws -> Data {
@@ -26,7 +26,7 @@ func signingKey(expectedPublicKey: Data) throws -> Curve25519.Signing.PrivateKey
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: "https://sparkle-project.org",
-            kSecAttrAccount as String: "sway-app-0x1p0",
+            kSecAttrLabel as String: "Private key for signing Sparkle updates",
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecReturnData as String: true
         ]
@@ -34,14 +34,14 @@ func signingKey(expectedPublicKey: Data) throws -> Curve25519.Signing.PrivateKey
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         guard status == errSecSuccess, let data = item as? Data,
               let value = String(data: data, encoding: .utf8) else {
-            throw NSError(domain: "Sway.Signing", code: 2, userInfo: [NSLocalizedDescriptionKey: "Could not read the existing signing key from Keychain"])
+            throw NSError(domain: "Kinara.Signing", code: 2, userInfo: [NSLocalizedDescriptionKey: "Could not read the existing signing key from Keychain"])
         }
         encoded = value
     }
     // Sparkle's current export format is a base64 32-byte Ed25519 seed.
     // Never include the input value in errors, including malformed values.
     guard let seed = Data(base64Encoded: encoded.trimmingCharacters(in: .whitespacesAndNewlines)), seed.count == 32 else {
-        throw NSError(domain: "Sway.Signing", code: 3, userInfo: [NSLocalizedDescriptionKey: "Signing key must use the 32-byte seed format"])
+        throw NSError(domain: "Kinara.Signing", code: 3, userInfo: [NSLocalizedDescriptionKey: "Signing key must use the 32-byte seed format"])
     }
     let key = try Curve25519.Signing.PrivateKey(rawRepresentation: seed)
     try require(key.publicKey.rawRepresentation == expectedPublicKey, "Signing key does not match the app's public key")
@@ -66,7 +66,7 @@ do {
           let minimumOS = info["LSMinimumSystemVersion"] as? String,
           let encodedPublicKey = info["SUPublicEDKey"] as? String,
           let publicKey = Data(base64Encoded: encodedPublicKey), publicKey.count == 32 else {
-        throw NSError(domain: "Sway.Signing", code: 4, userInfo: [NSLocalizedDescriptionKey: "Missing version or public-key configuration"])
+        throw NSError(domain: "Kinara.Signing", code: 4, userInfo: [NSLocalizedDescriptionKey: "Missing version or public-key configuration"])
     }
     try require(version.range(of: "^[0-9]+\\.[0-9]+\\.[0-9]+$", options: .regularExpression) != nil, "Invalid release version")
     try require(build.range(of: "^[0-9]+$", options: .regularExpression) != nil, "Invalid build number")
@@ -84,7 +84,7 @@ do {
     try require(dmg.count >= 512 && dmg.suffix(512).starts(with: Data("koly".utf8)), "Invalid disk-image trailer")
     let notesData = try regularFile(URL(fileURLWithPath: CommandLine.arguments[3]), maximumSize: 131_072)
     guard let notes = String(data: notesData, encoding: .utf8) else {
-        throw NSError(domain: "Sway.Signing", code: 5, userInfo: [NSLocalizedDescriptionKey: "Release notes must be UTF-8"])
+        throw NSError(domain: "Kinara.Signing", code: 5, userInfo: [NSLocalizedDescriptionKey: "Release notes must be UTF-8"])
     }
     let key = try signingKey(expectedPublicKey: publicKey)
     let archiveSignature = try key.signature(for: archive).base64EncodedString()

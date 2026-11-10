@@ -200,7 +200,7 @@ system level, requests a permission, registers a shortcut or launches the produc
 | --- | --- | ---: | --- |
 | Gesture recognizer | `scripts/test-gestures.sh` | 253 | Intent, rejection, scroll ownership, staleness |
 | Palm rejection | `scripts/test-palm-rejection.sh` | 60 | Footprint and intent rules on synthetic traces |
-| Control model | `scripts/test-controls.sh` | 529 | Every action's metadata and icon, steppers, panel state from readback |
+| Control model | `scripts/test-controls.sh` | 528 | Every action's metadata and icon, steppers, panel state from readback |
 | Settings | `scripts/test-settings.sh` | 343 | Migration, normalization, profiles, export and import (91 cases) |
 | Haptics | `scripts/test-haptics.sh` | 132 | Fixed detents on the shown number, hysteresis, rate limits, fake clock and performer |
 | Edge light | `scripts/test-edge-light.sh` | 90 | Overlay window joins full-screen Spaces; every colour reads at 3:1 on any background; the ambient lap |
@@ -246,7 +246,7 @@ This makes an optimized build for the current architecture with a macOS 13 deplo
 warnings as errors, ad-hoc signed into `build/Kinara.app`. It never replaces an installed copy.
 
 - **Without the Xcode build service:** `scripts/build.sh --direct`.
-- **Another architecture:** set `SWAY_ARCH` to `arm64`, `x86_64` or `universal` (Xcode path).
+- **Another architecture:** set `KINARA_ARCH` to `arm64`, `x86_64` or `universal` (Xcode path).
 
 To test on the maintainer's Mac without losing the Accessibility grant, sign with the persistent
 identity and install:
@@ -282,7 +282,7 @@ Kinara" on first launch. If you trust the download, open the installed app once,
 ## Repository layout
 
 ```text
-Sway/                      the app (directory name kept from before the rename)
+Kinara/                    the app
   TrackpadMonitor          input taps, frame handling, gesture to action
   PalmRejectionManager     frame inbox, palm filter, slide and tap recognizers
   MultitouchBridge.c       contact copying and private-framework lifecycle

@@ -22,7 +22,7 @@ private final class PresentationTestDelegate: NSObject, NSApplicationDelegate {
     private var launchTimeout: Timer?
     init(runTests: @escaping () -> Void) { self.runTests = runTests }
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Begin with a genuine click, just like opening Sway from its status
+        // Begin with a genuine click, just like opening Kinara from its status
         // item. New macOS deliberately denies unsolicited focus stealing.
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 340, height: 130),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -115,7 +115,7 @@ enum PresentationRegressionTests {
     }
 
     private static func testSetupProgress() {
-        let name = "com.sway.setup-tests.\(UUID().uuidString)"
+        let name = "com.kinara.setup-tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
         defer { defaults.removePersistentDomain(forName: name) }
         let progress = SetupProgress(defaults: defaults)
@@ -123,13 +123,13 @@ enum PresentationRegressionTests {
         expect(progress.shouldPresent(hasAccess: true), "access alone does not finish a new guide")
         progress.finish(hasAccess: false)
         expect(progress.shouldPresent(hasAccess: false), "continuing with sliders leaves setup unfinished")
-        expect(!defaults.bool(forKey: "hasFinishedSwaySetup"), "missing permission cannot mark setup complete")
+        expect(!defaults.bool(forKey: "hasFinishedKinaraSetup"), "missing permission cannot mark setup complete")
         expect(SetupProgress(defaults: defaults).shouldPresent(hasAccess: true), "unfinished setup survives relaunch even if access arrives later")
         progress.finish(hasAccess: true)
         expect(!SetupProgress(defaults: defaults).shouldPresent(hasAccess: true), "explicit completion persists across relaunch")
         expect(progress.shouldPresent(hasAccess: false), "revoked permission returns the guide")
-        defaults.removeObject(forKey: "hasFinishedSwaySetup")
-        defaults.set(true, forKey: "hasCompletedSwaySetup")
+        defaults.removeObject(forKey: "hasFinishedKinaraSetup")
+        defaults.set(true, forKey: "hasCompletedKinaraSetup")
         expect(progress.shouldPresent(hasAccess: false), "legacy close-without-permission bug is repaired on upgrade")
         expect(!progress.shouldPresent(hasAccess: true), "legacy configured users keep completed setup")
     }

@@ -93,7 +93,7 @@ import CoreAudio
         let decoded = data.flatMap { try? JSONDecoder().decode([String: MixerChannelSettings].self, from: $0) }
         expect(decoded == values, "settings survive a round trip")
 
-        let suite = "com.sway.mixer-tests.\(UUID().uuidString)"
+        let suite = "com.kinara.mixer-tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(Data("not json".utf8), forKey: "mixerChannels.v1")
@@ -105,7 +105,7 @@ import CoreAudio
     }
 
     private static func modelTests() {
-        let suite = "com.sway.mixer-preview-tests.\(UUID().uuidString)"
+        let suite = "com.kinara.mixer-preview-tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let model = MixerModel(defaults: defaults, preview: true)

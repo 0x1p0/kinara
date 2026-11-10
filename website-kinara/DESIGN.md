@@ -2,7 +2,7 @@
 
 ## Brief
 
-- **Subject:** Kinara (formerly Sway), a free, open-source macOS menu bar app (MIT License). It turns the edges and corners of a Mac trackpad into controls (53 actions).
+- **Subject:** Kinara, a free, open-source macOS menu bar app (MIT License). It turns the edges and corners of a Mac trackpad into controls (53 actions).
 - **Job:** get it downloaded. Show what it does, then send the visitor to the download or the source on GitHub.
 - **Feedback that shaped it:**
   - A long, award-style site was too much: "no one's gonna look".
@@ -72,7 +72,7 @@ Download: Icon, "Free. Open source, for good.", Download pill, "View the source 
 ## Performance notes
 
 - The trackpad's 2048px surface canvas is redrawn and re-uploaded only when something drawn on it changes (`surfaceKey`). Camera moves reuse it.
-- DOM controls over the 3D pad are re-placed only when the story moves the camera, never on the idle sway. HUD width is cached, so there is no forced layout per frame.
+- DOM controls over the 3D pad are re-placed only when the story moves the camera, never on the idle drift. HUD width is cached, so there is no forced layout per frame.
 - DPR is capped at 1.5 on desktop and 1.25 on phones. The scene boots on `requestIdleCallback`, after the intro.
 - Measured scrolling through the story at 1440×900: 16.6 ms average frame, 17.6 ms p95, no frames over 33 ms.
 - Clips and the film montage use `preload="none"` and play only on screen.
@@ -83,4 +83,4 @@ Download: Icon, "Free. Open source, for good.", Download pill, "View the source 
   - The studio's strip lights only read on the graphite from that side.
   - At -15° azimuth or more the pad goes black on black.
 - Posters: `node scripts/poster.mjs http://127.0.0.1:4400/` re-renders `public/media/hero-pad*.jpg` from the live scene, for loading and for browsers without WebGL.
-- Highlight clips, the montage and the film poster are cut from `public/media/sway-film.mp4` with ffmpeg.
+- Highlight clips, the montage and the film poster are cut from `public/media/kinara-film.mp4` with ffmpeg.

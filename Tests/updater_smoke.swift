@@ -2,7 +2,7 @@ import AppKit
 import Sparkle
 
 /// Load the actual packaged framework with the shipped updater configuration.
-/// Never calls a check/install method, pumps the run loop, or starts Sway.
+/// Never calls a check/install method, pumps the run loop, or starts Kinara.
 @main
 struct UpdaterSmoke {
     @MainActor

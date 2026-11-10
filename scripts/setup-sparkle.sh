@@ -6,7 +6,7 @@ project_directory="$(cd -- "$script_directory/.." && pwd)"
 sparkle_directory="$project_directory/build/SourcePackages/artifacts/sparkle/Sparkle"
 cd "$project_directory"
 if [[ ! -x "$sparkle_directory/bin/generate_appcast" ]]; then
-    xcodebuild -resolvePackageDependencies -project Sway.xcodeproj -scheme Sway \
+    xcodebuild -resolvePackageDependencies -project Kinara.xcodeproj -scheme Kinara \
         -clonedSourcePackagesDirPath "$project_directory/build/SourcePackages" \
         -onlyUsePackageVersionsFromResolvedFile >&2
 fi

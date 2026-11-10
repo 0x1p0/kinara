@@ -7,11 +7,11 @@
 #   1. Create a "Developer ID Application" certificate in your developer
 #      account and install it in your login Keychain.
 #   2. Store notary credentials (an app-specific password or API key):
-#        xcrun notarytool store-credentials sway-notary --apple-id <you> --team-id <TEAM>
+#        xcrun notarytool store-credentials kinara-notary --apple-id <you> --team-id <TEAM>
 #
 # Then:
-#   SWAY_DEVELOPER_ID="Developer ID Application: Your Name (TEAMID)" \
-#   SWAY_NOTARY_PROFILE=sway-notary bash scripts/notarize.sh [build/Kinara.app]
+#   KINARA_DEVELOPER_ID="Developer ID Application: Your Name (TEAMID)" \
+#   KINARA_NOTARY_PROFILE=kinara-notary bash scripts/notarize.sh [build/Kinara.app]
 #
 # The input app is never modified. Read scripts/signing/README.md first:
 # switching from the persistent self-signed identity changes Kinara's code
@@ -19,18 +19,18 @@
 set -euo pipefail
 
 source_app="${1:-build/Kinara.app}"
-identity="${SWAY_DEVELOPER_ID:-}"
-profile="${SWAY_NOTARY_PROFILE:-}"
+identity="${KINARA_DEVELOPER_ID:-}"
+profile="${KINARA_NOTARY_PROFILE:-}"
 script_directory="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_directory="$(cd -- "$script_directory/.." && pwd)"
-entitlements="$project_directory/Sway/Sway.entitlements"
+entitlements="$project_directory/Kinara/Kinara.entitlements"
 
 if [[ -z "$identity" || -z "$profile" ]]; then
-    printf 'Set SWAY_DEVELOPER_ID and SWAY_NOTARY_PROFILE first (see the top of this script).\n' >&2
+    printf 'Set KINARA_DEVELOPER_ID and KINARA_NOTARY_PROFILE first (see the top of this script).\n' >&2
     exit 2
 fi
 if [[ "$identity" != "Developer ID Application:"* ]]; then
-    printf 'SWAY_DEVELOPER_ID must name a "Developer ID Application" identity. Apple Development certificates cannot be notarized for distribution.\n' >&2
+    printf 'KINARA_DEVELOPER_ID must name a "Developer ID Application" identity. Apple Development certificates cannot be notarized for distribution.\n' >&2
     exit 2
 fi
 if [[ ! -d "$source_app/Contents/MacOS" ]]; then

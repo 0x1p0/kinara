@@ -37,8 +37,8 @@ export function bezier(x1, y1, x2, y2) {
 }
 
 export const ease = {
-  settle: bezier(0.16, 1, 0.3, 1), // Sway's HUD entrance: fast out, gentle settle
-  leave: bezier(0.4, 0, 1, 1), // Sway's HUD exit
+  settle: bezier(0.16, 1, 0.3, 1), // Kinara's HUD entrance: fast out, gentle settle
+  leave: bezier(0.4, 0, 1, 1), // Kinara's HUD exit
   inOut: bezier(0.65, 0, 0.35, 1),
   smooth: bezier(0.45, 0, 0.2, 1),
   out: bezier(0.22, 1, 0.36, 1),

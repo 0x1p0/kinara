@@ -14,11 +14,11 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
-CERTIFICATE = ROOT / "scripts/signing/Sway.cer"
+CERTIFICATE = ROOT / "scripts/signing/Kinara.cer"
 IDENTIFIER = "com.trackpadcontrol.app"
-SERVICE = "com.sway.app-signing"
-ACCOUNT = "sway-application-0x1p0"
-SECRET = "SWAY_APP_SIGNING_IDENTITY"
+SERVICE = "com.kinara.app-signing"
+ACCOUNT = "kinara-0x1p0"
+SECRET = "KINARA_APP_SIGNING_IDENTITY"
 
 
 class SigningToolError(RuntimeError):
@@ -76,7 +76,7 @@ def verify(bundle, certificate=CERTIFICATE, identifier=IDENTIFIER):
     architectures = run("/usr/bin/lipo", "-archs", str(bundle / "Contents/MacOS/Kinara")).decode().split()
     if not architectures or set(architectures) - {"arm64", "x86_64"}:
         raise RuntimeError("Unexpected executable architectures")
-    with tempfile.TemporaryDirectory(prefix="sway-public-cert.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="kinara-public-cert.") as temporary:
         for arch in architectures:
             # Checking the signature alone does not guarantee the embedded DR
             # is restrictive. Require the pinned DR in EVERY executable slice.
@@ -103,7 +103,7 @@ def sign(bundle, payload, certificate=CERTIFICATE, identifier=IDENTIFIER):
     # implicitly registering the keychain: that differs across runner setups.
     # Restore the original list even on failure. Never change the default
     # keychain, certificate trust, installed apps, or TCC permissions.
-    with tempfile.TemporaryDirectory(prefix="sway-app-signing.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="kinara-app-signing.") as temporary:
         directory = Path(temporary)
         os.chmod(directory, 0o700)
         p12 = directory / "identity.p12"
@@ -127,7 +127,7 @@ def sign(bundle, payload, certificate=CERTIFICATE, identifier=IDENTIFIER):
             run("/usr/bin/codesign", "--force", "--sign", fingerprint, "--keychain", str(keychain),
                 "--timestamp=none", "--options", "runtime", "--identifier", identifier,
                 "--requirements", "=designated => " + requirement(certificate, identifier),
-                "--entitlements", str(ROOT / "Sway/Sway.entitlements"), str(bundle))
+                "--entitlements", str(ROOT / "Kinara/Kinara.entitlements"), str(bundle))
         finally:
             try:
                 if created:
@@ -145,7 +145,7 @@ def main():
     if not args.bundle.is_dir() or args.bundle.is_symlink():
         raise RuntimeError("Expected a staged app directory, not a link")
     actual = plistlib.loads((args.bundle / "Contents/Info.plist").read_bytes())
-    expected = plistlib.loads((ROOT / "Sway/Info.plist").read_bytes())
+    expected = plistlib.loads((ROOT / "Kinara/Info.plist").read_bytes())
     for key in ("CFBundleShortVersionString", "CFBundleVersion", "LSMinimumSystemVersion", "SUFeedURL", "SUPublicEDKey"):
         if actual.get(key) != expected.get(key):
             raise RuntimeError("App metadata does not match the approved release source")
@@ -159,7 +159,7 @@ def main():
         sign(args.bundle, json.loads(encoded))
     else:
         verify(args.bundle)
-    print("Persistent Sway identity, certificate pin, and Hardened Runtime verified.")
+    print("Persistent Kinara identity, certificate pin, and Hardened Runtime verified.")
 
 
 if __name__ == "__main__":

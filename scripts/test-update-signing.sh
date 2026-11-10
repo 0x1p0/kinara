@@ -2,7 +2,7 @@
 set -euo pipefail
 script_directory="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_directory="$(cd -- "$script_directory/.." && pwd)"
-test_directory="$(mktemp -d /tmp/sway-signing-tests.XXXXXX)"
+test_directory="$(mktemp -d /tmp/kinara-signing-tests.XXXXXX)"
 cd "$project_directory"
 xcrun swiftc -swift-version 5 -warnings-as-errors \
     -module-cache-path "$test_directory/ModuleCache" \

@@ -117,12 +117,12 @@ for diagnostic in (b'errSecInternalComponent', b'unable to build chain to self-s
         expect(signing.SECRET not in child_env and 'SPARKLE_PRIVATE_KEY' not in child_env, 'child tools must not inherit release secrets')
 
 
-with tempfile.TemporaryDirectory(prefix="sway-code-sign-tests.") as temporary:
+with tempfile.TemporaryDirectory(prefix="kinara-code-sign-tests.") as temporary:
     work = Path(temporary)
     before_keychains = run("/usr/bin/security", "list-keychains", "-d", "user")
     before_default = run("/usr/bin/security", "default-keychain", "-d", "user")
     config = work / "certificate.cnf"
-    config.write_text("[req]\ndistinguished_name=dn\n[dn]\nCN=Sway Test\n[signing]\nbasicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,digitalSignature,keyCertSign\nextendedKeyUsage=codeSigning\n")
+    config.write_text("[req]\ndistinguished_name=dn\n[dn]\nCN=Kinara Test\n[signing]\nbasicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,digitalSignature,keyCertSign\nextendedKeyUsage=codeSigning\n")
     password = "disposable-signing-test-password-only"
 
     def identity(name):
@@ -134,7 +134,7 @@ with tempfile.TemporaryDirectory(prefix="sway-code-sign-tests.") as temporary:
             "-keypbe", "PBE-SHA1-3DES", "-certpbe", "PBE-SHA1-3DES", "-macalg", "sha1", "-passout", "pass:" + password, "-out", str(p12))
         return cert, {"pkcs12": base64.b64encode(p12.read_bytes()).decode(), "password": password}
 
-    cert, payload = identity("Sway Test")
+    cert, payload = identity("Kinara Test")
     other_cert, other_payload = identity("Different Signer")
 
     def fixture(name, version):
@@ -144,7 +144,7 @@ with tempfile.TemporaryDirectory(prefix="sway-code-sign-tests.") as temporary:
         source = work / f"{name}.c"
         source.write_text(f"int main(void) {{ return {version}; }}\n")
         run("/usr/bin/xcrun", "clang", "-arch", "arm64", "-arch", "x86_64", str(source), "-o", str(bundle / "Contents/MacOS/Kinara"))
-        metadata = plistlib.loads((ROOT / "Sway/Info.plist").read_bytes())
+        metadata = plistlib.loads((ROOT / "Kinara/Info.plist").read_bytes())
         metadata.update(CFBundleIdentifier=signing.IDENTIFIER, CFBundleExecutable="Kinara", CFBundleName="Kinara", CFBundlePackageType="APPL")
         if version != 1:
             metadata["CFBundleVersion"] = str(int(metadata["CFBundleVersion"]) + version)
@@ -178,7 +178,7 @@ with tempfile.TemporaryDirectory(prefix="sway-code-sign-tests.") as temporary:
     reject(lambda: signing.verify(second, cert), "tampered resources must fail")
     unsigned = fixture("ad-hoc", 1)
     run("/usr/bin/codesign", "--force", "--sign", "-", "--options", "runtime", "--timestamp=none",
-        "--requirements", '=designated => identifier "com.trackpadcontrol.app"', "--entitlements", str(ROOT / "Sway/Sway.entitlements"), str(unsigned))
+        "--requirements", '=designated => identifier "com.trackpadcontrol.app"', "--entitlements", str(ROOT / "Kinara/Kinara.entitlements"), str(unsigned))
     reject(lambda: signing.verify(unsigned, cert), "identifier-only ad-hoc workaround must fail")
     reject(lambda: signing.sign(unsigned, other_payload, cert), "private identity must match the public certificate pin")
     env = os.environ.copy()

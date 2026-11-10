@@ -96,7 +96,7 @@ preferences and fixed preview values, and saves every surface in light and dark 
 
 The panel is measured at its real fitting height rather than cropped. A layout audit fails the
 run if any control extends past its card or window. The real settings window, including its
-title bar and traffic lights, is captured offscreen as `sway-settings-window-*.png`.
+title bar and traffic lights, is captured offscreen as `kinara-settings-window-*.png`.
 
 **Previews and glass:**
 

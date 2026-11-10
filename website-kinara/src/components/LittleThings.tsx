@@ -5,7 +5,7 @@ import { usePage } from '@/engine/next';
 import { touches } from '@/data/site';
 
 // A live Mac screen that answers taps the way Kinara does. The state machines below are ports of
-// the app's own (Sway/CornerBloom.swift): CornerBloom (one glass shape, bead → pill), CornerLight
+// the app's own (Kinara/CornerBloom.swift): CornerBloom (one glass shape, bead → pill), CornerLight
 // (a line of light hugging the tapped corner) and EdgeGlow (a light that follows a slide), with the
 // same springs, holds and fades. Sizes are the app's points, scaled by --u (glass) and --lu (light).
 

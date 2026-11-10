@@ -67,8 +67,8 @@ a corner tap pauses the music, and ducks when the mixer's call comes in.
   mirrors it, and the screen floating behind. The screen is a lamp: it lights
   the trackpad, blooms, and reflects in the floor and in the trackpad's glass.
 - `src/desktop.js` is the screen's picture: a desktop with Kinara's own
-  feedback at the app's sizes and springs (`Sway/CornerBloom.swift`,
-  `Sway/Overlay.swift`). It is real DOM, laid onto the 3D screen with the
+  feedback at the app's sizes and springs (`Kinara/CornerBloom.swift`,
+  `Kinara/Overlay.swift`). It is real DOM, laid onto the 3D screen with the
   camera's matrix every frame, so its text is sharp at any distance. Close
   up, the whole screen is laid out larger (CSS zoom) so Chrome draws it at
   the size it is seen.

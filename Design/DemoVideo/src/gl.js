@@ -1,4 +1,4 @@
-// The one WebGL set piece: a graphite trackpad in a studio, with Sway's
+// The one WebGL set piece: a graphite trackpad in a studio, with Kinara's
 // luminous swipe drawn onto its surface. Scenes describe what should be on
 // screen through gl.pad; render() draws it for the current frame.
 import * as THREE from "three";

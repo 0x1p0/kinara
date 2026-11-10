@@ -318,7 +318,7 @@ body { font-family: var(--f); font-size: 17px; line-height: 1.47; letter-spacing
 @media (max-width: 734px) { .aud__title { font-size: 28px; line-height: 1.14; letter-spacing: 0.007em; } .aud__shot img { border-radius: 12px; } }
 
 /* ------------------------------------------------------------------ little things: a live Mac screen
-   The app's tap feedback, drawn the way the app draws it (Sway/CornerBloom.swift): one glass shape
+   The app's tap feedback, drawn the way the app draws it (Kinara/CornerBloom.swift): one glass shape
    that grows from a bead into a pill, a line of light hugging the tapped corner, and a light that
    follows a slide. Sizes are the app's points: --u for the glass, --lu for the light. The pill's
    glass follows the theme, like the app's. */

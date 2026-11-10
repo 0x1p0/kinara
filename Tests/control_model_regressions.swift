@@ -73,7 +73,7 @@ private final class ModelFixture {
     let audio: VolumeController
     let display: BrightnessController
     let model: ControlCenterModel
-    let suite = "Sway.ControlTests.\(UUID().uuidString)"
+    let suite = "Kinara.ControlTests.\(UUID().uuidString)"
     init() {
         audio = VolumeController(backend: backend)
         display = BrightnessController(backend: ModelDisplayBackend())
@@ -144,7 +144,7 @@ private final class ModelFixture {
                "Shortcut names are trimmed, deduplicated and sorted")
         expect(!ShortcutsRunner.run("   "), "a blank Shortcut name never launches anything")
 
-        func command(_ text: String) -> SwayURLCommand? { URL(string: text).flatMap(SwayURLCommand.parse) }
+        func command(_ text: String) -> KinaraURLCommand? { URL(string: text).flatMap(KinaraURLCommand.parse) }
         expect(command("kinara://pause") == .pause(minutes: nil) && command("kinara://pause?minutes=15") == .pause(minutes: 15), "pause commands")
         expect(command("kinara://pause?minutes=0") == nil && command("kinara://pause?minutes=99999") == nil, "absurd pause lengths are refused")
         expect(command("kinara://volume?level=40") == .volume(0.4) && command("KINARA://Brightness?level=100") == .brightness(1), "levels are percentages")
@@ -153,7 +153,6 @@ private final class ModelFixture {
         expect(command("kinara://ambient") == .ambient(nil) && command("kinara://ambient?on=1") == .ambient(true) && command("kinara://Ambient?on=NO") == .ambient(false),
                "the ambient light toggles, starts and stops")
         expect(command("kinara://ambient?on=maybe") == nil, "an unclear ambient request does nothing")
-        expect(command("sway://pause?minutes=15") == .pause(minutes: 15) && command("SWAY://Volume?level=40") == .volume(0.4), "links from before the Kinara name keep working")
         expect(command("kinara://run-shortcut?name=x") == nil && command("https://example.com/pause") == nil && command("kinarax://pause") == nil, "unknown commands and other schemes do nothing")
 
         expect(GammaDimmer.scale(for: 0) == 1 && abs(GammaDimmer.scale(for: 1) - GammaDimmer.darkestScale) < 0.0001, "extra dim spans normal to the darkest safe level")
@@ -165,7 +164,7 @@ private final class ModelFixture {
         expect(VolumeFeedbackSound.shouldPlay(setting: "on", systemPreference: false) && !VolumeFeedbackSound.shouldPlay(setting: "off", systemPreference: true),
                "explicit choices override the system")
 
-        let suite = "com.sway.control-edgemap.\(UUID().uuidString)"
+        let suite = "com.kinara.control-edgemap.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let settings = TrackpadSettings(defaults: defaults)
@@ -397,7 +396,7 @@ private final class ModelFixture {
     static func testMicrophoneSafety() {
         let backend = ModelAudioBackend()
         backend.muted = true
-        let input = VolumeController(backend: backend, notification: .swayInputStateChanged, preservesMuteOnGain: true)
+        let input = VolumeController(backend: backend, notification: .kinaraInputStateChanged, preservesMuteOnGain: true)
         input.flushWorkerForTesting()
         var result: VolumeRequestResult?
         input.requestVolume(0.7, muteAtZero: false) { result = $0 }

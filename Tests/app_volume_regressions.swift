@@ -231,8 +231,8 @@ enum AppVolumeRegressionTests {
         expect(owned("com.apple.WebKit.GPU", pid: 900, responsible: 500), "an XPC helper the app is responsible for belongs to it")
         expect(!owned("com.apple.WebKit.GPU", pid: 901, responsible: 700), "another app's WebKit helper does not")
         expect(owned(nil, pid: 500, responsible: nil), "the app's own PID matches without a bundle ID")
-        expect(!owned(safari, pid: 1, responsible: nil), "Sway's own process never matches, even by bundle ID")
-        expect(!owned("com.example.child", pid: 902, responsible: 1, own: 1), "processes Sway is responsible for never match")
+        expect(!owned(safari, pid: 1, responsible: nil), "Kinara's own process never matches, even by bundle ID")
+        expect(!owned("com.example.child", pid: 902, responsible: 1, own: 1), "processes Kinara is responsible for never match")
         expect(!owned(nil, pid: -1, responsible: nil), "an unreadable PID never matches")
     }
 

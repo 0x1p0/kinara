@@ -16,8 +16,8 @@ fi
 feed_directory="$(mktemp -d "$project_directory/build/UpdateFeed.XXXXXX")"
 xcrun swiftc -swift-version 5 -warnings-as-errors scripts/sign-update.swift -o "$feed_directory/sign-update"
 xcrun swiftc -swift-version 5 -warnings-as-errors scripts/verify-update-feed.swift -o "$feed_directory/verify-update"
-"$feed_directory/sign-update" "$release_directory" Sway/Info.plist "releases/v$version.md" "v$version"
-"$feed_directory/verify-update" "$release_directory/appcast.xml" "$release_directory/$archive" Sway/Info.plist
+"$feed_directory/sign-update" "$release_directory" Kinara/Info.plist "releases/v$version.md" "v$version"
+"$feed_directory/verify-update" "$release_directory/appcast.xml" "$release_directory/$archive" Kinara/Info.plist
 (
     cd "$release_directory"
     shasum -a 256 -c SHA256SUMS.txt

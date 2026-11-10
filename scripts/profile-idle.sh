@@ -17,21 +17,21 @@ mkdir -p "$profile_directory/ModuleCache"
 cd "$project_directory"
 
 xcrun clang -target "$profile_arch-apple-macos13.0" -isysroot "$sdk_path" \
-    -Wall -Wextra -Werror -O2 -c Sway/MultitouchBridge.c \
+    -Wall -Wextra -Werror -O2 -c Kinara/MultitouchBridge.c \
     -o "$profile_directory/MultitouchBridge.o"
 
 sources=()
-for source in Sway/*.swift; do
-    if [[ "$source" != "Sway/SwayApp.swift" ]]; then sources+=("$source"); fi
+for source in Kinara/*.swift; do
+    if [[ "$source" != "Kinara/KinaraApp.swift" ]]; then sources+=("$source"); fi
 done
 
 xcrun swiftc -target "$profile_arch-apple-macos13.0" -sdk "$sdk_path" \
     -swift-version 5 -warnings-as-errors -O -parse-as-library \
     -module-cache-path "$profile_directory/ModuleCache" \
-    -import-objc-header Sway/Sway-Bridging-Header.h \
+    -import-objc-header Kinara/Kinara-Bridging-Header.h \
     "${sources[@]}" Tests/IdleProfile.swift "$profile_directory/MultitouchBridge.o" \
     -framework AppKit -framework SwiftUI -framework CoreAudio \
     -framework IOKit -framework Carbon -framework ServiceManagement \
-    -o "$profile_directory/SwayIdleProfile"
+    -o "$profile_directory/KinaraIdleProfile"
 
-"$profile_directory/SwayIdleProfile"
+"$profile_directory/KinaraIdleProfile"

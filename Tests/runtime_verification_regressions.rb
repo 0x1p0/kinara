@@ -12,7 +12,7 @@ automation = 'com.apple.security.automation.apple-events'
 audio = 'com.apple.security.device.audio-input'
 count = 0
 
-Dir.mktmpdir('sway-runtime-tests.') do |directory|
+Dir.mktmpdir('kinara-runtime-tests.') do |directory|
   run = lambda do |*arguments|
     output, status = Open3.capture2e({'PATH' => native_path}, *arguments)
     abort("Fixture setup failed: #{output}") unless status.success?

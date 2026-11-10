@@ -5,7 +5,7 @@ set -euo pipefail
 script_directory="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_directory="$(cd -- "$script_directory/.." && pwd)"
 output_directory="$project_directory/build"
-build_arch="${SWAY_ARCH:-$(uname -m)}"
+build_arch="${KINARA_ARCH:-$(uname -m)}"
 build_method="${1:---xcode}"
 sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
 
@@ -40,7 +40,7 @@ sparkle_directory="$(bash scripts/setup-sparkle.sh)"
 sparkle_frameworks="$sparkle_directory/Sparkle.xcframework/macos-arm64_x86_64"
 
 if [[ "$build_method" == "--xcode" ]]; then
-    xcodebuild -quiet -project Sway.xcodeproj -scheme Sway \
+    xcodebuild -quiet -project Kinara.xcodeproj -scheme Kinara \
         -configuration Release -destination "$xcode_destination" \
         -derivedDataPath "$output_directory/DerivedData" \
         -clonedSourcePackagesDirPath "$output_directory/SourcePackages" \
@@ -59,13 +59,13 @@ elif [[ "$build_method" == "--direct" ]]; then
         "$bundle_directory/Contents/MacOS" "$bundle_directory/Contents/Resources"
 
     xcrun clang -target "$build_arch-apple-macos13.0" -isysroot "$sdk_path" \
-        -Wall -Wextra -Werror -c Sway/MultitouchBridge.c \
+        -Wall -Wextra -Werror -c Kinara/MultitouchBridge.c \
         -o "$intermediate_directory/MultitouchBridge.o"
     xcrun swiftc -target "$build_arch-apple-macos13.0" -sdk "$sdk_path" \
-        -swift-version 5 -warnings-as-errors -O -module-name Sway \
+        -swift-version 5 -warnings-as-errors -O -module-name Kinara \
         -module-cache-path "$intermediate_directory/ModuleCache" \
-        -import-objc-header Sway/Sway-Bridging-Header.h \
-        Sway/*.swift "$intermediate_directory/MultitouchBridge.o" \
+        -import-objc-header Kinara/Kinara-Bridging-Header.h \
+        Kinara/*.swift "$intermediate_directory/MultitouchBridge.o" \
         -framework AppKit -framework SwiftUI -framework CoreAudio \
         -framework IOKit -framework Carbon -framework ServiceManagement \
         -F "$sparkle_frameworks" -framework Sparkle \
@@ -75,7 +75,7 @@ elif [[ "$build_method" == "--direct" ]]; then
     mkdir -p "$bundle_directory/Contents/Frameworks"
     ditto "$sparkle_frameworks/Sparkle.framework" "$bundle_directory/Contents/Frameworks/Sparkle.framework"
 
-    cp Sway/Info.plist "$bundle_directory/Contents/Info.plist"
+    cp Kinara/Info.plist "$bundle_directory/Contents/Info.plist"
     plist_tool=/usr/libexec/PlistBuddy
     "$plist_tool" -c 'Set :CFBundleDevelopmentRegion en' "$bundle_directory/Contents/Info.plist"
     "$plist_tool" -c 'Set :CFBundleExecutable Kinara' "$bundle_directory/Contents/Info.plist"
@@ -86,7 +86,7 @@ elif [[ "$build_method" == "--direct" ]]; then
     "$plist_tool" -c 'Set :CFBundleIconFile AppIcon' "$bundle_directory/Contents/Info.plist"
 
     icon_directory="$intermediate_directory/AppIcon.iconset"
-    icon_source=Sway/Assets.xcassets/AppIcon.appiconset
+    icon_source=Kinara/Assets.xcassets/AppIcon.appiconset
     mkdir -p "$icon_directory"
     for size in 16 32 128 256 512; do
         double_size=$((size * 2))
@@ -110,7 +110,7 @@ test -f "$bundle_directory/Contents/Frameworks/Sparkle.framework/Sparkle"
 cp "$sparkle_directory/LICENSE" "$bundle_directory/Contents/Resources/Sparkle-LICENSE.txt"
 xcrun strip -S "$bundle_directory/Contents/MacOS/Kinara"
 codesign --force --sign - --options runtime --timestamp=none \
-    --entitlements Sway/Sway.entitlements "$bundle_directory"
+    --entitlements Kinara/Kinara.entitlements "$bundle_directory"
 codesign --verify --deep --strict "$bundle_directory"
 bash scripts/verify-runtime.sh "$bundle_directory"
 plutil -lint "$bundle_directory/Contents/Info.plist"

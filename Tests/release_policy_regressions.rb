@@ -26,9 +26,9 @@ app_steps = app_sign.fetch('steps')
 app_checkout = app_steps.find { |step| step['uses'].to_s.start_with?('actions/checkout@') }
 expect.call(app_checkout.fetch('with').fetch('ref') == 'main' && app_checkout.fetch('with').fetch('persist-credentials') == false, 'app signer uses protected source without persisted credentials')
 expect.call(app_steps.any? { |step| step['run'].to_s.include?('test "$(git rev-parse HEAD)" = "$GITHUB_SHA"') }, 'app signer requires current main')
-app_secret_steps = app_steps.select { |step| step.fetch('env', {}).key?('SWAY_APP_SIGNING_IDENTITY') }
+app_secret_steps = app_steps.select { |step| step.fetch('env', {}).key?('KINARA_APP_SIGNING_IDENTITY') }
 expect.call(app_secret_steps.length == 1 && app_secret_steps.first.fetch('run') == 'python3 scripts/app-signing.py sign "$RUNNER_TEMP/kinara-app/Kinara.app"', 'only the dependency-free app signer receives the identity')
-expect.call(!app_sign.to_s.include?('SPARKLE_PRIVATE_KEY') && !sign.to_s.include?('SWAY_APP_SIGNING_IDENTITY'), 'separate app and update signing steps/runners')
+expect.call(!app_sign.to_s.include?('SPARKLE_PRIVATE_KEY') && !sign.to_s.include?('KINARA_APP_SIGNING_IDENTITY'), 'separate app and update signing steps/runners')
 expect.call(app_steps.map { |step| step['run'] }.join("\n") !~ /pip|setup-dmg|setup-sparkle|test-updater|package-release|xcodebuild/, 'app signer must not run build dependencies or artifact code')
 expect.call(sign.fetch('environment').fetch('name') == 'release', 'release approval environment required')
 steps = sign.fetch('steps')
@@ -52,7 +52,7 @@ expect.call(sign.fetch('permissions') == {'contents' => 'write'}, 'release job g
 events = checks['on'] || checks[true] # YAML 1.1 treats "on" as a boolean.
 expect.call(events.key?('pull_request') && !events.key?('pull_request_target'), 'PR checks must be unprivileged')
 expect.call(checks.fetch('permissions') == {'contents' => 'read'}, 'PR token must be read-only')
-expect.call(checks.fetch('jobs').fetch('checks').fetch('name') == 'Sway checks', 'required status-check name must stay stable')
+expect.call(checks.fetch('jobs').fetch('checks').fetch('name') == 'Kinara checks', 'required status-check name must stay stable')
 expect.call(!checks.to_s.include?('secrets.'), 'PR checks must never reference secrets')
 [build, checks.fetch('jobs').fetch('checks')].each do |job|
   expect.call(job.fetch('steps').any? { |step| step['run'].to_s.include?('ruby Tests/runtime_verification_regressions.rb') }, 'both build paths must test runtime verification without optional tools')
@@ -68,7 +68,7 @@ end
     end
   end
 end
-entitlements = REXML::Document.new(File.read(File.join(root, 'Sway/Sway.entitlements')))
+entitlements = REXML::Document.new(File.read(File.join(root, 'Kinara/Kinara.entitlements')))
 keys = REXML::XPath.match(entitlements, '//key').map(&:text)
 expect.call(keys == ['com.apple.security.cs.disable-library-validation', 'com.apple.security.automation.apple-events', 'com.apple.security.device.audio-input'], 'only the documented cross-signer, Apple Events and audio-input entitlements are allowed')
 build_script = File.read(File.join(root, 'scripts/build.sh'))

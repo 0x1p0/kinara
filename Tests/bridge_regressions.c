@@ -1,6 +1,6 @@
 // Exercise the actual native callback with recorded-layout synthetic frames.
 // No private framework is opened, no devices started, no hardware is changed.
-#include "../Sway/MultitouchBridge.c"
+#include "../Kinara/MultitouchBridge.c"
 #include <assert.h>
 #include <stdio.h>
 

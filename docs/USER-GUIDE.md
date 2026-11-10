@@ -203,8 +203,7 @@ touch, with its contact count, travel, straightness and duration. Try:
   front, and where each assignment comes from.
 - **Menu bar icon:** scroll it to change the volume (⌥ for brightness).
 - **Kinara links:** `kinara://` links let Shortcuts and scripts pause or resume Kinara, set volume
-  or brightness within your limits, show the edge map, or start and stop the ambient light. Links can't change your setup. Old
-  `sway://` links still work.
+  or brightness within your limits, show the edge map, or start and stop the ambient light. Links can't change your setup.
 - **Export and import:** your settings, including profiles, travel in one file. Login and setup
   state never do.
 - **Updates:** Kinara checks GitHub Releases once a day (you can turn this off), and installs only

@@ -16,12 +16,12 @@ mkdir -p "$render_directory/ModuleCache"
 cd "$project_directory"
 
 xcrun clang -target "$render_arch-apple-macos13.0" -isysroot "$sdk_path" \
-    -Wall -Wextra -Werror -c Sway/MultitouchBridge.c \
+    -Wall -Wextra -Werror -c Kinara/MultitouchBridge.c \
     -o "$render_directory/MultitouchBridge.o"
 
 sources=()
-for source in Sway/*.swift; do
-    if [[ "$source" != "Sway/SwayApp.swift" ]]; then
+for source in Kinara/*.swift; do
+    if [[ "$source" != "Kinara/KinaraApp.swift" ]]; then
         sources+=("$source")
     fi
 done
@@ -29,7 +29,7 @@ done
 xcrun swiftc -target "$render_arch-apple-macos13.0" -sdk "$sdk_path" \
     -swift-version 5 -warnings-as-errors -parse-as-library \
     -module-cache-path "$render_directory/ModuleCache" \
-    -import-objc-header Sway/Sway-Bridging-Header.h \
+    -import-objc-header Kinara/Kinara-Bridging-Header.h \
     "${sources[@]}" Tests/RenderUI.swift "$render_directory/MultitouchBridge.o" \
     -framework AppKit -framework SwiftUI -framework CoreAudio \
     -framework IOKit -framework Carbon -framework ServiceManagement \
@@ -44,7 +44,7 @@ mkdir -p "$preview_bundle/Contents/MacOS"
 cp "$render_directory/RenderUI" "$preview_bundle/Contents/MacOS/RenderUI"
 preview_plist="$preview_bundle/Contents/Info.plist"
 plutil -create xml1 "$preview_plist"
-plutil -insert CFBundleIdentifier -string com.sway.uipreview "$preview_plist"
+plutil -insert CFBundleIdentifier -string com.kinara.uipreview "$preview_plist"
 plutil -insert CFBundleName -string 'Kinara UI Preview' "$preview_plist"
 plutil -insert CFBundleExecutable -string RenderUI "$preview_plist"
 plutil -insert CFBundlePackageType -string APPL "$preview_plist"
@@ -59,7 +59,7 @@ mkdir -p "$indicator_bundle/Contents/MacOS"
 cp "$render_directory/RenderUI" "$indicator_bundle/Contents/MacOS/RenderUI"
 indicator_plist="$indicator_bundle/Contents/Info.plist"
 plutil -create xml1 "$indicator_plist"
-plutil -insert CFBundleIdentifier -string com.sway.osdpreview "$indicator_plist"
+plutil -insert CFBundleIdentifier -string com.kinara.osdpreview "$indicator_plist"
 plutil -insert CFBundleName -string 'Kinara Indicator Preview' "$indicator_plist"
 plutil -insert CFBundleExecutable -string RenderUI "$indicator_plist"
 plutil -insert CFBundlePackageType -string APPL "$indicator_plist"

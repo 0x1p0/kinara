@@ -354,7 +354,7 @@ export function renderSoundtrack({ from = 0, to = FILM.duration } = {}) {
         for (let c = 0; c < 2; c++) { const v = f[c](noise(), fc, 0.5).band * bell * bell * 0.26 * g * (c === 0 ? 1 - pan * 0.6 : 1 + pan * 0.6); fx[c][i0 + j] += v; send[c][i0 + j] += v * 0.4; }
       }
     },
-    motif(i0, g) { // Sway's sonic logo: four rising bell notes, a major-seventh shimmer
+    motif(i0, g) { // Kinara's sonic logo: four rising bell notes, a major-seventh shimmer
       [[86, 0, -0.4], [90, 0.16, 0.2], [93, 0.32, -0.15], [97, 0.5, 0.35]].forEach(([m, delay, pan], k) => {
         const s = i0 + Math.floor(delay * SR), f = mtof(m), len = k === 3 ? 3.4 : 2.2;
         for (let j = 0; j < len * SR; j++) {

@@ -2,11 +2,11 @@
 # owner-only updates; CI runs on pushes and optional pull requests.
 /.github/ @0x1p0
 /scripts/ @0x1p0
-/Sway/Info.plist @0x1p0
-/Sway/Sway.entitlements @0x1p0
-/Sway/InAppUpdater.swift @0x1p0
+/Kinara/Info.plist @0x1p0
+/Kinara/Kinara.entitlements @0x1p0
+/Kinara/InAppUpdater.swift @0x1p0
 /Tests/app_signing_regressions.py @0x1p0
 /Tests/app_archive_regressions.py @0x1p0
 /Tests/package_release_regressions.py @0x1p0
 /Tests/release_policy_regressions.rb @0x1p0
-/Sway.xcodeproj/ @0x1p0
+/Kinara.xcodeproj/ @0x1p0
