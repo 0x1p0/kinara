@@ -66,7 +66,7 @@ jobs:
           ditto -c -k --keepParent --norsrc --noextattr build/Kinara.app "$RUNNER_TEMP/Kinara-unsigned.zip"
       - name: Hand off data, never signing tools
         id: upload
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: unsigned-release-${{ github.sha }}
           path: ${{ runner.temp }}/Kinara-unsigned.zip
@@ -113,7 +113,7 @@ jobs:
           python3 scripts/app-signing.py verify "$RUNNER_TEMP/kinara-app/Kinara.app"
           ditto -c -k --keepParent --norsrc --noextattr "$RUNNER_TEMP/kinara-app/Kinara.app" "$RUNNER_TEMP/Kinara-signed.zip"
           printf 'sha256=%s\n' "$(shasum -a 256 "$RUNNER_TEMP/Kinara-signed.zip" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         id: upload
         with:
           name: signed-app-${{ github.sha }}
@@ -150,7 +150,7 @@ jobs:
         run: |
           test "$(shasum -a 256 "$RUNNER_TEMP/kinara-signed/Kinara-signed.zip" | cut -d ' ' -f 1)" = "$SIGNED_ZIP_SHA256"
           KINARA_DEFER_UPDATE_SIGNING=1 bash scripts/package-release.sh "$GITHUB_REF_NAME" "$RUNNER_TEMP/kinara-signed/Kinara-signed.zip"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         id: upload
         with:
           name: packaged-release-${{ github.sha }}
