@@ -74,21 +74,20 @@ address and Kinara's version in the user agent.
 ## Publishing
 
 Only the maintainer's account can update main, and main can't be deleted or force-pushed.
-Pushing main runs **Checks**; pushing a new version tag runs **Release**. For a prepared
-release, with a new, unused tag:
+Pushing main runs **Checks**; pushing a new version tag runs **Release**. To cut a release, from
+an up-to-date main checkout with nothing else uncommitted:
 
 ```bash
-git switch main &&
-git pull --ff-only origin main &&
-git add README.md Kinara/Info.plist Kinara.xcodeproj/project.pbxproj releases/v1.0.0.md &&
-git commit -m "Prepare Kinara 1.0.0 release" &&
-git tag -a v1.0.0 -m "Kinara 1.0.0" &&
-git push --atomic origin main v1.0.0
+bash scripts/release.sh 1.0.1
 ```
 
-The chain stops at the first failure, commits before tagging, and pushes main and the tag
-together, so a release can't target the previous commit. If a release run fails, leave its tag
-alone and publish the fix under a new version.
+The first run for a new version writes `releases/v1.0.1.md` from the commits since the last
+release and stops. Turn that into release notes, then run the same command again. It raises the
+version and the build number (updates compare the build number), builds once to check the
+source compiles, commits, tags, and pushes main and the tag together, so a release can't target
+the wrong commit. `--dry-run` does every check and the build, then puts the files back; nothing
+is committed or pushed. It refuses a version that already exists or is older than the last one.
+If a release run fails, leave its tag alone and publish the fix under a new version.
 
 The **Release** workflow runs four jobs:
 

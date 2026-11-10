@@ -228,9 +228,10 @@ checklist for physical hardware, which no automated trace can replace.
   alone. A Developer ID and notarization path is ready in `scripts/notarize.sh`.
 - **Updates:** Sparkle with an Ed25519-signed feed and archive. A bad signature never falls back
   to an unsigned update, and automatic downloads are off.
-- **Releases:** four jobs on fresh runners with two manual approvals. Each private key exists
-  only in an approval-protected environment and only in its own signing step. Releases are
-  immutable once published. See [Releasing](docs/RELEASING.md).
+- **Releases:** `bash scripts/release.sh <version>` raises the version, commits, tags and
+  pushes; the tag starts four jobs on fresh runners with two manual approvals. Each private key
+  exists only in an approval-protected environment and only in its own signing step. Releases
+  are immutable once published. See [Releasing](docs/RELEASING.md).
 - **Supply chain:** actions pinned by commit SHA, Sparkle pinned by checksum, DMG tools pinned by
   hash, and Dependabot on top.
 
