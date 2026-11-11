@@ -646,5 +646,15 @@ enum GestureRegressionTests {
         expect(!recovery.mayResume(trusted: true, at: 102), "timing out again and again, it stands down instead")
         expect(recovery.mayResume(trusted: true, at: 104), "after a quiet moment it may recover again")
         expect(!recovery.mayResume(trusted: true, at: .nan), "a bad clock never re-enables a tap")
+
+        // After waking, a trackpad can be slow to come back: Kinara keeps trying,
+        // with growing pauses, for about half a minute, then says so (GitHub issue #3).
+        var wait = TrackpadWait()
+        var pauses: [Double] = []
+        while let pause = wait.nextDelay() { pauses.append(pause) }
+        expect(pauses.first == 0.5, "the first try again comes quickly, while the trackpad wakes")
+        expect(zip(pauses, pauses.dropFirst()).allSatisfy { $0 < $1 }, "each pause is longer than the one before")
+        expect((25...40).contains(pauses.reduce(0, +)), "it waits about half a minute in all")
+        expect(wait.nextDelay() == nil && wait.attempts == pauses.count, "then it stops trying and says there is no trackpad")
     }
 }

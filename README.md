@@ -200,7 +200,7 @@ system level, requests a permission, registers a shortcut or launches the produc
 
 | Area | Command | Assertions | What it pins down |
 | --- | --- | ---: | --- |
-| Gesture recognizer | `scripts/test-gestures.sh` | 253 | Intent, rejection, scroll ownership, staleness |
+| Gesture recognizer | `scripts/test-gestures.sh` | 257 | Intent, rejection, scroll ownership, staleness |
 | Palm rejection | `scripts/test-palm-rejection.sh` | 60 | Footprint and intent rules on synthetic traces |
 | Control model | `scripts/test-controls.sh` | 528 | Every action's metadata and icon, steppers, panel state from readback |
 | Settings | `scripts/test-settings.sh` | 343 | Migration, normalization, profiles, export and import (91 cases) |

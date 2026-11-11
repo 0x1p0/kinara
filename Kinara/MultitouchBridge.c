@@ -42,6 +42,9 @@ typedef CFArrayRef (*MTDeviceCreateListFn)(void);
 typedef void (*MTRegisterCallbackFn)(MTDeviceRef, MTContactCallback);
 typedef int32_t (*MTDeviceStartFn)(MTDeviceRef, int32_t);
 typedef int32_t (*MTDeviceStopFn)(MTDeviceRef);
+static MTDeviceCreateListFn g_createList;
+static MTRegisterCallbackFn g_registerCallback;
+static MTRegisterCallbackFn g_unregisterCallback; // optional
 
 enum { maximumDevices = 32, maximumContacts = 16 };
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -135,38 +138,86 @@ void MTBridge_SetFrameCallback(MTFrameCallback callback) {
     pthread_mutex_unlock(&g_lock);
 }
 
-int MTBridge_Start(uint64_t generation) {
-    // These entry points are called on the main thread. Keep framework/device
-    // references for process lifetime and register each callback exactly once.
-    static void *library;
-    if (!library) library = dlopen("/System/Library/PrivateFrameworks/MultitouchSupport.framework/MultitouchSupport", RTLD_NOW | RTLD_LOCAL);
-    if (!library) return 0;
-    if (!g_deviceList) {
-        MTDeviceCreateListFn createList = (MTDeviceCreateListFn)dlsym(library, "MTDeviceCreateList");
-        MTRegisterCallbackFn registerCallback = (MTRegisterCallbackFn)dlsym(library, "MTRegisterContactFrameCallback");
+// Everything below is called on the main thread. The framework stays loaded for
+// the process lifetime; the device list is kept until its devices stop starting.
+static int load_framework(void) {
+    if (!g_createList) {
+        void *library = dlopen("/System/Library/PrivateFrameworks/MultitouchSupport.framework/MultitouchSupport", RTLD_NOW | RTLD_LOCAL);
+        if (!library) return 0;
+        g_createList = (MTDeviceCreateListFn)dlsym(library, "MTDeviceCreateList");
+        g_registerCallback = (MTRegisterCallbackFn)dlsym(library, "MTRegisterContactFrameCallback");
+        g_unregisterCallback = (MTRegisterCallbackFn)dlsym(library, "MTUnregisterContactFrameCallback");
         g_startDevice = (MTDeviceStartFn)dlsym(library, "MTDeviceStart");
         g_stopDevice = (MTDeviceStopFn)dlsym(library, "MTDeviceStop");
-        if (!createList || !registerCallback || !g_startDevice || !g_stopDevice) return 0;
-        g_deviceList = createList();
-        if (!g_deviceList) return 0;
-        CFIndex count = CFArrayGetCount(g_deviceList);
-        g_deviceCount = (int)(count < maximumDevices ? count : maximumDevices);
-        for (int i = 0; i < g_deviceCount; i++) {
-            g_devices[i] = (MTDeviceRef)CFArrayGetValueAtIndex(g_deviceList, i);
-            registerCallback(g_devices[i], mt_callback);
-        }
-        if (g_deviceCount == 0) { CFRelease(g_deviceList); g_deviceList = NULL; return 0; }
     }
+    return g_createList && g_registerCallback && g_startDevice && g_stopDevice;
+}
+
+// Asks macOS for the trackpads now present and listens to each, exactly once.
+static int load_devices(void) {
+    CFArrayRef list = g_createList();
+    if (!list) return 0;
+    CFIndex count = CFArrayGetCount(list);
+    if (count == 0) { CFRelease(list); return 0; }
+    pthread_mutex_lock(&g_lock);
+    g_deviceList = list;
+    g_deviceCount = (int)(count < maximumDevices ? count : maximumDevices);
+    for (int i = 0; i < g_deviceCount; i++) g_devices[i] = (MTDeviceRef)CFArrayGetValueAtIndex(list, i);
+    pthread_mutex_unlock(&g_lock);
+    for (int i = 0; i < g_deviceCount; i++) g_registerCallback(g_devices[i], mt_callback);
+    return g_deviceCount;
+}
+
+// Lets go of the devices in hand. Across sleep macOS can replace a trackpad's
+// device (seen on a MacBook Air M1), and the old one never starts again.
+static void forget_devices(void) {
+    MTDeviceRef old[maximumDevices];
+    pthread_mutex_lock(&g_lock);
+    CFArrayRef list = g_deviceList;
+    int count = g_deviceCount;
+    for (int i = 0; i < count; i++) old[i] = g_devices[i];
+    g_deviceList = NULL;
+    g_deviceCount = 0;
+    g_activeDevice = NULL;
+    g_lastTouchedDevice = NULL;
+    pthread_mutex_unlock(&g_lock);
+    if (g_unregisterCallback) {
+        for (int i = 0; i < count; i++) g_unregisterCallback(old[i], mt_callback);
+    }
+    if (list) CFRelease(list);
+}
+
+// Starts every device in hand; the number that started.
+static int start_devices(uint64_t generation) {
     pthread_mutex_lock(&g_lock);
     if (g_running) { pthread_mutex_unlock(&g_lock); return g_deviceCount; }
     g_generation = generation;
     g_activeDevice = NULL;
     for (int i = 0; i < g_deviceCount; i++) g_needsLift[i] = 1;
     g_running = 1;
+    int count = g_deviceCount;
     pthread_mutex_unlock(&g_lock);
     int started = 0;
-    for (int i = 0; i < g_deviceCount; i++) {
+    for (int i = 0; i < count; i++) {
         if (g_startDevice(g_devices[i], 0) == 0) started++;
+    }
+    if (started == 0) {
+        pthread_mutex_lock(&g_lock);
+        g_running = 0;
+        pthread_mutex_unlock(&g_lock);
+    }
+    return started;
+}
+
+int MTBridge_Start(uint64_t generation) {
+    if (!load_framework()) return 0;
+    if (!g_deviceList && load_devices() == 0) return 0;
+    int started = start_devices(generation);
+    if (started == 0) {
+        // None of the devices in hand answered: ask macOS again for the ones
+        // present now, and try those once.
+        forget_devices();
+        if (load_devices() > 0) started = start_devices(generation);
     }
     if (started == 0) MTBridge_Stop();
     return started;
@@ -201,6 +252,7 @@ static int g_actuatorsLoaded;
 static CFArrayRef g_actuatorDevices;
 static uint64_t g_actuatorIDs[maximumActuators];
 static CFTypeRef g_actuators[maximumActuators];
+static int g_actuatorWorked[maximumActuators];
 static int g_actuatorCount;
 static MTDeviceGetDeviceIDFn g_deviceID;
 static MTActuatorCreateFn g_createActuator;
@@ -220,6 +272,7 @@ static CFTypeRef actuator_for_device(MTDeviceRef device) {
     if (g_openActuator(actuator) != 0) { CFRelease(actuator); return NULL; }
     g_actuatorIDs[g_actuatorCount] = identifier;
     g_actuators[g_actuatorCount] = actuator;
+    g_actuatorWorked[g_actuatorCount] = 0;
     g_actuatorCount++;
     return actuator;
 }
@@ -251,6 +304,21 @@ int MTBridge_Actuate(int32_t actuationID, float unknown1, float unknown2) {
         }
     }
     int fired = actuator && g_actuate(actuator, actuationID, 0, unknown1, unknown2) == 0;
+    for (int i = 0; actuator && i < g_actuatorCount; i++) {
+        if (g_actuators[i] != actuator) continue;
+        if (fired) { g_actuatorWorked[i] = 1; break; }
+        // One that worked and then stopped answering was opened before sleep, on a
+        // trackpad device macOS has since replaced: let go of it, so the next tick
+        // opens a fresh one. One that never worked is kept, so it isn't reopened
+        // on every tick.
+        if (!g_actuatorWorked[i]) break;
+        CFRelease(actuator);
+        g_actuatorCount--;
+        g_actuators[i] = g_actuators[g_actuatorCount];
+        g_actuatorIDs[i] = g_actuatorIDs[g_actuatorCount];
+        g_actuatorWorked[i] = g_actuatorWorked[g_actuatorCount];
+        break;
+    }
     pthread_mutex_unlock(&g_actuatorLock);
     return fired;
 }

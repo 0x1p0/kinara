@@ -52,6 +52,9 @@ final class TrackpadMonitor: ObservableObject {
     private var accessTimer: Timer?
     private var tapRecovery = TapRecovery()
     private var tapRestart: DispatchWorkItem?
+    /// Tries again while a trackpad is slow to come back, as after waking.
+    private var trackpadWait = TrackpadWait()
+    private var trackpadRetry: DispatchWorkItem?
     private var brightnessPreparationGeneration: UInt64 = 0
     private var brightnessPreparationStarted = false
     private var brightnessBaseline: (value: Float, target: String)?
@@ -225,10 +228,24 @@ final class TrackpadMonitor: ObservableObject {
         guard deviceCount > 0 else {
             removeEventTap()
             MTBridge_Stop()
-            statusMessage = "No compatible trackpad found. Connect it, then retry."
-            KinaraLog.warning(.monitor, "Not starting: no compatible trackpad")
+            if let delay = trackpadWait.nextDelay() {
+                statusMessage = "Waiting for the trackpad…"
+                KinaraLog.info(.monitor, "No trackpad answered yet; trying again in \(delay) s")
+                let work = DispatchWorkItem { [weak self] in
+                    guard let self, self.settings.isEnabled, !self.isRunning else { return }
+                    self.start()
+                }
+                trackpadRetry = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+            } else {
+                statusMessage = "No compatible trackpad found. Connect it, then retry."
+                KinaraLog.warning(.monitor, "Not starting: no compatible trackpad")
+            }
             return
         }
+        if trackpadWait.attempts > 0 { KinaraLog.info(.monitor, "The trackpad answered after \(trackpadWait.attempts) more tries") }
+        trackpadWait = TrackpadWait()
+        trackpadRetry = nil
         isRunning = true
         statusMessage = "Ready for edge gestures"
         KinaraLog.info(.monitor, "Running: \(deviceCount) trackpad(s), \(settings.minimumFingers) finger(s), cursor hold \(settings.cursorFreezeOnOneFinger ? "on" : "off"), haptics \(settings.hapticFeedback ? settings.hapticStyle.rawValue : "off")")
@@ -252,6 +269,10 @@ final class TrackpadMonitor: ObservableObject {
         disarm()
         accessTimer?.invalidate()
         accessTimer = nil
+        // A deliberate stop (sleep, pause, a restart) ends any wait for the trackpad.
+        trackpadRetry?.cancel()
+        trackpadRetry = nil
+        trackpadWait = TrackpadWait()
         generation &+= 1
         MTBridge_Stop()
         trackpadFrames.clear()

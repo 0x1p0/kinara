@@ -733,6 +733,22 @@ struct TapRecovery {
     }
 }
 
+/// After waking, a trackpad can take a moment to come back, or come back as a new
+/// device (a MacBook Air M1 did, every time: GitHub issue #3). Starting is tried
+/// again after growing pauses, about half a minute in all, before Kinara says
+/// there is no trackpad.
+struct TrackpadWait {
+    static let delays: [Double] = [0.5, 1, 2, 3, 5, 8, 12]
+    private(set) var attempts = 0
+
+    /// The pause before the next try, or nil once the waiting is over.
+    mutating func nextDelay() -> Double? {
+        guard attempts < Self.delays.count else { return nil }
+        defer { attempts += 1 }
+        return Self.delays[attempts]
+    }
+}
+
 /// A finger resting still on a tap zone, to preview what its taps do without
 /// doing them. Only a deliberate rest counts: the zone's finger count, every
 /// finger in the zone, nearly still, and no typing or click since it landed.
